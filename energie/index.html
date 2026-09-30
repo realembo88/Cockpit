@@ -120,7 +120,7 @@ const TARIFFS={
   ]
 };
 const TARIFF_NAMES={gas:'Gas',wasser:'Wasser / Abwasser',strom:'Strom'};
-const TARIFF_DOTS={gas:'#F97316',wasser:'#22B8CF',strom:'#3B82F6'};
+const TARIFF_DOTS={gas:'#F97316',wasser:'#38BDF8',strom:'#FACC15'};
 
 const S={
   year:(function(){try{var y=parseInt(localStorage.getItem('cockpit:energie:year'),10);return isNaN(y)?new Date().getFullYear():y;}catch(e){return new Date().getFullYear();}})(),tab:'preise',st:'haupt',dirty:false,lastSaved:null,
@@ -510,7 +510,7 @@ const fE=n=>n===null?'–':(n<0?'\u2212\u202f':'')+Math.abs(n).toLocaleString('d
 const fP=n=>n===null?'–':fN(n,1)+'\u202f%';
 function fromLabel(from){if(!from)return '–';const[y,m]=from.split('-');return MO[parseInt(m,10)-1]+' '+y;}
 
-const C={gas:'#F97316',wat:'#22B8CF',stb:'#3B82F6',pv:'#00C853',ein:'#A78BFA',gr:'rgba(255,255,255,.06)',tx:'#5c7aaa'};
+const C={gas:'#F97316',wat:'#38BDF8',stb:'#FACC15',pv:'#00C853',ein:'#C084FC',pvg:'#A3E635',sp:'#2DD4BF',cur:'#E2E8F0',gr:'rgba(255,255,255,.06)',tx:'#5c7aaa'};
 const charts={};
 function mkC(id,cfg){if(typeof Chart==='undefined')return;if(charts[id]){charts[id].destroy();delete charts[id]}const el=document.getElementById(id);if(el)charts[id]=new Chart(el,cfg);}
 const dot=c=>`<span class="edot" style="background:${c}"></span>`;
@@ -576,7 +576,7 @@ function rDashboard(){
     <div class="esc"><div class="esc-l">${dot(C.gas)} Gas</div><div class="esc-v">${fE(a.tg)}</div><div class="esc-s">${fM(sm(a.gc.map(x=>x.vm3)))} · ${fK(a.gV)} ${bdg(a.tg,b.tg)}</div></div>
     <div class="esc"><div class="esc-l">${dot(C.wat)} Wasser+Abwasser</div><div class="esc-v">${fE(a.tw)}</div><div class="esc-s">${fM(a.wV)} ${bdg(a.tw,b.tw)}</div></div>
     <div class="esc"><div class="esc-l">${dot(C.stb)} Strom (netto)</div><div class="esc-v">${fE(a.ts)}</div><div class="esc-s">${fK(a.sB)} Bezug ${bdg(a.ts,b.ts)}</div></div>
-    <div class="esc"><div class="esc-l">${dot('#F59E0B')} PV-Erzeugung</div><div class="esc-v" style="color:#F59E0B">${fK(a.tPE)}</div><div class="esc-s">${a.tein!==null?'+\u202f'+fE(a.tein)+' Einsp.':'–'}</div></div>
+    <div class="esc"><div class="esc-l">${dot(C.pvg)} PV-Erzeugung</div><div class="esc-v" style="color:${C.pvg}">${fK(a.tPE)}</div><div class="esc-s">${a.tein!==null?'+\u202f'+fE(a.tein)+' Einsp.':'–'}</div></div>
     <div class="esc"><div class="esc-l">${dot(C.pv)} PV-Eigenverbrauch</div><div class="esc-v" style="color:${C.pv}">${fK(a.tev)}</div><div class="esc-s">direkt ${fK(a.tPVD)} · Sp. ${fK(a.tPAS)}</div></div>
     <div class="esc"><div class="esc-l">${dot(C.pv)} Autarkie</div><div class="esc-v" style="color:${C.pv}">${fP(a.aut)}</div><div class="esc-s">${fK(a.gesV)} Gesamtverbr.</div></div>
     <div class="esc esc-tot"><div class="esc-l">Gesamtkosten</div><div class="esc-v">${fE(tall)}</div><div class="esc-s">${pyr}: ${fE(tallp)} ${bdg(tall,tallp)}</div></div>
@@ -588,14 +588,14 @@ function rDashboard(){
     <div class="ecw"><div class="ecw-t"><span>Gasverbrauch</span></div><div class="canvas-wrap"><canvas id="chGas"></canvas></div></div>
     <div class="ecw"><div class="ecw-t"><span>Wasserverbrauch</span></div><div class="canvas-wrap"><canvas id="chWas"></canvas></div></div>
     <div class="ecw ch-big"><div class="ecw-t"><span>PV-Bilanz pro Monat</span>
-      <div class="eleg" style="margin:0;font-size:10px"><div class="eli"><div class="els" style="background:#F59E0B"></div>Erzeugung</div><div class="eli"><div class="els" style="background:${C.pv}"></div>PV direkt</div><div class="eli"><div class="els" style="background:#5fa1f0"></div>PV aus Speicher</div><div class="eli"><div class="els" style="background:${C.ein}"></div>Einspeisung</div></div>
+      <div class="eleg" style="margin:0;font-size:10px"><div class="eli"><div class="els" style="background:${C.pvg}"></div>Erzeugung</div><div class="eli"><div class="els" style="background:${C.pv}"></div>PV direkt</div><div class="eli"><div class="els" style="background:${C.sp}"></div>PV aus Speicher</div><div class="eli"><div class="els" style="background:${C.ein}"></div>Einspeisung</div></div>
     </div><div class="canvas-wrap" style="height:200px"><canvas id="chPV"></canvas></div></div>
     <div class="ecw"><div class="ecw-t"><span>Strom Bezug / Einspeisung / PV-EV</span>
       <div class="eleg" style="margin:0;font-size:10px"><div class="eli"><div class="els" style="background:${C.stb}"></div>Bezug</div><div class="eli"><div class="els" style="background:${C.ein}"></div>Einsp.</div><div class="eli"><div class="els" style="background:${C.pv}"></div>PV-EV</div></div>
     </div><div class="canvas-wrap"><canvas id="chStrom"></canvas></div></div>
     <div class="ecw"><div class="ecw-t"><span>Autarkie pro Monat</span></div><div class="canvas-wrap"><canvas id="chAut"></canvas></div></div>
     <div class="ecw"><div class="ecw-t"><span>Jahresvergleich ${pyr} ↔ ${yr}</span>
-      <div class="eleg" style="margin:0;font-size:10px"><div class="eli"><div class="els" style="background:${C.tx}"></div>${pyr}</div><div class="eli"><div class="els" style="background:${C.stb}"></div>${yr}</div></div>
+      <div class="eleg" style="margin:0;font-size:10px"><div class="eli"><div class="els" style="background:${C.tx}"></div>${pyr}</div><div class="eli"><div class="els" style="background:${C.cur}"></div>${yr}</div></div>
     </div><div class="canvas-wrap"><canvas id="chComp"></canvas></div></div>
     <div class="ecw ch-big"><div class="ecw-t"><span>Verbrauchsentwicklung über 12 Monate (kumulativ)</span>
       <div class="eleg" style="margin:0"><div class="eli"><div class="els" style="background:${C.gas}"></div>Gas (kWh)</div><div class="eli"><div class="els" style="background:${C.stb}"></div>Strombezug (kWh)</div><div class="eli"><div class="els" style="background:${C.wat}"></div>Wasser (m³ × 100)</div></div>
@@ -631,9 +631,9 @@ function doCharts(){
   /* PV-Bilanz: Erzeugung als Linie, darunter PV direkt + PV aus Speicher + Einspeisung als gestapelte Balken */
   mkC('chPV',{type:'bar',data:{labels:MO,datasets:[
     {type:'bar',label:'PV direkt',data:a.sc.map(c=>c.pvDir),backgroundColor:C.pv,stack:'p'},
-    {type:'bar',label:'PV aus Speicher',data:a.sc.map(c=>c.pas),backgroundColor:'#5fa1f0',stack:'p'},
+    {type:'bar',label:'PV aus Speicher',data:a.sc.map(c=>c.pas),backgroundColor:C.sp,stack:'p'},
     {type:'bar',label:'Einspeisung',data:a.sc.map(c=>c.e),backgroundColor:C.ein,stack:'p'},
-    {type:'line',label:'Erzeugung',data:a.sc.map(c=>c.pe),borderColor:'#F59E0B',backgroundColor:'#F59E0B',borderWidth:2,pointRadius:3,fill:false,tension:.2}]},
+    {type:'line',label:'Erzeugung',data:a.sc.map(c=>c.pe),borderColor:C.pvg,backgroundColor:C.pvg,borderWidth:2,pointRadius:3,fill:false,tension:.2}]},
     options:{...base,plugins:{...base.plugins,tooltip:{...base.plugins.tooltip,mode:'index'}},scales:{x:{...base.scales.x,stacked:true},y:{...base.scales.y,stacked:true,ticks:{...base.scales.y.ticks,callback:v=>v+' kWh'}}}}});
   /* Autarkie pro Monat */
   mkC('chAut',{type:'bar',data:{labels:MO,datasets:[{label:'Autarkie',data:a.sc.map(c=>c.aut),backgroundColor:C.pv}]},
@@ -643,7 +643,7 @@ function doCharts(){
   const cv=[a.tg,a.tw,a.ts,(a.tg||0)+(a.tw||0)+(a.ts||0)];
   mkC('chComp',{type:'bar',data:{labels:cats,datasets:[
     {label:String(pyr),data:pv,backgroundColor:C.tx},
-    {label:String(yr),data:cv,backgroundColor:C.stb}]},
+    {label:String(yr),data:cv,backgroundColor:C.cur}]},
     options:{...base,scales:{...base.scales,y:{...base.scales.y,ticks:{...base.scales.y.ticks,callback:v=>v+'€'}}}}});
   let gCum=0,sCum=0,wCum=0;
   const gT=a.gc.map(c=>{if(c.v!==null)gCum+=c.v;return c.v!==null?gCum:null});
