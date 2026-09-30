@@ -178,7 +178,7 @@ function testConnection(){
 function topbar(o){
   document.documentElement.style.setProperty("--accent",o.accent||"#0095ff");
   if(o.accent2)document.documentElement.style.setProperty("--accent2",o.accent2);
-  var base=o.base||"../";
+  var base=(o.base!=null)?o.base:"../";
   return '<header class="topbar">'+
     (o.home===false?'':'<a class="home" href="'+base+'index.html" aria-label="Zur Startseite">⌂</a>')+
     '<div class="ttl"><b>'+(o.icon?o.icon+" ":"")+esc(o.title)+'</b>'+(o.sub?'<span>'+esc(o.sub)+'</span>':'')+'</div>'+
