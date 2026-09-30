@@ -8,11 +8,304 @@
 <link rel="manifest" href="../manifest.webmanifest">
 <link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../assets/style.css">
+<style>
+.hero2{border-radius:16px;padding:16px;margin-bottom:14px;border:1px solid #c9a84c55;background:linear-gradient(135deg,#c9a84c2e,var(--panel) 70%);}
+.hero2 .lab{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;}
+.hero2 .big{font-size:28px;font-weight:800;color:#fff;margin:4px 0;font-variant-numeric:tabular-nums;}
+.pos{color:#69f0ae;} .neg{color:#ff8a80;}
+.mcard{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px;cursor:pointer;min-width:0;}
+.mcard.on{border-color:var(--mc);}
+.mcard .h{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:8px;}
+.mcard .n{font-weight:700;color:var(--mc);display:flex;align-items:center;gap:6px;}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;background:var(--mc);}
+.mcard .p{font-size:15px;font-weight:700;color:#fff;font-variant-numeric:tabular-nums;}
+.mcard .s{font-size:11px;color:var(--muted);margin-top:2px;}
+.mcard .hold{margin-top:10px;padding-top:10px;border-top:1px solid var(--border);font-size:12px;}
+.chipbar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
+.chip{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:20px;padding:5px 11px;font-size:12px;cursor:pointer;}
+.chip.on{color:#fff;border-color:var(--accent);background:#c9a84c22;}
+.grp{border-bottom:1px solid var(--border);}
+.grp:last-child{border-bottom:none;}
+.grp-h{display:flex;justify-content:space-between;align-items:center;padding:12px 2px;cursor:pointer;gap:10px;}
+.grp-h b{color:var(--mc);}
+.pitem{display:flex;justify-content:space-between;gap:10px;padding:10px 2px;border-top:1px solid #152038;font-size:13px;}
+.pitem .t{color:#fff;overflow-wrap:anywhere;}
+.pitem .m{font-size:11px;color:var(--muted);margin-top:2px;}
+.pitem .r{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;}
+.pitem .del{background:none;border:none;color:#3a4a6a;font-size:15px;cursor:pointer;padding:0 0 0 8px;}
+.banner{border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12px;background:#1a1000;border:1px solid #ff980088;color:#ffb74d;line-height:1.5;}
+.note{font-size:11px;color:var(--muted);line-height:1.6;}
+code{background:var(--field);padding:1px 5px;border-radius:4px;font-size:11px;}
+input[type=file]{display:none;}
+</style>
 </head>
 <body>
-<div class="wrap"><div id="top"></div>
-<div class="content"><div class="empty"><div class="big">🪙</div><b style="color:#fff">Edelmetalle kommt als Nächstes</b><br><span class="small">Gold- und Silberbestände mit aktuellen Kursen.</span><br><br><a class="btn" style="text-decoration:none;display:inline-block" href="../index.html">Zurück zur Übersicht</a></div></div></div>
+<div class="wrap">
+<div id="top"></div>
+<nav class="tabs" id="tabs"></nav>
+<div class="content" id="main"></div>
+</div>
 <script src="../assets/cockpit.js"></script>
-<script>document.getElementById("top").innerHTML=Cockpit.topbar({title:"Edelmetalle",icon:"🪙",accent:"#c9a84c"});Cockpit.paintStatus();</script>
+<script>
+(function(){
+"use strict";
+var C=window.Cockpit, AREA="edelmetall", TROY=31.1034768;
+var METALS=[
+  {id:"gold",label:"Gold",sym:"XAU",color:"#c9a84c"},
+  {id:"silver",label:"Silber",sym:"XAG",color:"#b8c0c8"},
+  {id:"platinum",label:"Platin",sym:"XPT",color:"#8fb3c9"},
+  {id:"palladium",label:"Palladium",sym:"XPD",color:"#b596c4"}
+];
+var STOCKS=[{id:"GME",label:"GameStop",sym:"GME",color:"#e0457b"}];
+var LOCAL_PRICE_KEY="cockpit:edelmetall:prices", UNIT_KEY="cockpit:edelmetall:unit", FH_KEY="cockpit:edelmetall:finnhub";
+
+function localGet(k){try{return localStorage.getItem(k);}catch(e){return null;}}
+function localGetJ(k){try{return JSON.parse(localStorage.getItem(k));}catch(e){return null;}}
+function localSet(k,v){try{localStorage.setItem(k,typeof v==="string"?v:JSON.stringify(v));}catch(e){}}
+
+/* ---------- Daten ---------- */
+function blank(){return {positions:{gold:[],silver:[],platinum:[],palladium:[]},deleted:[],stocks:{GME:{shares:0,einstand:0}},history:{}};}
+function norm(d){
+  d=d&&typeof d==="object"?d:blank();
+  if(!d.positions)d.positions={};METALS.forEach(function(m){if(!Array.isArray(d.positions[m.id]))d.positions[m.id]=[];});
+  if(!Array.isArray(d.deleted))d.deleted=[];
+  if(!d.stocks)d.stocks={};STOCKS.forEach(function(s){if(!d.stocks[s.id])d.stocks[s.id]={shares:0,einstand:0};});
+  if(!d.history||typeof d.history!=="object")d.history={};
+  return d;
+}
+var st={tab:"uebersicht",chart:"wert",flash:null,open:{},unit:localGet(UNIT_KEY)||"g",
+  prices:localGetJ(LOCAL_PRICE_KEY),loading:false,priceErr:false,stock:{},stockSrc:"",stockErr:"",fh:localGet(FH_KEY)||""};
+
+/* Zwei Stände vereinen: Positionen beider Geräte behalten, gelöschte bleiben gelöscht, Kursverlauf zusammenführen */
+function merge(l,r,lU,rU){
+  l=norm(JSON.parse(JSON.stringify(l)));r=norm(JSON.parse(JSON.stringify(r)));
+  var newer=lU>=rU?l:r,out=blank(),del={};
+  l.deleted.concat(r.deleted).forEach(function(id){del[id]=1;});
+  METALS.forEach(function(m){var by={},order=[];r.positions[m.id].concat(l.positions[m.id]).forEach(function(p){if(del[p.id])return;if(!by[p.id])order.push(p.id);by[p.id]=p;});
+    out.positions[m.id]=order.map(function(k){return by[k];});});
+  out.deleted=Object.keys(del).sort();
+  out.stocks=newer.stocks;
+  var hs=Object.assign({},r.history,l.history),keys=Object.keys(hs).sort();out.history={};keys.forEach(function(k){out.history[k]=hs[k];});
+  out._summary=summaryFor(out);
+  return out;
+}
+C.registerMerge(AREA,merge);
+
+var data=norm(C.getLocal(AREA,blank));
+
+function persist(){data._summary=summaryFor(data);C.save(AREA,data);}
+function flash(t,warn){st.flash={t:t,warn:!!warn};render();clearTimeout(flash.tm);flash.tm=setTimeout(function(){st.flash=null;render();},warn?4000:2600);}
+
+/* ---------- Berechnungen ---------- */
+function items(d,id){return (d||data).positions[id]||[];}
+function grams(d,id,atDate){return items(d,id).reduce(function(s,p){return (!atDate||!p.datum||p.datum<=atDate)?s+(+p.gramm||0):s;},0);}
+function cost(d,id){return items(d,id).reduce(function(s,p){return s+(+p.einkauf||0);},0);}
+function eurPerOz(id,pr){pr=pr||st.prices;return pr&&pr.usd&&pr.usd[id]&&pr.fx?pr.usd[id]*pr.fx:null;}
+function value(d,id,pr){var p=eurPerOz(id,pr);return p==null?null:grams(d,id)/TROY*p;}
+function totals(d,pr){var v=0,c=0,ok=false;METALS.forEach(function(m){var g=grams(d,m.id);var x=value(d,m.id,pr);if(x!=null){v+=x;ok=true;}else if(g)ok=ok;c+=cost(d,m.id);});return {v:ok?v:null,c:c};}
+function giftValue(){var v=0,ok=false;METALS.forEach(function(m){var p=eurPerOz(m.id);if(p==null)return;items(null,m.id).forEach(function(x){if(!(+x.einkauf)){v+=x.gramm/TROY*p;ok=true;}});});return ok?v:null;}
+function amt(g){return st.unit==="oz"?C.num(g/TROY,3)+" oz":(g>=1000?C.num(g/1000,3)+" kg":C.num(g,2)+" g");}
+function signEur(x,d){return (x>=0?"+":"−")+C.eur(Math.abs(x),d);}
+function summaryFor(d){
+  var t=totals(d,st.prices);
+  if(!METALS.some(function(m){return items(d,m.id).length;}))return {k:"—",s:"Noch kein Bestand"};
+  if(t.v==null)return {k:"—",s:"Kurse noch nicht geladen"};
+  var pl=t.v-t.c;
+  return {k:C.eur(t.v,0),s:"Einkauf "+C.eur(t.c,0)+" · "+signEur(pl,0)};
+}
+function histDates(){return Object.keys(data.history).sort();}
+function dayChange(id){var ds=histDates();if(ds.length<2)return null;var a=data.history[ds[ds.length-2]],b=data.history[ds[ds.length-1]];
+  if(!a||!b||!a.usd||!b.usd||!a.usd[id]||!b.usd[id])return null;return (b.usd[id]-a.usd[id])/a.usd[id]*100;}
+
+/* ---------- Kurse laden ---------- */
+function getJ(u){return fetch(u,{cache:"no-store"}).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;});}
+function loadFx(){return getJ("https://api.frankfurter.app/latest?from=USD&to=EUR").then(function(j){return j&&j.rates&&j.rates.EUR||null;});}
+function loadMetal(sym){return getJ("https://api.gold-api.com/price/"+sym).then(function(j){return j&&typeof j.price==="number"&&j.price>0?j.price:null;});}
+function loadStock(){
+  var sym="GME",yurl="https://query1.finance.yahoo.com/v8/finance/chart/"+sym+"?interval=1d&range=1mo";
+  var proxies=[function(u){return "https://corsproxy.io/?url="+encodeURIComponent(u);},function(u){return "https://api.allorigins.win/raw?url="+encodeURIComponent(u);}];
+  st.stockErr="";
+  function finnhub(){
+    if(!st.fh){st.stockErr="Aktienkurs gerade nicht abrufbar.";return null;}
+    return getJ("https://finnhub.io/api/v1/quote?symbol="+sym+"&token="+encodeURIComponent(st.fh)).then(function(j){
+      if(j&&j.c>0){st.stock[sym]={price:j.c,prev:j.pc||null,hist:[]};st.stockSrc="Finnhub";}else st.stockErr="Aktienkurs gerade nicht abrufbar.";});
+  }
+  function tryP(i){
+    if(i>=proxies.length)return finnhub();
+    return getJ(proxies[i](yurl)).then(function(j){
+      var res=j&&j.chart&&j.chart.result&&j.chart.result[0];
+      if(!res||!res.meta||typeof res.meta.regularMarketPrice!=="number")return tryP(i+1);
+      var ts=res.timestamp||[],cl=(res.indicators&&res.indicators.quote&&res.indicators.quote[0]&&res.indicators.quote[0].close)||[];
+      var hist=ts.map(function(t,k){return {label:new Date(t*1000).toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit"}),value:cl[k]};}).filter(function(p){return typeof p.value==="number";});
+      st.stock[sym]={price:res.meta.regularMarketPrice,prev:res.meta.chartPreviousClose||res.meta.previousClose||null,hist:hist};st.stockSrc="Yahoo Finance";
+    });
+  }
+  return tryP(0);
+}
+function refresh(){
+  if(st.loading)return;
+  st.loading=true;render();
+  Promise.all([loadFx()].concat(METALS.map(function(m){return loadMetal(m.sym);})).concat([loadStock()])).then(function(r){
+    var fx=r[0],usd={},ok=false;
+    METALS.forEach(function(m,i){if(r[i+1]!=null){usd[m.id]=r[i+1];ok=true;}});
+    if(ok&&fx){
+      st.prices={ts:Date.now(),fx:fx,usd:usd};st.priceErr=false;localSet(LOCAL_PRICE_KEY,st.prices);
+      var today=C.today(),gme=st.stock.GME&&st.stock.GME.price;
+      var snap={fx:+fx.toFixed(5),usd:{}};METALS.forEach(function(m){if(usd[m.id])snap.usd[m.id]=+usd[m.id].toFixed(3);});if(gme)snap.gme=+gme.toFixed(3);
+      /* höchstens ein Schnappschuss pro Tag im gemeinsamen Datensatz – hält die Sync schlank */
+      var hasPos=METALS.some(function(m){return items(null,m.id).length;});
+      if(hasPos&&!data.history[today]){data.history[today]=snap;persist();}
+    }else st.priceErr=true;
+    st.loading=false;render();
+  },function(){st.loading=false;st.priceErr=true;render();});
+}
+
+/* ---------- Ansicht ---------- */
+function render(){
+  document.getElementById("top").innerHTML=C.topbar({title:"Edelmetalle",icon:"🪙",sub:"Gold · Silber · Aktien",accent:"#c9a84c",accent2:"#e6c86e"});
+  C.paintStatus();
+  var tabs=[["uebersicht","📊 Übersicht"],["positionen","📋 Positionen"],["zukauf","＋ Zukauf"],["aktien","📈 Aktien"],["daten","💾 Daten"]];
+  document.getElementById("tabs").innerHTML=tabs.map(function(t){return '<button class="tab'+(st.tab===t[0]?" on":"")+'" onclick="E.tab(\''+t[0]+'\')">'+t[1]+"</button>";}).join("");
+  var h="";
+  if(st.flash)h+='<div class="flash'+(st.flash.warn?" warn":"")+'">'+C.esc(st.flash.t)+"</div>";
+  h+=({uebersicht:vDash,positionen:vPos,zukauf:vAdd,aktien:vStocks,daten:vData}[st.tab])();
+  document.getElementById("main").innerHTML=h;
+}
+function priceInfo(){
+  if(st.loading)return '<span class="muted small">Kurse werden geladen …</span>';
+  if(!st.prices)return '<span class="small" style="color:#ffb74d">Noch keine Kurse geladen</span>';
+  var d=new Date(st.prices.ts),old=Date.now()-st.prices.ts>6*3600e3;
+  return '<span class="small'+(old||st.priceErr?"":" muted")+'"'+(old||st.priceErr?' style="color:#ffb74d"':"")+">Kurse vom "+d.toLocaleDateString("de-DE")+", "+d.toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit"})+" · 1 $ = "+C.num(st.prices.fx,4)+" €</span>";
+}
+function vDash(){
+  var t=totals(null),has=METALS.some(function(m){return items(null,m.id).length;});
+  var h="";
+  if(!has)return '<div class="empty"><div class="big">🪙</div>Noch kein Bestand erfasst.<br><span class="small">Spiel deine Bestandsdatei unter <b>💾 Daten</b> ein.</span><br><button class="btn" style="margin-top:14px" onclick="E.tab(\'daten\')">Zum Import</button></div>';
+  if(st.priceErr)h+='<div class="banner">⚠ Die Kursquelle ist gerade nicht erreichbar. '+(st.prices?"Angezeigt wird der letzte bekannte Kurs – siehe Datum.":"Es liegt noch kein Kurs vor.")+"</div>";
+  var pl=t.v!=null?t.v-t.c:null;
+  h+='<div class="hero2"><div class="lab">Portfoliowert Edelmetalle</div><div class="big">'+(t.v!=null?C.eur(t.v):"—")+'</div>'+
+    '<div class="small"><span class="muted">Einkauf '+C.eur(t.c)+"</span>"+(pl!=null?' · <b class="'+(pl>=0?"pos":"neg")+'">'+signEur(pl)+(t.c?" ("+(pl>=0?"+":"−")+C.num(Math.abs(pl/t.c*100),1)+" %)":"")+"</b>":"")+"</div>"+
+    (function(){var gv=giftValue();if(gv==null||pl==null)return "";var kg=pl-gv;return '<div class="small" style="margin-top:4px"><span class="muted">davon ohne Einkaufspreis (Geschenke u. a.) '+C.eur(gv,0)+' · Kursgewinn auf Gekauftes </span><b class="'+(kg>=0?"pos":"neg")+'">'+signEur(kg,0)+"</b></div>";})()+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:8px;flex-wrap:wrap">'+priceInfo()+
+    '<span style="display:flex;gap:6px"><button class="chip" onclick="E.unit()">'+(st.unit==="oz"?"Unzen":"Gramm")+'</button><button class="chip" onclick="E.refresh()"'+(st.loading?" disabled":"")+">↻ Kurse</button></span></div></div>";
+  h+='<div class="grid2" style="margin-bottom:16px">'+METALS.map(function(m){
+    var g=grams(null,m.id),p=eurPerOz(m.id),v=value(null,m.id),c=cost(null,m.id),dc=dayChange(m.id);
+    return '<div class="mcard'+(st.chart===m.id?" on":"")+'" style="--mc:'+m.color+';opacity:'+(g?1:.55)+'" onclick="E.chart(\''+m.id+'\')"><div class="h"><span class="n"><span class="dot"></span>'+m.label+"</span>"+
+      (dc!=null?'<span class="small '+(dc>=0?"pos":"neg")+'">'+(dc>=0?"▲":"▼")+" "+C.num(Math.abs(dc),2)+" %</span>":"")+"</div>"+
+      '<div class="p">'+(p!=null?C.eur(p/TROY)+" / g":"—")+'</div><div class="s">'+(p!=null?C.eur(p)+" / oz":"")+"</div>"+
+      (g?'<div class="hold"><div class="kv" style="padding:2px 0"><span>Bestand</span><span>'+amt(g)+'</span></div><div class="kv" style="padding:2px 0"><span>Wert</span><b style="color:'+m.color+'">'+(v!=null?C.eur(v,0):"—")+"</b></div>"+
+        (v!=null?'<div class="kv" style="padding:2px 0"><span>G/V</span><span class="'+(v-c>=0?"pos":"neg")+'">'+signEur(v-c,0)+"</span></div>":"")+"</div>":'<div class="hold muted">Kein Bestand</div>')+"</div>";}).join("")+"</div>";
+  /* Verlauf aus echten Tages-Schnappschüssen */
+  var ds=histDates();
+  h+='<div class="panel"><div class="chipbar"><button class="chip'+(st.chart==="wert"?" on":"")+'" onclick="E.chart(\'wert\')">Portfoliowert</button>'+METALS.filter(function(m){return grams(null,m.id);}).map(function(m){return '<button class="chip'+(st.chart===m.id?" on":"")+'" onclick="E.chart(\''+m.id+'\')">'+m.label+"kurs</button>";}).join("")+"</div>";
+  if(ds.length<2){h+='<div class="note">📈 Hier entsteht dein <b>echter</b> Verlauf: Das Cockpit speichert an jedem Tag, an dem du diesen Bereich öffnest, einen Kurs-Schnappschuss. Ab dem zweiten Tag erscheint die Kurve.'+(ds.length?" Erster Schnappschuss: "+new Date(ds[0]).toLocaleDateString("de-DE")+".":"")+"</div>";}
+  else{
+    var pts,col,fmt;
+    if(st.chart==="wert"||!METALS.some(function(x){return x.id===st.chart;})){col="#c9a84c";fmt=function(v){return C.eur(v,0);};
+      pts=ds.map(function(d){var s=data.history[d],v=0;METALS.forEach(function(m){if(s.usd&&s.usd[m.id])v+=grams(null,m.id,d)/TROY*s.usd[m.id]*s.fx;});return {label:d.slice(8,10)+"."+d.slice(5,7)+".",value:v};});}
+    else{var mm=METALS.filter(function(x){return x.id===st.chart;})[0];col=mm.color;fmt=function(v){return C.eur(v,2)+"/g";};
+      pts=ds.map(function(d){var s=data.history[d];return {label:d.slice(8,10)+"."+d.slice(5,7)+".",value:s.usd&&s.usd[mm.id]?s.usd[mm.id]*s.fx/TROY:null};});}
+    h+=C.lineChart(pts,{color:col,fmt:fmt})+'<div class="note" style="margin-top:6px">'+ds.length+" Tages-Schnappschüsse seit "+new Date(ds[0]).toLocaleDateString("de-DE")+(st.chart==="wert"?" · Wert mit dem jeweils damaligen Bestand":" · in €/g")+"</div>";
+  }
+  h+="</div>";
+  h+='<div class="panel"><h3>Aufteilung</h3><div class="scroll-x"><table class="t"><thead><tr><th>Metall</th><th>Bestand</th><th>Wert</th><th>Einkauf</th><th>G/V</th><th>Anteil</th></tr></thead><tbody>'+
+    METALS.filter(function(m){return grams(null,m.id);}).map(function(m){var v=value(null,m.id),c=cost(null,m.id);
+      return '<tr><td style="color:'+m.color+';font-weight:700">'+m.label+"</td><td>"+amt(grams(null,m.id))+"</td><td><b>"+(v!=null?C.eur(v,0):"—")+'</b></td><td class="muted">'+C.eur(c,0)+'</td><td class="'+(v!=null&&v-c>=0?"pos":"neg")+'">'+(v!=null?signEur(v-c,0):"—")+"</td><td>"+(v!=null&&t.v?C.num(v/t.v*100,1)+" %":"—")+"</td></tr>";}).join("")+
+    "</tbody></table></div></div>";
+  return h;
+}
+function vPos(){
+  if(!METALS.some(function(m){return items(null,m.id).length;}))return '<div class="empty">Noch keine Positionen.</div>';
+  var h='<div class="panel" style="padding:4px 14px">';
+  METALS.forEach(function(m){var it=items(null,m.id);if(!it.length)return;var open=st.open[m.id],p=eurPerOz(m.id);
+    var sorted=it.slice().sort(function(a,b){return (b.datum||"").localeCompare(a.datum||"");});
+    h+='<div class="grp" style="--mc:'+m.color+'"><div class="grp-h" onclick="E.toggle(\''+m.id+'\')"><span><span style="display:inline-block;transform:rotate('+(open?90:0)+'deg);transition:.2s;color:var(--muted)">▶</span> <b>'+m.label+'</b> <span class="small muted">'+it.length+' Positionen</span></span><b style="color:#fff">'+amt(grams(null,m.id))+"</b></div>";
+    if(open)h+=sorted.map(function(x){var cv=p!=null?x.gramm/TROY*p:null;
+      return '<div class="pitem"><div><div class="t">'+C.esc(x.titel)+'</div><div class="m">'+(x.anzahl||1)+"× · "+C.num(x.gramm,1)+" g · "+(x.quelle?C.esc(x.quelle):"—")+(x.datum?" · "+new Date(x.datum).toLocaleDateString("de-DE"):"")+'</div></div><div style="display:flex;align-items:flex-start"><div class="r"><div style="color:'+m.color+';font-weight:700">'+(cv!=null?C.eur(cv):"—")+'</div><div class="m">'+(x.einkauf?"EK "+C.eur(x.einkauf):"ohne Einkauf")+'</div></div><button class="del" aria-label="Löschen" onclick="E.del(\''+m.id+"','"+x.id+"')\">✕</button></div></div>";}).join("");
+    h+="</div>";});
+  return h+"</div>";
+}
+function vAdd(){
+  return '<div class="panel"><h3>＋ Zukauf erfassen</h3>'+
+    '<div class="field"><label>Metall</label><select id="f-metal">'+METALS.map(function(m){return '<option value="'+m.id+'">'+m.label+"</option>";}).join("")+"</select></div>"+
+    '<div class="field"><label>Titel</label><input id="f-titel" placeholder="z. B. 1 oz Krügerrand 2026"></div>'+
+    '<div class="row2"><div class="field"><label>Anzahl</label><input id="f-anzahl" inputmode="numeric" value="1"></div><div class="field"><label>Gewicht je Stück (g)</label><input id="f-gew" inputmode="decimal" placeholder="31,10"></div></div>'+
+    '<div class="small muted" style="margin:-4px 0 14px">Schnellwahl: '+[["1 oz","31,1035"],["½ oz","15,5517"],["¼ oz","7,7759"],["1/10 oz","3,1103"],["1 g","1"],["5 g","5"],["10 g","10"],["20 g","20"],["50 g","50"],["100 g","100"],["1 kg","1000"]].map(function(x){return '<button type="button" class="chip" style="margin:2px" onclick="document.getElementById(\'f-gew\').value=\''+x[1]+'\'">'+x[0]+"</button>";}).join("")+"</div>"+
+    '<div class="row2"><div class="field"><label>Einkauf gesamt (€)</label><input id="f-ek" inputmode="decimal" placeholder="leer = Geschenk"></div><div class="field"><label>Datum</label><input id="f-datum" type="date" value="'+C.today()+'"></div></div>'+
+    '<div class="field"><label>Quelle / Händler</label><input id="f-quelle" placeholder="z. B. Kettner, ESG"></div>'+
+    '<button class="btn grad full" onclick="E.add()">Position speichern</button></div>';
+}
+function vStocks(){
+  var s=STOCKS[0],d=st.stock[s.id]||{},hold=data.stocks[s.id]||{shares:0,einstand:0},fx=st.prices&&st.prices.fx;
+  var pe=d.price&&fx?d.price*fx:null,val=pe!=null?pe*(hold.shares||0):null,pl=val!=null&&hold.einstand?val-hold.einstand:null;
+  var dc=d.price&&d.prev?(d.price-d.prev)/d.prev*100:null;
+  var h='<div class="hero2" style="border-color:'+s.color+'55;background:linear-gradient(135deg,'+s.color+'2e,var(--panel) 70%)"><div class="lab">'+s.label+" ("+s.sym+')</div><div class="big">'+(val!=null?C.eur(val):"—")+'</div>'+
+    '<div class="small"><span class="muted">'+C.int(hold.shares||0)+" Stück"+(d.price?" × "+C.num(d.price,2)+" $":"")+"</span>"+(dc!=null?' · <span class="'+(dc>=0?"pos":"neg")+'">'+(dc>=0?"▲":"▼")+" "+C.num(Math.abs(dc),2)+" %</span>":"")+(pl!=null?' · <b class="'+(pl>=0?"pos":"neg")+'">'+signEur(pl)+"</b>":"")+"</div></div>";
+  if(st.stockErr&&!st.loading)h+='<div class="banner">⚠ '+C.esc(st.stockErr)+"</div>";
+  if(d.hist&&d.hist.length>1)h+='<div class="panel"><h3 style="color:'+s.color+'">Kursverlauf 1 Monat ($)</h3>'+C.lineChart(d.hist,{color:s.color,fmt:function(v){return C.num(v,2)+" $";}})+'<div class="note">Echte Kurshistorie via '+C.esc(st.stockSrc)+"</div></div>";
+  h+='<div class="panel"><h3>Bestand bearbeiten</h3><div class="row2"><div class="field"><label>Stückzahl</label><input id="s-sh" inputmode="decimal" value="'+(hold.shares||0)+'"></div><div class="field"><label>Einkauf gesamt (€)</label><input id="s-ek" inputmode="decimal" value="'+(hold.einstand||"")+'" placeholder="optional"></div></div><button class="btn full" onclick="E.saveStock()">Speichern</button></div>';
+  h+='<div class="panel"><h3>Ersatz-Kursquelle (optional)</h3><div class="note" style="margin-bottom:10px">Der Kurs kommt normalerweise von Yahoo Finance über einen öffentlichen Umweg-Server (CORS-Proxy). Der sieht nur, dass jemand den GME-Kurs abfragt – nicht deinen Bestand. Fällt das aus, springt ein kostenloser Finnhub-Schlüssel ein. Er bleibt nur auf diesem Gerät.</div>'+
+    '<div class="field"><label>Finnhub-Key</label><input id="fh" type="password" autocomplete="off" value="'+C.esc(st.fh)+'"></div><button class="btn ghost full" onclick="E.saveFh()">Key speichern</button></div>';
+  return h;
+}
+function vData(){
+  var n=METALS.reduce(function(s,m){return s+items(null,m.id).length;},0),ds=histDates();
+  return '<div class="panel"><h3>💾 Daten</h3><div class="small muted" style="margin-bottom:14px;line-height:1.6">'+n+" Positionen · "+ds.length+" Kurs-Schnappschüsse · "+(C.configured()?"synchronisiert mit deinem privaten Repo.":'nur lokal – <a href="../einstellungen.html">Sync einrichten</a>.')+"</div>"+
+    '<b class="small">Import</b><div class="small muted" style="margin:4px 0 10px;line-height:1.6">Erkennt die Bestandsdatei <code>edelmetall-bestand.json</code>, Sicherungen aus dem alten Tool („Zukäufe sichern") und Cockpit-Exporte. Positionen werden <b>zusammengeführt</b>, doppelte nicht zweimal übernommen.</div>'+
+    '<label class="btn" style="display:inline-block;cursor:pointer">📁 Datei wählen<input type="file" accept=".json,application/json" onchange="E.imp(this)"></label>'+
+    '<div style="margin-top:22px"><b class="small">Sicherung</b></div><button class="btn ghost" style="margin-top:8px" onclick="E.exp()">⬇ Export als JSON</button>'+
+    '<div class="note" style="margin-top:22px">🔒 Dein Bestand liegt ausschließlich in deinem privaten Daten-Repo und auf deinen Geräten, nie im öffentlichen Cockpit-Code.<br>Kurse: gold-api.com (Metalle), Frankfurter/EZB (Wechselkurs), Yahoo Finance bzw. Finnhub (Aktie).</div></div>';
+}
+
+/* ---------- Aktionen ---------- */
+function importObj(o){
+  var add=blank(),n=0;
+  if(o&&o.bereich==="edelmetall"&&o.data)o=o.data;
+  if(o&&o.positions){add=norm(JSON.parse(JSON.stringify(o)));}
+  else if(o&&typeof o==="object"){
+    METALS.forEach(function(m){(Array.isArray(o[m.id])?o[m.id]:[]).forEach(function(x){
+      add.positions[m.id].push({id:x._id||x.id||("alt-"+m.id+"-"+(x.titel||"")+"-"+(x.datum||"")+"-"+x.gramm),titel:x.titel||"Position",quelle:String(x.quelle||"").toUpperCase()==="GESCHENK"?"Geschenk":(x.quelle||null),datum:x.datum||null,anzahl:x.anzahl||1,gramm:+x.gramm||0,einkauf:+x.einkauf||0});});});
+  }
+  METALS.forEach(function(m){n+=add.positions[m.id].length;});
+  if(!n){flash("⚠ Keine Edelmetall-Positionen in der Datei erkannt",true);return;}
+  var count=function(){return METALS.reduce(function(s,m){return s+items(null,m.id).length;},0);};
+  var before=count();
+  var keepStocks=data.stocks;
+  data=merge(data,add,1,0);
+  data.stocks=(o&&o.positions&&o.stocks&&o.stocks.GME&&(o.stocks.GME.shares||o.stocks.GME.einstand))?norm(o).stocks:keepStocks;
+  persist();
+  var neu=count()-before;
+  st.tab="uebersicht";flash("✓ Import: "+neu+" neue Positionen übernommen"+(neu<n?" ("+(n-neu)+" waren schon vorhanden)":""));
+  refresh();
+}
+window.E={
+  tab:function(t){st.tab=t;render();window.scrollTo(0,0);},
+  chart:function(c){st.chart=c;render();},
+  unit:function(){st.unit=st.unit==="oz"?"g":"oz";localSet(UNIT_KEY,st.unit);render();},
+  refresh:refresh,
+  toggle:function(id){st.open[id]=!st.open[id];render();},
+  del:function(mid,id){var x=items(null,mid).filter(function(p){return p.id===id;})[0];if(!x||!confirm("Position löschen?\n\n"+x.titel))return;
+    data.positions[mid]=items(null,mid).filter(function(p){return p.id!==id;});if(data.deleted.indexOf(id)<0)data.deleted.push(id);persist();render();},
+  add:function(){
+    var g=function(i){return document.getElementById(i).value.trim();};
+    var titel=g("f-titel"),anz=parseInt(g("f-anzahl"),10)||1,gew=C.parseNum(g("f-gew")),ek=g("f-ek")===""?0:C.parseNum(g("f-ek")),mid=g("f-metal");
+    if(!titel){flash("⚠ Bitte einen Titel eingeben",true);return;}
+    if(!(gew>0)){flash("⚠ Bitte ein Gewicht je Stück eingeben",true);return;}
+    if(isNaN(ek)||ek<0){flash("⚠ Einkaufswert ungültig",true);return;}
+    data.positions[mid].push({id:"u-"+Date.now().toString(36)+Math.random().toString(36).slice(2,6),titel:titel,quelle:g("f-quelle")||(ek===0?"Geschenk":null),datum:g("f-datum")||null,anzahl:anz,gramm:Math.round(anz*gew*100)/100,einkauf:Math.round(ek*100)/100});
+    persist();st.open[mid]=true;st.tab="positionen";flash("✓ Position gespeichert");},
+  saveStock:function(){var sh=C.parseNum(document.getElementById("s-sh").value),ekv=document.getElementById("s-ek").value.trim(),ek=ekv===""?0:C.parseNum(ekv);
+    data.stocks.GME={shares:Math.max(0,sh||0),einstand:Math.max(0,ek||0)};persist();flash("✓ Gespeichert");},
+  saveFh:function(){st.fh=document.getElementById("fh").value.trim();localSet(FH_KEY,st.fh);flash("✓ Key gespeichert");refresh();},
+  exp:function(){C.downloadText("edelmetall-"+C.today()+".json",JSON.stringify(data,null,1))?flash("✓ Export gestartet"):flash("⚠ Download nicht möglich",true);},
+  imp:function(inp){var f=inp.files&&inp.files[0];if(!f)return;C.readFile(f).then(function(t){try{importObj(JSON.parse(t));}catch(e){flash("⚠ Datei ist kein gültiges JSON",true);}});inp.value="";}
+};
+
+render();
+C.autoPull([AREA],function(a,d){data=norm(d);render();});
+refresh();
+document.addEventListener("visibilitychange",function(){if(!document.hidden&&(!st.prices||Date.now()-st.prices.ts>15*60e3))refresh();});
+})();
+</script>
 </body>
 </html>
