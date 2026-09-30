@@ -508,6 +508,18 @@ function cW(y){
     return{est:vols.est[i],v,wk:v!==null&&wa?v*wa:null,ak:v!==null&&aa?v*aa:null,gk:gp,tot:v!==null&&wa&&aa?v*wa+v*aa+(gp||0):null,tariff:t};
   });
 }
+/* Unterzähler: Anteil am Gesamtverbrauch des Hauses (Netzbezug + PV-Eigenverbrauch) und
+   Aufteilung in PV-/Netzanteil. Annahme mangels Messung: das Geschoss bezieht Strom im selben
+   Mix wie das ganze Haus, also gemäß der monatlichen Autarkie. */
+function uzSplit(k,v,totV,aut,ap){
+  const o={};
+  o[k+'P']=(v!==null&&totV)?v/totV*100:null;
+  const a=aut!==null?aut/100:null;
+  o[k+'PV']=(v!==null&&a!==null)?v*a:null;
+  o[k+'Net']=(v!==null&&a!==null)?v*(1-a):null;
+  o[k+'NK']=(o[k+'Net']!==null&&ap)?o[k+'Net']*ap:null;
+  return o;
+}
 function cS(y){
   const d=yd(y);
   const pvW=months=>months.map(k=>toN(d.m[k].pe));   /* Einspeisung folgt der PV-Erzeugung */
@@ -534,7 +546,7 @@ function cS(y){
     return{bEst:b.est[i],eEst:e.est[i],dgEst:dg.est[i],ugEst:ug.est[i],b:bi,e:ei,pe,pas,pis,pvDir,ev,totV,aut,
       dg:dg[i],ug:ug[i],bk,gk:gp,ek,evk,
       net:bk!==null?bk-(ek||0)+(gp||0):null,
-      dgP:dg[i]!==null&&bi?dg[i]/bi*100:null,ugP:ug[i]!==null&&bi?ug[i]/bi*100:null,tariff:t};
+      ...uzSplit('dg',dg[i],totV,aut,ap),...uzSplit('ug',ug[i],totV,aut,ap),tariff:t};
   });
 }
 
@@ -589,7 +601,7 @@ function markEst(){
   else if(S.tab==='wasser')cW(S.year).forEach((c,i)=>mk(['wv','wwk','wak','wt'],i,c.est));
   else if(S.tab==='strom'){const c=cS(S.year);
     if(S.st==='haupt')c.forEach((x,i)=>{mk(['sbv','sbk'],i,x.bEst);mk(['sev','sek','spvd','sev_all','spvk'],i,x.eEst);mk(['snet'],i,x.bEst||x.eEst);});
-    else if(S.st==='dg'||S.st==='ug')c.forEach((x,i)=>mk(['uzv','uzp'],i,S.st==='dg'?x.dgEst:x.ugEst));}
+    else if(S.st==='dg'||S.st==='ug')c.forEach((x,i)=>{const own=S.st==='dg'?x.dgEst:x.ugEst,house=x.bEst||x.eEst;mk(['uzv'],i,own);mk(['uzp','uzpv','uznet','uznk'],i,own||house);mk(['uzt'],i,house);});}
   /* leere Zellen nicht als Schätzung markieren */
   document.querySelectorAll('#eapp td.est').forEach(td=>{if(td.textContent.trim()==='–')td.classList.remove('est');});
 }
@@ -602,7 +614,7 @@ function updG(){const c=cG(S.year);c.forEach((ci,i)=>{setT('gvm'+i,fM(ci.vm3));s
 function updW(){const c=cW(S.year);c.forEach((ci,i)=>{setT('wv'+i,fM(ci.v));setT('wwk'+i,fE(ci.wk));setT('wak'+i,fE(ci.ak));setT('wg'+i,fE(ci.gk));setT('wt'+i,fE(ci.tot));setT('wtr'+i,ci.tariff?fromLabel(ci.tariff.from):'–');});}
 function updS(){const c=cS(S.year);c.forEach((ci,i)=>{setT('sbv'+i,fK(ci.b));setT('sev'+i,fK(ci.e));setT('sbk'+i,fE(ci.bk));setT('sek'+i,ci.ek!==null?'+\u202f'+fE(ci.ek):'–');setT('spvk'+i,ci.evk!==null?'\u2248\u202f'+fE(ci.evk):'–');setT('snet'+i,fE(ci.net));setT('str'+i,ci.tariff?fromLabel(ci.tariff.from):'–');setT('spvd'+i,fK(ci.pvDir));setT('spas'+i,fK(ci.pas));setT('sev_all'+i,fK(ci.ev));});}
 function updSPV(){const c=cS(S.year);c.forEach((ci,i)=>{setT('sev'+i,fK(ci.e));setT('sbv'+i,fK(ci.b));});}
-function updUZ(w){const c=cS(S.year),isD=w==='dg';c.forEach((ci,i)=>{setT('uzv'+i,fK(isD?ci.dg:ci.ug));setT('uzp'+i,fP(isD?ci.dgP:ci.ugP));});}
+function updUZ(w){const c=cS(S.year),k=w==='dg'?'dg':'ug';c.forEach((ci,i)=>{setT('uzv'+i,fK(ci[k]));setT('uzp'+i,fP(ci[k+'P'])+(ci[k+'P']!==null&&ci[k+'P']>100?' ⚠':''));setT('uzpv'+i,fK(ci[k+'PV']));setT('uznet'+i,fK(ci[k+'Net']));setT('uznk'+i,fE(ci[k+'NK']));setT('uzt'+i,fK(ci.totV));});}
 
 function dashData(yr){
   const gc=cG(yr),wc=cW(yr),sc=cS(yr);
@@ -867,18 +879,30 @@ return`<div class="tariff-info" style="margin-bottom:14px">
 <div class="efn"><b>Erzeugung</b>: Was die PV-Anlage gesamt produziert hat · <b>Aus Speicher</b>: Speicher-Entladung in den Hausverbrauch · <b>In Speicher</b>: Speicher-Beladung aus PV.<br>Berechnet: <b>PV direkt</b> = Erzeugung − Einspeisung − In Speicher · <b>EV gesamt</b> = PV direkt + Aus Speicher · <b>Autarkie</b> = EV gesamt ÷ (Bezug + EV gesamt).</div>
 ${savebar()}`;}
 
-function rStromUZ(w){const d=yd(S.year),c=cS(S.year),yr=S.year,isD=w==='dg';
+function rStromUZ(w){const d=yd(S.year),c=cS(S.year),yr=S.year,isD=w==='dg',k=isD?'dg':'ug';
 const sK=isD?'stdg_s':'stug_s',mK=isD?'sdg':'sug',pfx=isD?'md_':'mu_',lbl=isD?'Dachgeschoss (DG)':'Untergeschoss (UG)';
-const vals=c.map(ci=>isD?ci.dg:ci.ug),pcts=c.map(ci=>isD?ci.dgP:ci.ugP),tV=sm(vals),tB=sm(c.map(x=>x.b));
+const vals=c.map(ci=>ci[k]);
+const tV=sm(vals),tPV=sm(c.map(x=>x[k+'PV'])),tNet=sm(c.map(x=>x[k+'Net'])),tNK=sm(c.map(x=>x[k+'NK']));
+/* Jahresanteil nur über Monate, in denen beide Werte vorliegen */
+let aV=0,aT=0;c.forEach(ci=>{if(ci[k]!==null&&ci.totV){aV+=ci[k];aT+=ci.totV;}});
+const tP=aT?aV/aT*100:null;
+const noPV=c.some(ci=>ci[k]!==null&&ci.totV===null);
+const warn=v=>v!==null&&v>100;
 return`<div class="einits"><span class="eil">Anfangszählerstand</span>
-<div class="eif"><label>${lbl}:</label>${ni('i_'+(isD?'dg':'ug'),d[sK],'1',95)}<span class="epunit">kWh</span></div></div>
-<div class="etw"><table><thead><tr><th>Monat</th><th>Zählerstand Ende</th><th>Verbrauch</th><th>Anteil Bezug</th><th>Bezug ges. (Hauptzähler)</th></tr></thead>
+<div class="eif"><label>${lbl}:</label>${ni('i_'+k,d[sK],'1',95)}<span class="epunit">kWh</span></div></div>
+<div class="etw"><table><thead><tr><th>Monat</th><th>Zählerstand Ende</th><th>Verbrauch</th><th>Anteil Haus</th><th>davon PV (≈)</th><th>davon Netz (≈)</th><th>Netzkosten (≈)</th><th>Gesamtverbr. Haus</th></tr></thead>
 <tbody>${c.map((ci,i)=>`<tr><td>${MO[i]}</td><td>${ni(pfx+i,d.m[i][mK],'1',90)}</td>
-<td id="uzv${i}" class="${vals[i]===null?'evm':''}">${fK(vals[i])}</td>
-<td id="uzp${i}" class="${pcts[i]===null?'evm':''}">${fP(pcts[i])}</td>
-<td class="evm">${fK(ci.b)}</td></tr>`).join('')}</tbody>
-<tfoot><tr class="etot"><td>Gesamt ${yr}</td><td>–</td><td>${fK(tV)}</td><td>${tV!==null&&tB?fP(tV/tB*100):'–'}</td><td>${fK(tB)}</td></tr></tfoot></table></div>
-<div class="efn">Anteil = Verbrauch ${lbl} ÷ Hauptzähler Bezug.</div>
+<td id="uzv${i}" class="${ci[k]===null?'evm':''}">${fK(ci[k])}</td>
+<td id="uzp${i}" class="${ci[k+'P']===null?'evm':''}" style="${warn(ci[k+'P'])?'color:#ff8a80':''}">${fP(ci[k+'P'])}${warn(ci[k+'P'])?' ⚠':''}</td>
+<td id="uzpv${i}" class="${ci[k+'PV']===null?'evm':''}" style="${ci[k+'PV']!==null?'color:'+C.pv:''}">${fK(ci[k+'PV'])}</td>
+<td id="uznet${i}" class="${ci[k+'Net']===null?'evm':''}">${fK(ci[k+'Net'])}</td>
+<td id="uznk${i}" class="${ci[k+'NK']===null?'evm':''}">${fE(ci[k+'NK'])}</td>
+<td class="evm" id="uzt${i}">${fK(ci.totV)}</td></tr>`).join('')}</tbody>
+<tfoot><tr class="etot"><td>Gesamt ${yr}</td><td>–</td><td>${fK(tV)}</td><td>${fP(tP)}</td><td style="color:${C.pv}">${fK(tPV)}</td><td>${fK(tNet)}</td><td>${fE(tNK)}</td><td>${fK(sm(c.map(x=>x.totV)))}</td></tr></tfoot></table></div>
+<div class="efn"><b>Anteil Haus</b> = Verbrauch ${lbl} ÷ Gesamtverbrauch des Hauses (Netzbezug + PV direkt + PV aus Speicher).<br>
+<b>davon PV / Netz</b> ist eine <b>Abschätzung</b>: Mangels eigener Messung wird angenommen, dass das Geschoss Strom im selben Mix bezieht wie das ganze Haus, also gemäß der Autarkie des Monats. Wird im Geschoss vor allem abends und nachts verbraucht, ist der tatsächliche PV-Anteil geringer. <b>Netzkosten</b> = Netzanteil × Bezugspreis der Tarifperiode (ohne Grundpreis).
+${noPV?'<br><span style="color:#ffcc80">Für einige Monate fehlen PV-Daten (Reiter „PV-Daten“) – dort kann der Gesamtverbrauch und damit der Anteil nicht berechnet werden.</span>':''}
+${c.some(ci=>warn(ci[k+'P']))?'<br><span style="color:#ff8a80">⚠ Über 100 % bedeutet: Der Unterzähler zeigt mehr als das ganze Haus verbraucht hat. Meist fehlen oder stimmen dann die PV-Werte des Monats nicht.</span>':''}</div>
 ${savebar()}`;}
 
 function rStrom(){const st=S.st;return`<div class="ecard"><div class="ecard-t">${dot(C.stb)} Strom · ${S.year}</div>
