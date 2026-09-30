@@ -230,7 +230,7 @@ function lineChart(points,o){
   s+='<path d="'+d+'" fill="none" stroke="'+col+'" stroke-width="2"/>';
   var every=Math.ceil(n/6);
   points.forEach(function(p,i){if(p.value!=null&&!isNaN(p.value))s+='<circle cx="'+x(i)+'" cy="'+y(p.value)+'" r="3.2" fill="'+col+'"><title>'+esc(p.label+": "+(o.fmt?o.fmt(p.value):num(p.value,2)))+"</title></circle>";
-    if(i%every===0||i===n-1)s+='<text x="'+x(i)+'" y="'+(H-10)+'" fill="#5c7aaa" font-size="9" text-anchor="'+(n>1&&i===n-1?"end":n>1&&i===0?"start":"middle")+'">'+esc(p.label)+"</text>";});
+    if(i===n-1||(i%every===0&&n-1-i>=every*0.6))s+='<text x="'+x(i)+'" y="'+(H-10)+'" fill="#5c7aaa" font-size="9" text-anchor="'+(n>1&&i===n-1?"end":n>1&&i===0?"start":"middle")+'">'+esc(p.label)+"</text>";});
   return s+"</svg>";
 }
 function barChart(points,o){
@@ -246,7 +246,7 @@ function barChart(points,o){
   var every=Math.ceil(n/8),y0=y(0);
   points.forEach(function(p,i){var v=p.value||0,top=Math.min(y(v),y0),h=Math.abs(y(v)-y0);
     s+='<rect x="'+(cx(i)-bw/2)+'" y="'+top+'" width="'+bw+'" height="'+Math.max(0,h)+'" rx="3" fill="'+(p.color||o.color||"var(--accent2)")+'"><title>'+esc(p.label+": "+(o.fmt?o.fmt(v):num(v,2)))+"</title></rect>";
-    if(i%every===0||i===n-1)s+='<text x="'+cx(i)+'" y="'+(H-10)+'" fill="#5c7aaa" font-size="9" text-anchor="middle">'+esc(p.label)+"</text>";});
+    if(i===n-1||(i%every===0&&n-1-i>=every*0.6))s+='<text x="'+cx(i)+'" y="'+(H-10)+'" fill="#5c7aaa" font-size="9" text-anchor="middle">'+esc(p.label)+"</text>";});
   return s+"</svg>";
 }
 
