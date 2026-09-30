@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0e1a">
+<title>Cockpit · Auto</title>
+<link rel="manifest" href="../manifest.webmanifest">
+<link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<div class="wrap">
+<div id="top"></div>
+<div class="content" style="padding-bottom:0"><div class="seg" id="cars"></div></div>
+<nav class="tabs" id="tabs"></nav>
+<div class="content" id="main"></div>
+</div>
+<script src="../assets/cockpit.js"></script>
+<script>
+(function(){
+"use strict";
+var C=window.Cockpit, AREA="auto";
+
+var CARS={
+  corsa:{id:"corsa",name:"Opel Corsa Electric",short:"Corsa-e",icon:"⚡",electric:true,unit:"kWh",cons:"kWh/100km",
+    verb:"Geladen",fillLabel:"Geladene Energie (kWh)",priceLabel:"Strompreis (€/kWh)",defPrice:0.32,norm:14.6,normLabel:"WLTP",
+    accent:"#0095ff",accent2:"#00c853",fillPh:"z. B. 28,4",notePh:"z. B. Heimladen, Autobahn…"},
+  volvo:{id:"volvo",name:"Volvo V40 (Benzin)",short:"Volvo V40",icon:"⛽",electric:false,unit:"L",cons:"L/100km",
+    verb:"Getankt",fillLabel:"Getankte Menge (Liter)",priceLabel:"Spritpreis (€/Liter)",defPrice:1.79,norm:6.2,normLabel:"Werksangabe",
+    accent:"#ff6d00",accent2:"#ffab00",fillPh:"z. B. 42,5",notePh:"z. B. vollgetankt, Stadtverkehr…"}
+};
+function blankCar(){return {startOdo:null,entries:[],lastPrice:null};}
+function blank(){return {corsa:blankCar(),volvo:blankCar()};}
+function norm(d){d=d&&typeof d==="object"?d:blank();["corsa","volvo"].forEach(function(k){var c=d[k];if(!c||typeof c!=="object")c=d[k]=blankCar();if(!Array.isArray(c.entries))c.entries=[];if(c.startOdo===undefined)c.startOdo=null;if(c.lastPrice===undefined)c.lastPrice=null;if(!Array.isArray(c.deleted))c.deleted=[];});return d;}
+
+/* Zwei Stände vereinen: Einträge beider Geräte behalten, gelöschte bleiben gelöscht */
+function merge(l,r,lU,rU){
+  l=norm(JSON.parse(JSON.stringify(l)));r=norm(JSON.parse(JSON.stringify(r)));var newer=lU>=rU?l:r,out={};
+  ["corsa","volvo"].forEach(function(k){
+    var a=l[k],b=r[k],del={};a.deleted.concat(b.deleted).forEach(function(id){del[id]=1;});
+    var byId={};b.entries.concat(a.entries).forEach(function(e){if(!del[e.id])byId[e.id]=e;});
+    var entries=Object.keys(byId).map(function(id){return byId[id];}).sort(function(x,y){return x.odo-y.odo||x.id-y.id;});
+    out[k]={startOdo:newer[k].startOdo!=null?newer[k].startOdo:(a.startOdo!=null?a.startOdo:b.startOdo),
+      lastPrice:newer[k].lastPrice!=null?newer[k].lastPrice:(a.lastPrice!=null?a.lastPrice:b.lastPrice),
+      entries:entries,deleted:Object.keys(del).map(Number).sort()};
+  });
+  return out;
+}
+C.registerMerge("auto",merge);
+
+var data=norm(C.getLocal(AREA,blank));
+var st={car:"corsa",tab:"uebersicht",flash:null,form:null,setup:false,startInput:""};
+
+function car(){return CARS[st.car];} function cd(){return data[st.car];}
+function blankForm(){var c=cd();return {date:C.today(),odo:"",fill:"",price:String(c.lastPrice!=null?c.lastPrice:car().defPrice).replace(".",","),note:""};}
+st.form=blankForm();
+function persist(){C.save(AREA,data);}
+function flash(t,warn){st.flash={t:t,warn:!!warn};render();clearTimeout(flash.t_);flash.t_=setTimeout(function(){st.flash=null;render();},warn?3500:2200);}
+
+function stats(c){
+  var e=c.entries;var rows=e.map(function(x,i){var prev=i===0?(c.startOdo!=null?c.startOdo:x.odo):e[i-1].odo;var km=x.odo-prev;
+    var cons=km>0?x.fill/km*100:null,cost=x.price!=null?x.fill*x.price:null,c100=(km>0&&cost!=null)?cost/km*100:null;
+    return Object.assign({},x,{km:km,cons:cons,cost:cost,c100:c100});});
+  var totKm=e.length?e[e.length-1].odo-(c.startOdo!=null?c.startOdo:e[0].odo):0;
+  var totFill=e.reduce(function(s,x){return s+x.fill;},0),totCost=rows.reduce(function(s,x){return s+(x.cost||0);},0);
+  var best=rows.filter(function(r){return r.cons!=null;}).reduce(function(b,r){return b==null||r.cons<b?r.cons:b;},null);
+  return {rows:rows,totKm:totKm,totFill:totFill,totCost:totCost,avgCons:totKm>0?totFill/totKm*100:null,avgC100:(totKm>0&&totCost>0)?totCost/totKm*100:null,best:best};
+}
+
+function render(){
+  var k=car();
+  document.getElementById("top").innerHTML=C.topbar({title:"Auto",icon:"🚗",sub:k.name,accent:k.accent,accent2:k.accent2});
+  C.paintStatus();
+  document.getElementById("cars").innerHTML=Object.keys(CARS).map(function(id){var c=CARS[id];
+    return '<button class="'+(st.car===id?"on":"")+'" style="'+(st.car===id?"background:"+c.accent+";border-color:"+c.accent:"")+'" onclick="A.car(\''+id+'\')">'+c.icon+" "+c.short+"</button>";}).join("");
+  var tabs=[["uebersicht","📊 Übersicht"],["eintrag","＋ Eintrag"],["logbuch","📋 Logbuch"],["vergleich","💰 Vergleich"],["daten","💾 Daten"]];
+  document.getElementById("tabs").innerHTML=tabs.map(function(t){return '<button class="tab'+(st.tab===t[0]?" on":"")+'" onclick="A.tab(\''+t[0]+'\')">'+t[1]+"</button>";}).join("");
+  var h="";
+  if(st.flash)h+='<div class="flash'+(st.flash.warn?" warn":"")+'">'+C.esc(st.flash.t)+"</div>";
+  var needSetup=cd().startOdo==null||st.setup;
+  if(needSetup&&(st.tab==="uebersicht"||st.tab==="eintrag"))h+=viewSetup();
+  h+=({uebersicht:viewDash,eintrag:viewAdd,logbuch:viewLog,vergleich:viewCompare,daten:viewData}[st.tab])();
+  document.getElementById("main").innerHTML=h;
+}
+
+function viewSetup(){var k=car(),c=cd();
+  return '<div class="panel" style="border-color:'+k.accent+'66"><h3>'+k.icon+" Startzählerstand – "+k.short+'</h3><div class="small muted" style="margin-bottom:12px">Kilometerstand, ab dem du diesen Wagen erfasst.</div>'+
+  '<div class="row2"><input style="background:var(--field);border:1px solid var(--border);border-radius:10px;padding:12px;color:#fff;font-size:15px" inputmode="numeric" placeholder="z. B. 12500" value="'+C.esc(st.startInput)+'" oninput="A.si(this.value)">'+
+  '<button class="btn" style="flex:0 0 auto" onclick="A.setStart()">Speichern</button>'+(c.startOdo!=null?'<button class="btn ghost" style="flex:0 0 auto" onclick="A.closeSetup()">✕</button>':"")+"</div>"+
+  (c.startOdo!=null?'<div class="small muted" style="margin-top:8px">Aktuell: '+C.int(c.startOdo)+" km</div>":"")+"</div>";}
+
+function viewDash(){var k=car(),S=stats(cd());
+  var kp=[["🛣️","Gesamtstrecke",C.int(S.totKm)+" km",k.accent],[k.electric?"🔋":"⛽",k.electric?"Geladene Energie":"Getankt gesamt",C.num(S.totFill)+" "+k.unit,k.accent2],
+    [k.icon,"Ø Verbrauch",S.avgCons!=null?C.num(S.avgCons)+" "+k.cons:"–","#ff9800"],["💰","Ø Kosten",S.avgC100!=null?C.num(S.avgC100,2)+" €/100km":"–","#e040fb"],
+    ["🧾","Gesamtkosten",S.totCost>0?C.eur(S.totCost):"–","#00bcd4"],["🏆","Bester Verbrauch",S.best!=null?C.num(S.best)+" "+k.cons:"–","#7eb8ff"]];
+  var h='<div class="grid2" style="margin-bottom:16px">'+kp.map(function(x){return '<div class="kpi"><div class="ico">'+x[0]+'</div><div class="val" style="color:'+x[3]+'">'+x[2]+'</div><div class="lab">'+x[1]+"</div></div>";}).join("")+
+    '<div class="kpi" style="grid-column:1/-1;display:flex;justify-content:space-between;align-items:center"><div class="lab" style="margin:0">Startzählerstand: '+(cd().startOdo!=null?C.int(cd().startOdo)+" km":"–")+'</div><button class="btn ghost" style="padding:6px 10px;font-size:12px" onclick="A.openSetup()">ändern</button></div></div>';
+  var r=S.rows.filter(function(x){return x.cons!=null;});
+  if(!r.length)return h+'<div class="empty"><div class="big">'+k.icon+"</div>Noch keine Einträge für den "+k.short+'.<br><button class="btn grad" style="margin-top:14px" onclick="A.tab(\'eintrag\')">Ersten Eintrag anlegen</button></div>';
+  var lab=function(x){return C.int(x.odo)+" km";};
+  h+='<div class="panel"><h3>'+k.icon+" Verbrauch ("+k.cons+")</h3>"+C.lineChart(r.map(function(x){return {label:lab(x),value:x.cons};}),{ref:k.norm,refLabel:k.normLabel,fmt:function(v){return C.num(v)+" "+k.cons;}})+"</div>";
+  if(r.some(function(x){return x.c100!=null;}))h+='<div class="panel"><h3 style="color:#e040fb">💰 Kosten pro 100 km</h3>'+C.lineChart(r.map(function(x){return {label:lab(x),value:x.c100};}),{color:"#e040fb",fmt:function(v){return C.eur(v);}})+"</div>";
+  h+='<div class="panel"><h3>'+(k.electric?"🔋":"⛽")+" "+k.verb+" pro Eintrag ("+k.unit+")</h3>"+C.barChart(r.map(function(x){return {label:lab(x),value:x.fill};}),{fmt:function(v){return C.num(v)+" "+k.unit;}})+"</div>";
+  h+='<div class="panel"><h3 style="color:#e040fb">🛣️ Strecke pro Abschnitt (km)</h3>'+C.barChart(r.map(function(x){return {label:lab(x),value:x.km};}),{color:"#e040fb",fmt:function(v){return C.int(v)+" km";}})+"</div>";
+  return h;
+}
+
+function viewAdd(){var k=car(),f=st.form;
+  var fields=[["Datum","date","date",""],["Aktueller Kilometerstand (km)","odo","text","z. B. 13250","numeric"],[k.fillLabel,"fill","text",k.fillPh,"decimal"],[k.priceLabel,"price","text","z. B. "+String(k.defPrice).replace(".",","),"decimal"],["Notiz (optional)","note","text",k.notePh]];
+  return '<div class="panel"><h3>'+k.icon+" "+(k.electric?"Ladevorgang":"Tankvorgang")+" – "+k.short+"</h3>"+fields.map(function(x){
+    return '<div class="field"><label>'+x[0]+'</label><input type="'+x[2]+'"'+(x[4]?' inputmode="'+x[4]+'"':"")+' placeholder="'+C.esc(x[3])+'" value="'+C.esc(f[x[1]])+'" oninput="A.f(\''+x[1]+'\',this.value)"></div>';}).join("")+
+    '<div id="prev">'+preview()+'</div><button class="btn grad full" onclick="A.add()">＋ Eintrag speichern</button></div>';
+}
+function preview(){var k=car(),c=cd(),f=st.form;var odo=C.parseNum(f.odo),fill=C.parseNum(f.fill),price=C.parseNum(f.price);
+  if(isNaN(odo)||isNaN(fill)||c.startOdo==null)return "";
+  var prev=c.entries.length?c.entries[c.entries.length-1].odo:c.startOdo,km=odo-prev,cons=km>0?fill/km*100:null,cost=!isNaN(price)?fill*price:null,c100=(km>0&&cost!=null)?cost/km*100:null;
+  return '<div class="panel" style="background:var(--panel2)"><div class="small muted" style="margin-bottom:6px">Vorschau</div><div class="chips" style="margin:0"><span style="color:#e040fb">📍 '+(km>0?C.int(km):"–")+' km</span><span style="color:'+(cons!=null&&cons<k.norm?"#00c853":"#ff9800")+'">'+k.icon+" "+(cons!=null?C.num(cons)+" "+k.cons:"–")+"</span>"+
+    (cost!=null?'<span style="color:#00bcd4">🧾 '+C.eur(cost)+"</span>":"")+(c100!=null?'<span style="color:#7eb8ff">💰 '+C.num(c100,2)+" €/100km</span>":"")+"</div></div>";}
+
+function viewLog(){var k=car(),S=stats(cd());
+  if(!S.rows.length)return '<div class="empty">Noch keine Einträge für den '+k.short+".</div>";
+  return '<div class="small muted" style="margin-bottom:12px">'+S.rows.length+" Einträge · "+k.short+"</div>"+S.rows.slice().reverse().map(function(e){
+    return '<div class="item"><div class="top"><div><b style="color:#fff">'+C.int(e.odo)+' km</b><div class="small muted">'+new Date(e.date).toLocaleDateString("de-DE")+'</div></div><button class="del" onclick="A.del('+e.id+')" aria-label="Löschen">✕</button></div><div class="chips">'+
+    '<span style="color:'+k.accent2+'">'+(k.electric?"🔋":"⛽")+" "+C.num(e.fill)+" "+k.unit+'</span><span style="color:#e040fb">🛣️ '+C.int(e.km)+" km</span>"+
+    (e.cons!=null?'<span style="color:'+(e.cons<k.norm?"#00c853":"#ff9800")+'">'+k.icon+" "+C.num(e.cons)+" "+k.cons+"</span>":"")+
+    (e.cost!=null?'<span style="color:#00bcd4">🧾 '+C.eur(e.cost)+"</span>":"")+(e.c100!=null?'<span style="color:#7eb8ff">💰 '+C.num(e.c100,2)+" €/100km</span>":"")+"</div>"+
+    (e.note?'<div class="small muted" style="margin-top:6px">💬 '+C.esc(e.note)+"</div>":"")+"</div>";}).join("");}
+
+function viewCompare(){var a=CARS.corsa,b=CARS.volvo,sa=stats(data.corsa),sb=stats(data.volvo);
+  var h='<div class="small muted" style="margin-bottom:14px">Laufende Energiekosten beider Autos je 100 km.</div>';
+  if(sa.avgC100==null||sb.avgC100==null)return h+'<div class="empty"><div class="big">💰</div>Für den Vergleich brauchst du Einträge<br>mit Preisangabe bei <b>beiden</b> Autos.</div>';
+  var ch=sa.avgC100<sb.avgC100?a:b,sv=Math.abs(sa.avgC100-sb.avgC100);
+  h+='<div class="panel" style="border-color:'+ch.accent+'66;background:linear-gradient(135deg,'+ch.accent+'33,var(--panel))"><div class="small muted">Günstiger im Unterhalt</div><div style="font-size:22px;font-weight:800;color:'+ch.accent+'">'+ch.icon+" "+ch.short+'</div><div style="font-size:13px;margin-top:6px">spart <b style="color:'+ch.accent+'">'+C.eur(sv)+"</b> pro 100 km (≈ <b>"+C.eur(sv*100,0)+"</b> auf 10.000 km)</div></div>";
+  h+='<div class="grid2" style="margin-bottom:16px">'+[[a,sa],[b,sb]].map(function(p){var k=p[0],s=p[1];return '<div class="panel" style="margin:0;border-color:'+k.accent+'44"><b style="color:'+k.accent+'">'+k.icon+" "+k.short+"</b>"+
+    kv("Ø Verbrauch",s.avgCons!=null?C.num(s.avgCons)+" "+k.cons:"–")+kv("Ø Kosten",'<b style="color:'+k.accent+'">'+C.num(s.avgC100,2)+" €/100km</b>")+kv("Strecke",C.int(s.totKm)+" km")+kv("Gesamtkosten",C.eur(s.totCost))+"</div>";}).join("")+"</div>";
+  h+='<div class="panel"><h3 style="color:#e040fb">€/100 km im Vergleich</h3>'+C.barChart([{label:a.short,value:sa.avgC100,color:a.accent},{label:b.short,value:sb.avgC100,color:b.accent}],{fmt:function(v){return C.eur(v)+"/100km";}})+"</div>";
+  return h;
+}
+function kv(l,v){return '<div class="kv"><span>'+l+"</span><span>"+v+"</span></div>";}
+
+function viewData(){var n1=data.corsa.entries.length,n2=data.volvo.entries.length;
+  return '<div class="panel"><h3>💾 Daten</h3><div class="small muted" style="margin-bottom:14px">Gespeichert: <b style="color:#0095ff">'+n1+'</b> Einträge Corsa-e, <b style="color:#ff6d00">'+n2+'</b> Einträge Volvo. '+(C.configured()?"Synchronisiert automatisch mit GitHub.":'Nur lokal – <a href="../einstellungen.html">Sync einrichten</a>.')+"</div>"+
+    '<div class="row2" style="margin-bottom:18px"><button class="btn" onclick="A.exp()">⬇ Export (JSON)</button></div>'+
+    '<b class="small">Import</b><div class="small muted" style="margin:4px 0 8px">Auch Exporte aus dem alten Auto-Tracker werden erkannt. Einträge werden mit den vorhandenen <b>zusammengeführt</b>, doppelte nicht zweimal übernommen.</div>'+
+    '<textarea class="ta" id="imp" placeholder="JSON hier einfügen…"></textarea><div class="row2" style="margin-top:10px"><button class="btn" style="background:#00c853" onclick="A.imp()">✓ Importieren</button><label class="btn ghost" style="text-align:center;cursor:pointer">📁 Datei…<input type="file" accept=".json,application/json" style="display:none" onchange="A.impFile(this)"></label></div></div>';
+}
+
+function applyImport(raw){var d;try{d=JSON.parse(raw);}catch(e){flash("⚠ Kein gültiges JSON",true);return;}
+  if(d&&d.data&&d.data.corsa)d=d.data; // Cockpit-Format
+  if(!d||!d.corsa||!d.volvo){flash("⚠ Keine Auto-Daten erkannt",true);return;}
+  data=merge(data,norm({corsa:d.corsa,volvo:d.volvo}),1,0);persist();st.tab="uebersicht";st.form=blankForm();flash("Importiert ✓");}
+
+window.A={
+  car:function(id){st.car=id;st.setup=false;st.form=blankForm();if(st.tab==="daten"||st.tab==="vergleich")st.tab="uebersicht";render();},
+  tab:function(t){st.tab=t;render();},
+  f:function(k,v){st.form[k]=v;var p=document.getElementById("prev");if(p)p.innerHTML=preview();},
+  si:function(v){st.startInput=v;},
+  openSetup:function(){st.setup=true;st.startInput=cd().startOdo!=null?String(cd().startOdo):"";render();},
+  closeSetup:function(){st.setup=false;render();},
+  setStart:function(){var v=C.parseNum(st.startInput);if(isNaN(v)||v<0){flash("⚠ Bitte gültigen Kilometerstand eingeben",true);return;}
+    var c=cd();if(c.entries.length&&v>=c.entries[0].odo){flash("⚠ Start muss unter dem ersten Eintrag liegen",true);return;}
+    c.startOdo=v;st.setup=false;persist();flash("Startzählerstand gesetzt ✓");},
+  add:function(){var c=cd(),f=st.form,odo=C.parseNum(f.odo),fill=C.parseNum(f.fill),price=C.parseNum(f.price);
+    if(c.startOdo==null){flash("⚠ Bitte zuerst den Startzählerstand setzen",true);return;}
+    if(isNaN(odo)||isNaN(fill)||fill<=0){flash("⚠ Kilometerstand und Menge ausfüllen",true);return;}
+    var last=c.entries.length?c.entries[c.entries.length-1].odo:c.startOdo;
+    if(odo<=last){flash("⚠ Kilometerstand muss über "+C.int(last)+" km liegen",true);return;}
+    c.entries.push({id:Date.now(),date:f.date||C.today(),odo:odo,fill:fill,price:isNaN(price)?null:price,note:f.note.trim()});
+    c.entries.sort(function(a,b){return a.odo-b.odo;});if(!isNaN(price))c.lastPrice=price;
+    persist();st.form=blankForm();st.tab="uebersicht";flash("Eintrag gespeichert ✓");},
+  del:function(id){if(!confirm("Eintrag wirklich löschen?"))return;var c=cd();c.entries=c.entries.filter(function(e){return e.id!==id;});if(c.deleted.indexOf(id)<0)c.deleted.push(id);persist();render();},
+  exp:function(){C.downloadText("auto-"+C.today()+".json",JSON.stringify(data,null,1))?flash("Export gestartet ✓"):flash("⚠ Download nicht möglich",true);},
+  imp:function(){var t=document.getElementById("imp");if(t&&t.value.trim())applyImport(t.value);else flash("⚠ Bitte zuerst Daten einfügen",true);},
+  impFile:function(inp){var f=inp.files&&inp.files[0];if(f)C.readFile(f).then(applyImport);}
+};
+
+render();
+C.autoPull([AREA],function(a,d){data=norm(d);render();});
+})();
+</script>
+</body>
+</html>

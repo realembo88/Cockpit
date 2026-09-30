@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0e1a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Cockpit</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="assets/icon-192.png">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="topbar" style="border-bottom:none">
+    <div class="ttl"><b>🧭 Cockpit</b><span>Markus · Übersicht</span></div>
+    <div class="right"><a id="cp-sync" class="sync" href="einstellungen.html"><i></i></a>
+      <a class="home" href="einstellungen.html" aria-label="Einstellungen">⚙</a></div>
+  </header>
+  <div class="hero"><h1 id="greet">Hallo Markus</h1><p id="sub">Alle Bereiche auf einen Blick</p></div>
+  <div id="setupHint"></div>
+  <nav class="tiles" id="tiles"></nav>
+  <div class="content" id="extra"></div>
+</div>
+<script src="assets/cockpit.js"></script>
+<script>
+(function(){
+"use strict";
+var C=window.Cockpit;
+
+var AREAS=[
+  {id:"energie",name:"Energie",icon:"🏠",color:"var(--c-energie)",href:"energie/index.html"},
+  {id:"auto",name:"Auto",icon:"🚗",color:"var(--c-auto)",href:"auto/index.html"},
+  {id:"edelmetall",name:"Edelmetalle",icon:"🪙",color:"var(--c-edelmetall)",href:"edelmetall/index.html"},
+  {id:"finanzen",name:"Finanzen",icon:"💶",color:"var(--c-finanzen)",href:"finanzen/index.html"}
+];
+
+/* Kurz-Kennzahl je Bereich; Bereiche liefern ihre Zusammenfassung selbst mit (data._summary) */
+function summary(area){
+  var d=C.getLocal(area.id,null);
+  if(area.id==="auto"&&d)return autoSummary(d);
+  if(d&&d._summary)return d._summary;
+  return {k:"—",s:d?"Daten vorhanden":"Noch keine Daten"};
+}
+function autoSummary(d){
+  var totKm=0,totCost=0;
+  ["corsa","volvo"].forEach(function(k){var c=d[k];if(!c||!c.entries||!c.entries.length)return;
+    var e=c.entries,start=c.startOdo!=null?c.startOdo:e[0].odo;totKm+=e[e.length-1].odo-start;
+    e.forEach(function(x){if(x.price!=null)totCost+=x.fill*x.price;});});
+  if(!totKm)return {k:"—",s:"Noch keine Fahrten"};
+  return {k:C.int(totKm)+" km",s:"Kosten "+C.eur(totCost,0)};
+}
+
+function render(){
+  var h=new Date().getHours();
+  document.getElementById("greet").textContent=(h<11?"Guten Morgen":h<18?"Hallo":"Guten Abend")+", Markus";
+  document.getElementById("sub").textContent=new Date().toLocaleDateString("de-DE",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
+  document.getElementById("tiles").innerHTML=AREAS.map(function(a){var s=summary(a);
+    return '<a class="tile" href="'+a.href+'" style="--tc:'+a.color+'"><div class="ic">'+a.icon+'</div><div class="nm">'+a.name+'</div><div class="k">'+C.esc(s.k)+'</div><div class="s">'+C.esc(s.s)+'</div></a>';}).join("");
+  document.getElementById("setupHint").innerHTML=C.configured()?"":
+    '<div class="content" style="padding-bottom:0"><div class="panel" style="border-color:#00bcd455"><b style="color:#00bcd4">☁ Sync noch nicht eingerichtet</b><div class="small muted" style="margin:6px 0 12px">Deine Daten liegen bisher nur auf diesem Gerät. Einmal einrichten, dann sind sie überall gleich.</div><a class="btn" style="background:#00bcd4;text-decoration:none;display:inline-block" href="einstellungen.html">Jetzt einrichten</a></div></div>';
+  C.paintStatus();
+}
+
+render();
+C.autoPull(AREAS.map(function(a){return a.id;}),render);
+})();
+</script>
+</body>
+</html>

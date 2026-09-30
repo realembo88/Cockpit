@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0e1a">
+<title>Cockpit · Einstellungen</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<div class="wrap">
+<div id="top"></div>
+<div class="content" id="main"></div>
+</div>
+<script src="assets/cockpit.js"></script>
+<script>
+(function(){
+"use strict";
+var C=window.Cockpit;
+document.getElementById("top").innerHTML=C.topbar({title:"Einstellungen",icon:"⚙",sub:"Sync & Daten",accent:"#00bcd4",base:""});
+var msg=null;
+
+function render(){
+  var c=C.getConfig();
+  var h='';
+  if(msg)h+='<div class="flash'+(msg.warn?" warn":"")+'">'+C.esc(msg.t)+'</div>';
+  h+='<div class="panel"><h3>☁ GitHub-Sync</h3>'+
+    '<div class="small muted" style="margin-bottom:14px">Deine Daten werden als JSON-Dateien im <b>privaten</b> Repo gespeichert – eine Datei pro Bereich. Die Einstellungen gelten für alle Bereiche und bleiben nur auf diesem Gerät.</div>'+
+    fld("Benutzername","owner",c.owner)+fld("Daten-Repo (privat)","repo",c.repo)+fld("Branch","branch",c.branch)+
+    '<div class="field"><label>Access-Token (Fine-grained)</label><input id="f_token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="github_pat_…" value="'+C.esc(c.token)+'"></div>'+
+    '<div class="row2"><button class="btn" style="background:#00bcd4" onclick="CP.saveCfg()">🔌 Speichern &amp; testen</button><button class="btn ghost" style="flex:0 0 auto" onclick="CP.logout()">Token entfernen</button></div>'+
+    '</div>';
+  h+='<div class="panel"><h3>🔑 So erstellst du den Token</h3><div class="small" style="line-height:1.7">'+
+    '1. Am besten im Browser: <b>github.com → Profilbild → Settings → Developer settings → Personal access tokens → Fine-grained tokens</b><br>'+
+    '2. <b>Generate new token</b>, Name z. B. „Cockpit", Ablauf nach Wunsch (max. 1 Jahr)<br>'+
+    '3. <b>Repository access: Only select repositories → cockpit-daten</b><br>'+
+    '4. <b>Permissions → Repository permissions → Contents: Read and write</b><br>'+
+    '5. Generieren, kopieren und oben einfügen<br><br>'+
+    '<span class="muted">🔒 Der Token wird nur lokal auf diesem Gerät gespeichert, nie im öffentlichen Code. Auf jedem weiteren Gerät einmal hier eintragen.</span></div></div>';
+  h+='<div class="panel"><h3>ℹ Info</h3><div class="small muted" style="line-height:1.7">Status: <span id="stat"></span><br>Gespeicherte Bereiche auf diesem Gerät: '+
+    ["energie","auto","edelmetall","finanzen"].filter(function(a){return C.getLocal(a,null)!=null;}).join(", ")+'</div></div>';
+  document.getElementById("main").innerHTML=h;
+  var st=document.getElementById("stat");if(st){var el=document.getElementById("cp-sync");st.textContent=el?el.textContent:"";}
+}
+function fld(l,k,v){return '<div class="field"><label>'+l+'</label><input id="f_'+k+'" autocapitalize="off" autocorrect="off" spellcheck="false" value="'+C.esc(v)+'"></div>';}
+function val(k){return document.getElementById("f_"+k).value.trim();}
+
+window.CP={
+  saveCfg:function(){
+    C.setConfig({owner:val("owner"),repo:val("repo"),branch:val("branch")||"main",token:val("token")});
+    if(!C.configured()){msg={t:"Bitte Benutzername, Repo und Token ausfüllen.",warn:true};render();return;}
+    msg={t:"Teste Verbindung…"};render();
+    C.testConnection().then(function(r){
+      if(!r.ok){msg={t:"⚠ "+r.msg,warn:true};render();return;}
+      msg=r.warn?{t:"⚠ "+r.warn,warn:true}:{t:"✓ Verbunden – alle Bereiche synchronisieren jetzt automatisch."};
+      ["energie","auto","edelmetall","finanzen"].forEach(function(a){C.pull(a);});
+      render();
+    }).catch(function(e){msg={t:"⚠ "+e.message,warn:true};render();});
+  },
+  logout:function(){C.setConfig({token:""});msg={t:"Token entfernt. Daten bleiben lokal erhalten."};render();C.paintStatus();}
+};
+C.onStatus(function(){var st=document.getElementById("stat");var el=document.getElementById("cp-sync");if(st&&el)st.textContent=el.textContent;});
+render();C.paintStatus();
+})();
+</script>
+</body>
+</html>
