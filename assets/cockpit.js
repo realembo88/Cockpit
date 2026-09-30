@@ -74,12 +74,29 @@ var GitHub = {
       });
   }
 };
-function backend(){return GitHub;} /* hier später: Raspberry-Pi-Backend einhängen */
+GitHub.history=function(file,n){
+  var c=getConfig(),u="https://api.github.com/repos/"+encodeURIComponent(c.owner)+"/"+encodeURIComponent(c.repo)+"/commits?path="+encodeURIComponent((c.folder?c.folder.replace(/\/+$/,"")+"/":"")+file)+"&sha="+encodeURIComponent(c.branch)+"&per_page="+(n||40);
+  return fetch(u,{headers:GitHub.headers(),cache:"no-store"}).then(function(r){if(!r.ok)throw new Error(GitHub.err(r));return r.json();})
+    .then(function(a){return a.map(function(x){return {sha:x.sha,date:x.commit&&x.commit.committer&&x.commit.committer.date};});});
+};
+GitHub.readAt=function(file,sha){
+  var u=GitHub.url(file)+"?ref="+encodeURIComponent(sha);
+  return fetch(u,{headers:GitHub.headers(),cache:"no-store"}).then(function(r){if(!r.ok)throw new Error(GitHub.err(r));return r.json();}).then(function(meta){
+    if(meta.content&&meta.encoding==="base64")return b64dec(meta.content);
+    return fetch(u,{headers:GitHub.headers("application/vnd.github.raw+json"),cache:"no-store"}).then(function(r2){return r2.text();});
+  }).then(function(t){var o=JSON.parse(t);return o&&o.data!==undefined?o.data:o;});
+};
+function backend(){return GitHub;}
+function versions(area,n){if(!configured())return Promise.reject(new Error("Sync nicht eingerichtet"));return backend().history(area+".json",n);}
+function versionAt(area,sha){return backend().readAt(area+".json",sha);} /* hier später: Raspberry-Pi-Backend einhängen */
 
 /* ---------------- Datenspeicher pro Bereich ---------------- */
 /* Lokal:  cockpit:data:<bereich> = {updatedAt, data}
    Remote: <bereich>.json         = {schema, bereich, updatedAt, data} */
 function localRead(area){return lsGet(LOCAL_PREFIX+area);}
+/* Vor jedem Überschreiben durch GitHub: letzte lokale Fassung aufheben (1 Stück pro Bereich) */
+function backup(area,rec){if(rec&&rec.data!=null){try{localStorage.setItem("cockpit:backup:"+area,JSON.stringify({ts:Date.now(),rec:rec}));}catch(e){}}}
+function getBackup(area){return lsGet("cockpit:backup:"+area);}
 function localWrite(area,rec){lsSet(LOCAL_PREFIX+area,rec);}
 function getSha(area){return localStorage.getItem(SHA_PREFIX+area)||null;}
 function setSha(area,sha){try{if(sha)localStorage.setItem(SHA_PREFIX+area,sha);else localStorage.removeItem(SHA_PREFIX+area);}catch(e){}}
@@ -99,13 +116,22 @@ function same(a,b){return JSON.stringify(a)===JSON.stringify(b);}
 function reconcile(area,local,remote){
   var rU=remote.updatedAt||0,lU=local?local.updatedAt||0:0;
   if(!local||local.data==null){localWrite(area,{updatedAt:rU,data:remote.data});return {data:remote.data,changedLocal:true,needPush:false};}
+  /* Keine ungesicherten Änderungen auf diesem Gerät → der Stand von GitHub gilt 1:1.
+     (Früher wurde auch hier zusammengeführt – dabei konnte ein veraltetes Gerät neuere Änderungen überschreiben.) */
+  if(!local.dirty){
+    var ch=!same(local.data,remote.data);
+    if(ch)backup(area,local);
+    localWrite(area,{updatedAt:rU,data:remote.data});
+    return {data:remote.data,changedLocal:ch,needPush:false};
+  }
   if(mergers[area]){
     var m=mergers[area](local.data,remote.data,lU,rU);
     var chL=!same(m,local.data),push=!same(m,remote.data);
-    localWrite(area,{updatedAt:push?Math.max(lU,rU,Date.now()):rU,data:m});
+    backup(area,local);
+    localWrite(area,{updatedAt:push?Math.max(lU,rU,Date.now()):rU,data:m,dirty:push});
     return {data:m,changedLocal:chL,needPush:push};
   }
-  if(rU>lU){localWrite(area,{updatedAt:rU,data:remote.data});return {data:remote.data,changedLocal:true,needPush:false};}
+  if(rU>lU){backup(area,local);localWrite(area,{updatedAt:rU,data:remote.data});return {data:remote.data,changedLocal:true,needPush:false};}
   return {data:local.data,changedLocal:false,needPush:lU>rU};
 }
 
@@ -130,7 +156,7 @@ function pull(area){
 
 /* Speichern: lokal sofort, Remote nach kurzer Pause gebündelt */
 function save(area,data){
-  localWrite(area,{updatedAt:Date.now(),data:data});
+  localWrite(area,{updatedAt:Date.now(),data:data,dirty:true});
   if(!configured())return;
   setStatus("busy");
   clearTimeout(pushTimers[area]);
@@ -145,6 +171,7 @@ function push(area,retry){
   setStatus("busy");
   pending[area]=backend().write(area+".json",text,getSha(area)).then(function(sha){
     setSha(area,sha);setStatus("ok");
+    var cur=localRead(area);if(cur&&cur.updatedAt===rec.updatedAt){cur.dirty=false;localWrite(area,cur);}
   }).catch(function(e){
     if(e.conflict&&!retry){ // Datei wurde anderswo geändert → aktuellen Stand holen, vereinen, erneut speichern
       pending[area]=null;
@@ -240,7 +267,7 @@ function autoPull(areas,onChange){
 window.Cockpit={
   esc:esc,num:num,eur:eur,int:int,parseNum:parseNum,today:today,
   getConfig:getConfig,setConfig:setConfig,configured:configured,testConnection:testConnection,
-  getLocal:getLocal,save:save,registerMerge:registerMerge,pull:pull,push:push,autoPull:autoPull,
+  getLocal:getLocal,save:save,registerMerge:registerMerge,versions:versions,versionAt:versionAt,getBackup:getBackup,pull:pull,push:push,autoPull:autoPull,
   onStatus:onStatus,paintStatus:paintStatus,topbar:topbar,
   lineChart:lineChart,barChart:barChart,downloadText:downloadText,readFile:readFile
 };
