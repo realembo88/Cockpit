@@ -161,7 +161,9 @@ function vMatrix(){
 function vTx(){
   var R=rules(),kf=kontenFilter(st.ber),q=st.q.toLowerCase();
   var list=data.tx.filter(function(t){
-    if(t.d.slice(0,4)!==String(st.year))return false;if(kf&&!kf[t.k])return false;
+    if(t.d.slice(0,4)!==String(st.year))return false;
+    if(t.id===st.edit)return true; /* gerade bearbeitete Buchung bleibt sichtbar, auch wenn sie nicht mehr zum Filter passt */
+    if(kf&&!kf[t.k])return false;
     if(st.fmon&&t.d.slice(5,7)!==st.fmon)return false;
     if(st.fcat&&F.category(t,R)!==st.fcat)return false;
     if(q&&(t.p+" "+t.z+" "+t.t+" "+String(t.b).replace(".",",")).toLowerCase().indexOf(q)<0)return false;return true;});
@@ -184,7 +186,8 @@ function txRow(t){
   if(st.edit===t.id){
     h+='<div style="margin-top:8px"><select class="inl" onchange="F2.setCat(\''+t.id+'\',this.value)"><option value="">– automatisch (Regel) –</option>'+R.map(function(r){return '<option'+(t.cat===r.name?" selected":"")+">"+C.esc(r.name)+"</option>";}).join("")+"</select>"+
       (t.p?'<div class="note" style="margin-top:6px">Tipp: Wähle eine Kategorie und tippe dann auf „Als Regel merken“, damit alle Buchungen von <b>'+C.esc(t.p)+'</b> automatisch so eingeordnet werden.</div>':"")+
-      (t.cat&&t.p?'<button class="btn" style="margin-top:6px;padding:7px 12px;font-size:12px" onclick="F2.learn(\''+t.id+'\')">Als Regel merken</button> ':"")+
+      (t.cat&&t.p?'<div class="small" style="margin-top:8px;color:#69f0ae">✓ Diese Buchung ist gespeichert.</div>'+(/paypal|amazon|amzn|klarna|ebay|sumup|stripe/i.test(t.p)?'<div class="note" style="color:#ffb74d">Achtung: „'+C.esc(t.p)+'“ ist ein Zahlungsdienst, über den viele verschiedene Käufe laufen. Eine Regel für diesen Empfänger würde alle diese Käufe in dieselbe Kategorie stecken.</div>':"")+
+        '<button class="btn" style="margin-top:6px;padding:7px 12px;font-size:12px" onclick="F2.learn(\''+t.id+'\')">Als Regel merken: alle von „'+C.esc(t.p.length>28?t.p.slice(0,28)+"…":t.p)+'“</button> ':"")+
       '<button class="btn ghost" style="margin-top:6px;padding:7px 12px;font-size:12px" onclick="F2.edit(null)">Fertig</button></div>';
   }else h+='<button class="cat'+(c===F.UNKAT?" u":"")+(t.cat?" m":"")+'" onclick="F2.edit(\''+t.id+'\')">'+C.esc(c)+"</button>";
   return h+'</div><div class="a '+(t.b<0?"neg":"pos")+'">'+(t.b<0?"−":"+")+C.eur(Math.abs(t.b))+"</div></div>";
