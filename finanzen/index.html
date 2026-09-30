@@ -61,8 +61,8 @@ code{background:var(--field);padding:1px 5px;border-radius:4px;font-size:11px;}
 "use strict";
 var C=window.Cockpit,F=window.FIN,AREA="finanzen";
 
-function blank(){return {konten:{},rules:null,pmap:{},tx:[],deleted:[],imports:[]};}
-function norm(d){d=d&&typeof d==="object"?d:blank();if(!d.konten)d.konten={};if(!Array.isArray(d.tx))d.tx=[];if(!Array.isArray(d.deleted))d.deleted=[];if(!Array.isArray(d.imports))d.imports=[];if(!Array.isArray(d.rules))d.rules=null;if(!d.pmap||typeof d.pmap!=="object")d.pmap={};return d;}
+function blank(){return {konten:{},rules:null,pmap:{},tmap:{},tx:[],deleted:[],imports:[]};}
+function norm(d){d=d&&typeof d==="object"?d:blank();if(!d.konten)d.konten={};if(!Array.isArray(d.tx))d.tx=[];if(!Array.isArray(d.deleted))d.deleted=[];if(!Array.isArray(d.imports))d.imports=[];if(!Array.isArray(d.rules))d.rules=null;if(!d.pmap||typeof d.pmap!=="object")d.pmap={};if(!d.tmap||typeof d.tmap!=="object")d.tmap={};return d;}
 function rules(){return data.rules||F.DEFAULT_RULES;}
 function clone(x){return JSON.parse(JSON.stringify(x));}
 
@@ -72,7 +72,7 @@ function merge(l,r,lU,rU){
   l.deleted.concat(r.deleted).forEach(function(id){del[id]=1;});
   r.tx.concat(l.tx).forEach(function(t){if(del[t.id])return;if(!by[t.id])order.push(t.id);by[t.id]=t;});
   var imp={};r.imports.concat(l.imports).forEach(function(i){imp[i.ts+"|"+i.file]=i;});
-  var out={konten:Object.assign({},lU>=rU?r.konten:l.konten,newer.konten),rules:newer.rules,pmap:Object.assign({},lU>=rU?r.pmap:l.pmap,newer.pmap),
+  var out={konten:Object.assign({},lU>=rU?r.konten:l.konten,newer.konten),rules:newer.rules,pmap:Object.assign({},lU>=rU?r.pmap:l.pmap,newer.pmap),tmap:Object.assign({},lU>=rU?r.tmap:l.tmap,newer.tmap),
     tx:order.map(function(id){return by[id];}),deleted:Object.keys(del),imports:Object.keys(imp).map(function(k){return imp[k];}).sort(function(a,b){return a.ts-b.ts;}).slice(-50)};
   out._summary=summaryFor(out);return out;
 }
@@ -87,19 +87,19 @@ function years(){var s={};data.tx.forEach(function(t){s[+t.d.slice(0,4)]=1;});re
 function kontenFilter(ber){if(ber==="alle")return null;var o={},any=false;Object.keys(data.konten).forEach(function(k){if(data.konten[k].bereich===ber){o[k]=1;any=true;}});return any?o:{__none:1};}
 function summaryFor(d){
   if(!d.tx.length)return {k:"—",s:"Noch keine Buchungen"};
-  F.setPartnerMap(d.pmap);var R=d.rules||F.DEFAULT_RULES,y=thisYear,has=d.tx.some(function(t){return t.d.slice(0,4)===String(y);});
+  F.setPartnerMap(d.pmap,d.tmap);var R=d.rules||F.DEFAULT_RULES,y=thisYear,has=d.tx.some(function(t){return t.d.slice(0,4)===String(y);});
   if(!has)y=+d.tx.reduce(function(m,t){return t.d>m?t.d:m;},"0000").slice(0,4);
   var r=F.report(d.tx,R,{year:y}),s=F.sum(r.ein)+F.sum(r.aus),mi=new Date().getMonth();
   var unk=d.tx.filter(function(t){return F.category(t,R)===F.UNKAT;}).length;
   return {k:(s>=0?"+":"−")+C.eur(Math.abs(s),0),s:"Saldo "+y+(y===thisYear?" · Ausgaben "+F.MON[mi]+" "+C.eur(Math.abs(r.aus[mi]),0):"")+(unk?" · "+unk+" offen":"")};
 }
-function persist(){data._summary=summaryFor(data);F.setPartnerMap(data.pmap);C.save(AREA,data);}
+function persist(){data._summary=summaryFor(data);F.setPartnerMap(data.pmap,data.tmap);C.save(AREA,data);}
 function flash(t,warn){st.flash={t:t,warn:!!warn};render();clearTimeout(flash.tm);flash.tm=setTimeout(function(){st.flash=null;render();},warn?4500:2600);}
 function sEur(v,d){return '<span class="'+(v>=0?"pos":"neg")+'">'+(v>=0?"+":"−")+C.eur(Math.abs(v),d)+"</span>";}
 
 /* ---------- Rahmen ---------- */
 function render(){
-  F.setPartnerMap(data.pmap);
+  F.setPartnerMap(data.pmap,data.tmap);
   document.getElementById("top").innerHTML=C.topbar({title:"Finanzen",icon:"💶",sub:"ING · N26 · Privat & Geschäft",accent:"#e040fb",accent2:"#7c4dff"});
   C.paintStatus();
   var tabs=[["uebersicht","📊 Übersicht"],["monate","🗓 Monate"],["buchungen","📋 Buchungen"],["import","⬆ Import"],["regeln","⚙️ Regeln & Konten"]];
@@ -185,9 +185,16 @@ function txRow(t){
   var h='<div class="tx"><div style="min-width:0"><div class="p">'+C.esc(t.p||t.t||"—")+'</div><div class="z">'+new Date(t.d).toLocaleDateString("de-DE")+" · "+C.esc(ko?ko.name:t.k)+(t.z?" · "+C.esc(t.z.slice(0,90)):"")+"</div>";
   if(st.edit===t.id){
     h+='<div style="margin-top:8px"><select class="inl" onchange="F2.setCat(\''+t.id+'\',this.value)"><option value="">– automatisch (Regel) –</option>'+R.map(function(r){return '<option'+(t.cat===r.name?" selected":"")+">"+C.esc(r.name)+"</option>";}).join("")+"</select>"+
-      (t.p?'<div class="note" style="margin-top:6px">Tipp: Wähle eine Kategorie und tippe dann auf „Als Regel merken“, damit alle Buchungen von <b>'+C.esc(t.p)+'</b> automatisch so eingeordnet werden.</div>':"")+
-      (t.cat&&t.p?'<div class="small" style="margin-top:8px;color:#69f0ae">✓ Diese Buchung ist gespeichert.</div>'+(/paypal|amazon|amzn|klarna|ebay|sumup|stripe/i.test(t.p)?'<div class="note" style="color:#ffb74d">Achtung: „'+C.esc(t.p)+'“ ist ein Zahlungsdienst, über den viele verschiedene Käufe laufen. Eine Regel für diesen Empfänger würde alle diese Käufe in dieselbe Kategorie stecken.</div>':"")+
-        '<button class="btn" style="margin-top:6px;padding:7px 12px;font-size:12px" onclick="F2.learn(\''+t.id+'\')">Als Regel merken: alle von „'+C.esc(t.p.length>28?t.p.slice(0,28)+"…":t.p)+'“</button> ':"")+
+      (function(){
+        if(!t.cat)return '<div class="note" style="margin-top:6px">Wähle eine Kategorie – danach kannst du sie als Regel für ähnliche Buchungen merken.</div>';
+        var h='<div class="small" style="margin-top:8px;color:#69f0ae">✓ Diese Buchung ist gespeichert.</div>';
+        if(t.p){
+          if(/paypal|amazon|amzn|klarna|ebay|sumup|stripe/i.test(t.p))h+='<div class="note" style="color:#ffb74d">Achtung: „'+C.esc(t.p)+'“ ist ein Zahlungsdienst, über den viele verschiedene Käufe laufen. Eine Regel für diesen Empfänger würde alle diese Käufe in dieselbe Kategorie stecken.</div>';
+          return h+'<button class="btn" style="margin-top:6px;padding:7px 12px;font-size:12px" onclick="F2.learn(\''+t.id+'\')">Als Regel merken: alle von „'+C.esc(t.p.length>28?t.p.slice(0,28)+"…":t.p)+'“</button> ';
+        }
+        if(F.typeKey(t.t))return h+'<button class="btn" style="margin-top:6px;padding:7px 12px;font-size:12px" onclick="F2.learnType(\''+t.id+'\')">Als Regel merken: alle mit Buchungsart „'+C.esc(t.t)+'“</button> ';
+        return h+'<div class="note">Diese Buchung hat keinen Empfänger und nur eine allgemeine Buchungsart. Für eine Regel trage unter „Regeln & Konten“ ein Schlüsselwort aus dem Verwendungszweck ein.</div>';
+      })()+
       '<button class="btn ghost" style="margin-top:6px;padding:7px 12px;font-size:12px" onclick="F2.edit(null)">Fertig</button></div>';
   }else h+='<button class="cat'+(c===F.UNKAT?" u":"")+(t.cat?" m":"")+'" onclick="F2.edit(\''+t.id+'\')">'+C.esc(c)+"</button>";
   return h+'</div><div class="a '+(t.b<0?"neg":"pos")+'">'+(t.b<0?"−":"+")+C.eur(Math.abs(t.b))+"</div></div>";
@@ -231,7 +238,8 @@ function vRules(){
   h+='<button class="btn ghost full" onclick="F2.resetRules()">Auf Standardregeln zurücksetzen</button></div>';
   var pk=Object.keys(data.pmap).sort();
   h+='<div class="panel"><h3>👤 Empfänger-Zuordnungen</h3><div class="note" style="margin-bottom:10px">Entstehen über „Als Regel merken“ bei einer Buchung und haben <b>Vorrang</b> vor allen Kategorien-Regeln.</div>'+
-    (pk.length?pk.map(function(k){return '<div class="kv"><span style="overflow-wrap:anywhere">'+C.esc(k)+'</span><span style="white-space:nowrap">'+C.esc(data.pmap[k])+' <button class="pill" style="padding:2px 8px" onclick="F2.rmP(\''+C.esc(k).replace(/'/g,"\\'")+'\')">✕</button></span></div>';}).join(""):'<div class="note">Noch keine.</div>')+"</div>";
+    (function(){var tk=Object.keys(data.tmap).sort();return tk.length?'<div class="small muted" style="margin:6px 0 4px">Nach Buchungsart (bei Buchungen ohne Empfänger):</div>'+tk.map(function(k){return '<div class="kv"><span style="overflow-wrap:anywhere">'+C.esc(k)+'</span><span style="white-space:nowrap">'+C.esc(data.tmap[k])+' <button class="pill" style="padding:2px 8px" onclick="F2.rmT(\''+C.esc(k).replace(/'/g,"\\'")+'\')">✕</button></span></div>';}).join("")+'<div class="small muted" style="margin:10px 0 4px">Nach Empfänger:</div>':"";})()+
+    (pk.length?pk.map(function(k){return '<div class="kv"><span style="overflow-wrap:anywhere">'+C.esc(k)+'</span><span style="white-space:nowrap">'+C.esc(data.pmap[k])+' <button class="pill" style="padding:2px 8px" onclick="F2.rmP(\''+C.esc(k).replace(/'/g,"\\'")+'\')">✕</button></span></div>';}).join(""):'<div class="note">Noch keine Empfänger-Zuordnungen.</div>')+"</div>";
   var ks=Object.keys(data.konten);
   h+='<div class="panel"><h3>🏦 Konten</h3>'+(ks.length?ks.map(function(k){var ko=data.konten[k],n=data.tx.filter(function(t){return t.k===k;}).length;
     return '<div class="rule"><div class="field"><label>'+C.esc(ko.bank||"")+" · "+n+' Buchungen</label><input value="'+C.esc(ko.name)+'" onchange="F2.kname(\''+C.esc(k)+'\',this.value)"></div>'+
@@ -261,6 +269,11 @@ window.F2={
     data.tx.forEach(function(x){if(x.cat===c&&F.partnerKey(x.p)===k)delete x.cat;});
     var n=data.tx.filter(function(x){return F.partnerKey(x.p)===k;}).length;
     st.edit=null;persist();flash("✓ Alle Buchungen von „"+t.p+"“ → "+c+(n>1?" ("+n+" Buchungen)":""));},
+  learnType:function(id){var t=data.tx.filter(function(x){return x.id===id;})[0];if(!t||!t.cat)return;var k=F.typeKey(t.t);if(!k)return;
+    var c=t.cat;data.tmap[k]=c;data.tx.forEach(function(x){if(x.cat===c&&!x.p&&F.partnerKey(x.t)===k)delete x.cat;});
+    var n=data.tx.filter(function(x){return !x.p&&F.partnerKey(x.t)===k;}).length;
+    st.edit=null;persist();flash("✓ Alle Buchungen mit Buchungsart „"+t.t+"“ → "+c+(n>1?" ("+n+" Buchungen)":""));},
+  rmT:function(k){delete data.tmap[k];persist();render();},
   files:function(inp){var fs=[].slice.call(inp.files||[]);inp.value="";if(!fs.length)return;
     var blocks=[],info=[];
     Promise.all(fs.map(function(f){return f.arrayBuffer().then(function(buf){var r=F.parseFile(buf,f.name);

@@ -49,10 +49,13 @@ function matchRule(t,rules){
     for(var j=0;j<r.words.length;j++){var re=kwRe(r.words[j]);if(re&&re.test(h))return r.name;}}
   return UNKAT;
 }
-var PMAP={};
-function setPartnerMap(m){PMAP=m||{};}
+var PMAP={},TMAP={};
+function setPartnerMap(m,tm){PMAP=m||{};TMAP=tm||{};}
 function partnerKey(p){return String(p||"").toLowerCase().replace(/\s+/g," ").trim();}
-function category(t,rules){return t.cat||(t.p&&PMAP[partnerKey(t.p)])||matchRule(t,rules);}
+/* Allgemeine Buchungsarten taugen nicht als Regel – sie kommen bei ganz unterschiedlichen Zahlungen vor */
+var GENERIC_TYPES=/^(lastschrift|überweisung|ueberweisung|gutschrift|dauerauftrag|dauerauftrag\/terminueberweisung|kartenzahlung|abbuchung|einzahlung|auszahlung|entgelt|zinsen|debit transfer|credit transfer|presentment|direct debit|mastercard payment|income|outgoing transfer|incoming transfer|gutschrift\/dauerauftrag)$/;
+function typeKey(t){var k=partnerKey(t);return k&&!GENERIC_TYPES.test(k)?k:"";}
+function category(t,rules){return t.cat||(t.p&&PMAP[partnerKey(t.p)])||(!t.p&&t.t&&TMAP[partnerKey(t.t)])||matchRule(t,rules);}
 
 /* ---------- Hilfen ---------- */
 function hash(s){var h1=0x811c9dc5,h2=0x01000193;for(var i=0;i<s.length;i++){var c=s.charCodeAt(i);h1=Math.imul(h1^c,16777619);h2=Math.imul(h2^c,2246822519);}
@@ -166,5 +169,5 @@ function report(txs,rules,opt){
 function sum(a){return a.reduce(function(s,v){return s+v;},0);}
 
 return {MON:MON,UNKAT:UNKAT,DEFAULT_RULES:DEFAULT_RULES,kwRe:kwRe,matchRule:matchRule,category:category,parseFile:parseFile,parseCSV:parseCSV,
-  decode:decode,assignIds:assignIds,setPartnerMap:setPartnerMap,partnerKey:partnerKey,report:report,sum:sum,isNeutral:isNeutral,hash:hash};
+  decode:decode,assignIds:assignIds,setPartnerMap:setPartnerMap,partnerKey:partnerKey,typeKey:typeKey,report:report,sum:sum,isNeutral:isNeutral,hash:hash};
 })();
