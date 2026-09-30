@@ -70,7 +70,7 @@ function clone(x){return JSON.parse(JSON.stringify(x));}
 function merge(l,r,lU,rU){
   l=norm(clone(l));r=norm(clone(r));var newer=lU>=rU?l:r,del={},by={},order=[];
   l.deleted.concat(r.deleted).forEach(function(id){del[id]=1;});
-  r.tx.concat(l.tx).forEach(function(t){if(del[t.id])return;if(!by[t.id])order.push(t.id);by[t.id]=t;});
+  r.tx.concat(l.tx).forEach(function(t){if(del[t.id])return;if(!by[t.id]){order.push(t.id);by[t.id]=t;return;}if((t.ct||0)>=(by[t.id].ct||0))by[t.id]=t;});
   var imp={};r.imports.concat(l.imports).forEach(function(i){imp[i.ts+"|"+i.file]=i;});
   var out={konten:Object.assign({},lU>=rU?r.konten:l.konten,newer.konten),rules:newer.rules,pmap:Object.assign({},lU>=rU?r.pmap:l.pmap,newer.pmap),tmap:Object.assign({},lU>=rU?r.tmap:l.tmap,newer.tmap),
     tx:order.map(function(id){return by[id];}),deleted:Object.keys(del),imports:Object.keys(imp).map(function(k){return imp[k];}).sort(function(a,b){return a.ts-b.ts;}).slice(-50)};
@@ -237,6 +237,14 @@ function vImport(){
   h+='<div class="panel"><h3>⬆ Kontoauszüge importieren</h3><div class="note" style="margin-bottom:12px">CSV-Exporte von <b>ING</b> (Umsatzanzeige) und <b>N26</b> (Kontoauszug als CSV). Mehrere Dateien auf einmal sind möglich. Überlappende Zeiträume sind kein Problem, doppelte Buchungen werden erkannt.</div>'+
     '<label class="btn" style="display:inline-block;cursor:pointer">📁 CSV-Dateien wählen<input type="file" accept=".csv,text/csv,text/comma-separated-values" multiple onchange="F2.files(this)"></label></div>';
   h+='<div class="panel"><h3>So bekommst du die Exporte</h3><div class="note"><b>ING:</b> Banking → Konto → Umsätze → Zeitraum wählen → „Exportieren“ bzw. Download-Symbol → CSV.<br><b>N26:</b> App → Profil/Konto → Kontoauszüge → „CSV exportieren“ → Zeitraum wählen (auch im Browser unter app.n26.com möglich).<br>Die Datei am besten direkt hochladen, ohne sie vorher in Excel zu öffnen und zu speichern. Falls doch, wird auch das erkannt.</div></div>';
+  h+='<div class="panel"><h3>🕘 Kategorien wiederherstellen</h3><div class="note" style="margin-bottom:10px">Jedes Speichern ist in deinem privaten Repo eine eigene Version. Hier kannst du Kategorien, Empfänger-Zuordnungen und Regeln aus einem früheren Stand zurückholen. Es wird nur <b>ergänzt</b>: Buchungen, die jetzt schon eine Kategorie haben, bleiben unverändert.</div>';
+  if(st.hist===undefined)h+='<button class="btn" onclick="F2.loadHist()"'+(C.configured()?'':' disabled')+'>Frühere Stände laden</button>'+(C.configured()?'':'<div class="note">Nur mit eingerichteter Sync.</div>');
+  else if(st.hist==="loading")h+='<div class="note">Lade Versionen …</div>';
+  else if(st.hist&&st.hist.err)h+='<div class="note" style="color:#ff8a80">'+C.esc(st.hist.err)+'</div>';
+  else if(st.hist)h+=st.hist.map(function(v,i){return '<div class="kv"><span>'+new Date(v.date).toLocaleString("de-DE")+'</span><span>'+(v.count!=null?'<b style="color:#fff">'+v.count+'</b> Zuordnungen '+(v.count>0?'<button class="pill" style="padding:3px 10px" onclick="F2.restore('+i+')">Übernehmen</button>':''):'<button class="pill" style="padding:3px 10px" onclick="F2.checkVer('+i+')">prüfen</button>')+'</span></div>';}).join("")+'<div class="note" style="margin-top:6px">Tipp: Nimm den Stand mit den meisten Zuordnungen – meist kurz bevor sie verschwunden sind.</div>';
+  var bk=C.getBackup(AREA);
+  if(bk&&bk.rec&&bk.rec.data){var bc=countCats(bk.rec.data);if(bc)h+='<div class="kv" style="margin-top:8px;border-top:1px solid var(--border);padding-top:10px"><span>Sicherung auf diesem Gerät<br><span class="small">'+new Date(bk.ts).toLocaleString("de-DE")+'</span></span><span><b style="color:#fff">'+bc+'</b> Zuordnungen <button class="pill" style="padding:3px 10px" onclick="F2.restoreBackup()">Übernehmen</button></span></div>';}
+  h+='</div>';
   if(data.imports.length)h+='<div class="panel"><h3>Letzte Importe</h3>'+data.imports.slice().reverse().slice(0,10).map(function(i){return '<div class="kv"><span>'+C.esc(i.file)+'<br><span class="small">'+new Date(i.ts).toLocaleString("de-DE")+"</span></span><span>"+i.neu+" neu"+(i.dup?" · "+i.dup+" doppelt":"")+"</span></div>";}).join("")+"</div>";
   h+='<div class="panel"><h3>💾 Sicherung</h3><button class="btn ghost" onclick="F2.exp()">⬇ Alle Finanzdaten als JSON</button><div class="note" style="margin-top:10px">🔒 Buchungen liegen nur in deinem privaten Daten-Repo und auf deinen Geräten, nicht im öffentlichen Cockpit-Code.</div></div>';
   return h;
@@ -268,6 +276,19 @@ function vRules(){
 }
 
 /* ---------- Aktionen ---------- */
+/* Kategorien, Zuordnungen und Regeln aus einem früheren Stand zurückholen – ergänzt nur, überschreibt nichts */
+function restoreFrom(old){
+  old=norm(clone(old));var byId={},n=0,p=0,r=0,now=Date.now();
+  old.tx.forEach(function(t){byId[t.id]=t;});
+  data.tx.forEach(function(t){var o=byId[t.id];if(!t.cat&&o&&o.cat){t.cat=o.cat;t.ct=now;n++;}});
+  Object.keys(old.pmap).forEach(function(k){if(!data.pmap[k]){data.pmap[k]=old.pmap[k];p++;}});
+  Object.keys(old.tmap).forEach(function(k){if(!data.tmap[k]){data.tmap[k]=old.tmap[k];p++;}});
+  if(old.rules){ensureRules();old.rules.forEach(function(orl,i){var ex=data.rules.filter(function(x){return x.name===orl.name;})[0];
+    if(!ex){data.rules.splice(Math.min(i,data.rules.length),0,clone(orl));r++;return;}
+    orl.words.forEach(function(w){if(ex.words.indexOf(w)<0){ex.words.push(w);r++;}});if(orl.neutral&&!ex.neutral){ex.neutral=true;r++;}});}
+  return {n:n,p:p,r:r};
+}
+function countCats(d){d=norm(clone(d));return d.tx.filter(function(t){return t.cat;}).length+Object.keys(d.pmap).length+Object.keys(d.tmap).length;}
 function ensureRules(){if(!data.rules)data.rules=clone(F.DEFAULT_RULES);}
 window.F2={
   tab:function(t){st.tab=t;st.edit=null;render();window.scrollTo(0,0);},
@@ -281,15 +302,15 @@ window.F2={
   cat:function(c){st.fcat=c;st.fmon="";st.q="";st.tab="buchungen";st.sort="betrag";render();window.scrollTo(0,0);},
   showUnk:function(){F2.cat(F.UNKAT);},
   edit:function(id){st.edit=id;render();},
-  setCat:function(id,c){data.tx.forEach(function(t){if(t.id===id){if(c)t.cat=c;else delete t.cat;}});persist();render();},
+  setCat:function(id,c){data.tx.forEach(function(t){if(t.id===id){if(c)t.cat=c;else delete t.cat;t.ct=Date.now();}});persist();render();},
   learn:function(id){var t=data.tx.filter(function(x){return x.id===id;})[0];if(!t||!t.cat||!t.p)return;
     var k=F.partnerKey(t.p),c=t.cat;data.pmap[k]=c;
     /* manuelle Einzelzuordnungen desselben Empfängers sind jetzt überflüssig */
-    data.tx.forEach(function(x){if(x.cat===c&&F.partnerKey(x.p)===k)delete x.cat;});
+    data.tx.forEach(function(x){if(x.cat===c&&F.partnerKey(x.p)===k){delete x.cat;x.ct=Date.now();}});
     var n=data.tx.filter(function(x){return F.partnerKey(x.p)===k;}).length;
     st.edit=null;persist();flash("✓ Alle Buchungen von „"+t.p+"“ → "+c+(n>1?" ("+n+" Buchungen)":""));},
   learnType:function(id){var t=data.tx.filter(function(x){return x.id===id;})[0];if(!t||!t.cat)return;var k=F.typeKey(t.t);if(!k)return;
-    var c=t.cat;data.tmap[k]=c;data.tx.forEach(function(x){if(x.cat===c&&!x.p&&F.partnerKey(x.t)===k)delete x.cat;});
+    var c=t.cat;data.tmap[k]=c;data.tx.forEach(function(x){if(x.cat===c&&!x.p&&F.partnerKey(x.t)===k){delete x.cat;x.ct=Date.now();}});
     var n=data.tx.filter(function(x){return !x.p&&F.partnerKey(x.t)===k;}).length;
     st.edit=null;persist();flash("✓ Alle Buchungen mit Buchungsart „"+t.t+"“ → "+c+(n>1?" ("+n+" Buchungen)":""));},
   rmT:function(k){delete data.tmap[k];persist();render();},
@@ -333,6 +354,15 @@ window.F2={
       if(nr.neutral)ex.neutral=true;if(nr.onlyIn)ex.onlyIn=true;if(nr.onlyOut)ex.onlyOut=true;
       nr.words.forEach(function(w){w=String(w).toLowerCase().trim();if(w&&ex.words.indexOf(w)<0){ex.words.push(w);added++;}});});
     persist();flash("✓ "+added+" Schlüsselwörter übernommen");});},
+  loadHist:function(){st.hist="loading";render();C.versions(AREA,40).then(function(v){st.hist=v;render();F2.checkAll();},function(e){st.hist={err:"Versionen konnten nicht geladen werden: "+e.message};render();});},
+  checkAll:function(){ /* nacheinander prüfen, damit die API nicht überlastet wird */
+    var i=0;(function next(){if(!Array.isArray(st.hist)||i>=st.hist.length)return;var k=i++;F2.checkVer(k).then(next,next);})();},
+  checkVer:function(i){var v=st.hist[i];if(!v||v.count!=null)return Promise.resolve();
+    return C.versionAt(AREA,v.sha).then(function(d){v.data=d;v.count=countCats(d);if(st.tab==="import")render();},function(){v.count=0;});},
+  restore:function(i){var v=st.hist[i];if(!v||!v.data)return;var r=restoreFrom(v.data);persist();st.tab="uebersicht";
+    flash("✓ Wiederhergestellt: "+r.n+" Kategorien, "+r.p+" Zuordnungen, "+r.r+" Regel-Ergänzungen");},
+  restoreBackup:function(){var bk=C.getBackup(AREA);if(!bk)return;var r=restoreFrom(bk.rec.data);persist();st.tab="uebersicht";
+    flash("✓ Wiederhergestellt: "+r.n+" Kategorien, "+r.p+" Zuordnungen, "+r.r+" Regel-Ergänzungen");},
   rmP:function(k){delete data.pmap[k];persist();render();},
   kname:function(k,v){if(data.konten[k]){data.konten[k].name=v.trim()||data.konten[k].name;persist();}},
   kber:function(k,v){if(data.konten[k]){data.konten[k].bereich=v;persist();render();}},
