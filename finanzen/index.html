@@ -131,15 +131,34 @@ function vDash(){
   if(unk)h+='<div class="panel" style="border-color:#ff980066;cursor:pointer" onclick="F2.showUnk()"><b style="color:#ffb74d">⚠ '+unk+" Buchungen unkategorisiert</b><div class=\"note\">Tippen, um sie zuzuordnen – am schnellsten über „Als Regel merken“.</div></div>";
   var lab=F.MON.map(function(m){return m;});
   h+='<div class="panel"><h3>Saldo pro Monat</h3>'+C.barChart(lab.map(function(m,i){var v=rep.ein[i]+rep.aus[i];return {label:m,value:v,color:v>=0?"#00c853":"#ff5252"};}),{fmt:function(v){return C.eur(v,0);}})+"</div>";
-  h+='<div class="panel"><h3>Ausgaben pro Monat</h3>'+C.barChart(lab.map(function(m,i){return {label:m,value:Math.abs(rep.aus[i])};}),{color:"#e040fb",fmt:function(v){return C.eur(v,0);}})+"</div>";
-  var out=rep.cats.map(function(c){return {c:c,v:F.sum(rep.matrix[c])};}).filter(function(x){return x.v<0&&!F.isNeutral(x.c,R);}).sort(function(a,b){return a.v-b.v;});
-  var mx=out.length?Math.abs(out[0].v):1;
-  h+='<div class="panel"><h3>Ausgaben nach Kategorie</h3>'+(out.length?out.slice(0,12).map(function(x){return '<div class="bar" style="cursor:pointer" onclick="F2.cat(\''+C.esc(x.c).replace(/'/g,"\\'")+'\')"><span class="l">'+C.esc(x.c)+'</span><span class="t"><i style="width:'+(Math.abs(x.v)/mx*100).toFixed(1)+'%;'+(x.c===F.UNKAT?"background:#ff9800":"")+'"></i></span><span class="v">'+C.eur(Math.abs(x.v),0)+"</span></div>";}).join(""):'<div class="note">Keine Ausgaben im gewählten Zeitraum.</div>')+"</div>";
+  h+='<div class="panel"><h3>Einnahmen & Ausgaben pro Monat</h3>'+groupChart(F.MON,[{name:"Einnahmen",color:"#00c853",values:rep.ein},{name:"Ausgaben",color:"#e040fb",values:rep.aus}],function(v){return C.eur(v,0);})+"</div>";
+  h+='<div class="panel"><h3 style="color:#00c853">Einnahmen nach Kategorie</h3>'+catBars(rep,R,1,"#00c853")+"</div>";
+  h+='<div class="panel"><h3>Ausgaben nach Kategorie</h3>'+catBars(rep,R,-1,"#e040fb")+"</div>";
   var ks=Object.keys(data.konten).filter(function(k){return st.ber==="alle"||data.konten[k].bereich===st.ber;});
   if(ks.length)h+='<div class="panel"><h3>Konten</h3>'+ks.map(function(k){var ko=data.konten[k],n=data.tx.filter(function(t){return t.k===k;}).length;
     return '<div class="kv"><span>'+C.esc(ko.name)+' <span class="small">· '+(ko.bereich==="geschaeft"?"Geschäft":"Privat")+" · "+n+" Buchungen</span></span><span>"+(ko.saldo?"<b style=\"color:#fff\">"+C.eur(ko.saldo.v)+'</b> <span class="small">'+new Date(ko.saldo.d).toLocaleDateString("de-DE")+"</span>":'<span class="small">kein Kontostand</span>')+"</span></div>";}).join("")+
     '<div class="note" style="margin-top:6px">Kontostände liefert nur der ING-Export mit. N26 enthält keinen Saldo.</div></div>';
   return h;
+}
+function groupChart(labels,series,fmt){
+  var W=340,H=200,pL=40,pR=10,pT=14,pB=32,n=labels.length,k=series.length;
+  var mx=0;series.forEach(function(s){s.values.forEach(function(v){if(Math.abs(v)>mx)mx=Math.abs(v);});});
+  if(!mx)return '<div class="note">Keine Werte im gewählten Zeitraum.</div>';
+  mx*=1.12;var iW=W-pL-pR,iH=H-pT-pB,slot=iW/n,bw=Math.max(3,Math.min(14,slot*0.8/k));
+  function y(v){return pT+iH*(1-v/mx);}
+  var o='<svg viewBox="0 0 '+W+" "+H+'" width="100%" role="img">';
+  for(var g=0;g<=3;g++){var gv=mx*g/3,gy=y(gv);o+='<line x1="'+pL+'" y1="'+gy+'" x2="'+(W-pR)+'" y2="'+gy+'" stroke="#1e2a4a" stroke-dasharray="3 3"/><text x="'+(pL-5)+'" y="'+(gy+3)+'" fill="#5c7aaa" font-size="9" text-anchor="end">'+C.int(gv)+"</text>";}
+  labels.forEach(function(l,i){var cx=pL+slot*(i+.5),x0=cx-bw*k/2;
+    series.forEach(function(s,j){var v=Math.abs(s.values[i]||0),yy=y(v);
+      o+='<rect x="'+(x0+j*bw+.5)+'" y="'+yy+'" width="'+(bw-1)+'" height="'+Math.max(0,pT+iH-yy)+'" rx="2" fill="'+s.color+'"><title>'+C.esc(l+" – "+s.name+": "+fmt(v))+"</title></rect>";});
+    o+='<text x="'+cx+'" y="'+(H-10)+'" fill="#5c7aaa" font-size="9" text-anchor="middle">'+C.esc(l)+"</text>";});
+  return o+"</svg>"+'<div style="display:flex;gap:14px;font-size:11px;color:var(--muted);margin-top:4px">'+series.map(function(s){return '<span><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:'+s.color+';margin-right:5px;vertical-align:middle"></i>'+C.esc(s.name)+"</span>";}).join("")+"</div>";
+}
+function catBars(rep,R,sign,color){
+  var list=rep.cats.map(function(c){return {c:c,v:F.sum(rep.matrix[c])};}).filter(function(x){return (sign<0?x.v<0:x.v>0)&&!F.isNeutral(x.c,R);}).sort(function(a,b){return Math.abs(b.v)-Math.abs(a.v);});
+  if(!list.length)return '<div class="note">Keine '+(sign<0?"Ausgaben":"Einnahmen")+" im gewählten Zeitraum.</div>";
+  var mx=Math.abs(list[0].v),tot=list.reduce(function(s,x){return s+Math.abs(x.v);},0);
+  return list.slice(0,12).map(function(x){return '<div class="bar" style="cursor:pointer" onclick="F2.cat(\''+C.esc(x.c).replace(/'/g,"\\'")+'\')"><span class="l">'+C.esc(x.c)+'</span><span class="t"><i style="width:'+(Math.abs(x.v)/mx*100).toFixed(1)+'%;background:'+(x.c===F.UNKAT?"#ff9800":color)+'"></i></span><span class="v">'+C.eur(Math.abs(x.v),0)+' <span class="small muted">'+C.num(Math.abs(x.v)/tot*100,0)+" %</span></span></div>";}).join("");
 }
 function kpi(i,l,v){return '<div class="kpi"><div class="ico">'+i+'</div><div class="val">'+v+'</div><div class="lab">'+l+"</div></div>";}
 
