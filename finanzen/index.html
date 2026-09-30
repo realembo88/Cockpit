@@ -53,6 +53,12 @@
 .mnav{display:flex;align-items:center;gap:6px;background:var(--panel);border:1px solid var(--border);border-radius:10px;}
 .mnav button{background:none;border:none;color:var(--muted);font-size:19px;padding:4px 12px;cursor:pointer;}
 .mnav b{color:#fff;min-width:108px;text-align:center;font-size:14px;}
+.dchart{overflow-x:auto;margin:0 -6px;padding:0 6px;scrollbar-width:thin;}
+.dchart svg{display:block;min-width:620px;}
+.tg{border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:20px;padding:6px 12px;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;}
+.tg i{width:9px;height:9px;border-radius:50%;display:inline-block;background:var(--muted);}
+.tg.on{color:#fff;border-color:var(--tc);background:color-mix(in srgb,var(--tc) 20%,transparent);font-weight:600;}
+.tg.on i{background:var(--tc);}
 .noteline{font-size:11px;color:#f0a6ff;margin-top:4px;font-style:italic;overflow-wrap:anywhere;}
 .search{width:100%;background:var(--field);border:1px solid var(--border);border-radius:10px;padding:11px 13px;color:#fff;font-size:14px;margin-bottom:10px;}
 select.inl{background:var(--field);border:1px solid var(--border);color:#fff;border-radius:8px;padding:7px 8px;font-size:12px;max-width:100%;}
@@ -96,7 +102,7 @@ C.registerMerge(AREA,merge);
 
 var data=norm(C.getLocal(AREA,blank));
 var thisYear=new Date().getFullYear();
-var st={tab:"uebersicht",dm:null,dall:false,year:thisYear,ber:"alle",flash:null,q:"",fcat:"",fmon:"",sort:"datum",limit:80,edit:null,pending:null,pendingInfo:[]};
+var st={tab:"uebersicht",dm:null,dty:{aus:true,ein:false,neu:false},year:thisYear,ber:"alle",flash:null,q:"",fcat:"",fmon:"",sort:"datum",limit:80,edit:null,pending:null,pendingInfo:[]};
 (function(){var ys=years();if(ys.length&&ys.indexOf(thisYear)<0)st.year=ys[ys.length-1];})();
 
 function years(){var s={};data.tx.forEach(function(t){s[+t.d.slice(0,4)]=1;});return Object.keys(s).map(Number).sort();}
@@ -194,36 +200,61 @@ function vMatrix(){
 
 /* ---------- Tagesansicht ---------- */
 var WT=["So","Mo","Di","Mi","Do","Fr","Sa"];
+var DTY=[{k:"aus",l:"Ausgaben",c:"#e040fb"},{k:"ein",l:"Einnahmen",c:"#00c853"},{k:"neu",l:"Sparen / Umbuchungen",c:"#7eb8ff"}];
+function txType(t,R){return F.isNeutral(F.category(t,R),R)?"neu":(t.b<0?"aus":"ein");}
+/* Eigenes, breites Tagesdiagramm: jeder Tag beschriftet, Wochenenden hinterlegt, Balken je Buchungsart nebeneinander */
+function dayChart(y,mo,dim,series,hh){
+  var W=Math.max(620,dim*26+56),H=hh||210,pL=46,pR=10,pT=12,pB=34,iW=W-pL-pR,iH=H-pT-pB,slot=iW/dim,k=series.length;
+  var mx=0;series.forEach(function(s){s.v.forEach(function(v){if(v>mx)mx=v;});});
+  if(!mx)return '<div class="note">Keine Beträge im gewählten Monat.</div>';
+  mx*=1.12;var bw=Math.max(3,Math.min(12,(slot*0.72)/k));
+  function yy(v){return pT+iH*(1-v/mx);}
+  var o='<svg viewBox="0 0 '+W+" "+H+'" width="100%" role="img">';
+  for(var d=0;d<dim;d++){var wd=new Date(y,mo,d+1).getDay();if(wd===0||wd===6)o+='<rect x="'+(pL+slot*d)+'" y="'+pT+'" width="'+slot+'" height="'+iH+'" fill="#ffffff" fill-opacity=".045"/>';}
+  for(var g=0;g<=3;g++){var gv=mx*g/3,gy=yy(gv);o+='<line x1="'+pL+'" y1="'+gy+'" x2="'+(W-pR)+'" y2="'+gy+'" stroke="#1e2a4a" stroke-dasharray="3 3"/><text x="'+(pL-6)+'" y="'+(gy+3)+'" fill="#5c7aaa" font-size="10" text-anchor="end">'+C.int(gv)+"</text>";}
+  for(d=0;d<dim;d++){var cx=pL+slot*(d+.5),x0=cx-bw*k/2,wd2=new Date(y,mo,d+1).getDay();
+    series.forEach(function(s,j){var v=s.v[d];if(!v)return;var top=yy(v);
+      o+='<rect x="'+(x0+j*bw+.5)+'" y="'+top+'" width="'+(bw-1)+'" height="'+Math.max(1,pT+iH-top)+'" rx="2" fill="'+s.c+'"><title>'+(d+1)+". · "+C.esc(s.l)+": "+C.eur(v)+"</title></rect>";});
+    o+='<text x="'+cx+'" y="'+(H-18)+'" fill="'+((wd2===0||wd2===6)?"#8fa6cc":"#5c7aaa")+'" font-size="10" text-anchor="middle">'+(d+1)+"</text>"+
+      '<text x="'+cx+'" y="'+(H-6)+'" fill="#3d5078" font-size="8" text-anchor="middle">'+WT[wd2].charAt(0)+"</text>";}
+  return '<div class="dchart">'+o+"</svg></div>";
+}
 function vDays(){
-  var R=rules(),kf=kontenFilter(st.ber);
+  var R=rules(),kf=kontenFilter(st.ber),on=st.dty;
   if(!st.dm){var last=data.tx.reduce(function(m,t){return t.d>m?t.d:m;},"");var now=new Date().toISOString().slice(0,7);st.dm=last&&last.slice(0,7)<now?last.slice(0,7):now;}
   var y=+st.dm.slice(0,4),mo=+st.dm.slice(5,7)-1,dim=new Date(y,mo+1,0).getDate();
-  var list=data.tx.filter(function(t){if(t.d.slice(0,7)!==st.dm)return false;if(kf&&!kf[t.k])return false;
-    if(st.dall)return true;var c=F.category(t,R);return t.b<0&&!F.isNeutral(c,R);});
+  var list=data.tx.filter(function(t){if(t.d.slice(0,7)!==st.dm)return false;if(kf&&!kf[t.k])return false;return on[txType(t,R)];});
   list.sort(function(a,b){return b.d.localeCompare(a.d)||a.b-b.b;});
+  var allOn=on.aus&&on.ein&&on.neu;
   var h='<div class="filt"><div class="mnav"><button onclick="F2.dmv(-1)" aria-label="Vormonat">‹</button><b>'+new Date(y,mo,1).toLocaleDateString("de-DE",{month:"long",year:"numeric"})+'</b><button onclick="F2.dmv(1)" aria-label="Folgemonat">›</button></div>'+
     [["alle","Alle"],["privat","Privat"],["geschaeft","Geschäft"]].map(function(b){return '<button class="pill'+(st.ber===b[0]?" on":"")+'" onclick="F2.ber(\''+b[0]+'\')">'+b[1]+"</button>";}).join("")+"</div>";
-  h+='<div class="filt"><button class="pill'+(st.dall?"":" on")+'" onclick="F2.dall(false)">Nur Ausgaben</button><button class="pill'+(st.dall?" on":"")+'" onclick="F2.dall(true)">Alle Bewegungen</button></div>';
-  /* Monatskennzahlen */
-  var perDay=Array(dim).fill(0),out=0,inn=0;
-  list.forEach(function(t){var d=+t.d.slice(8,10)-1;if(t.b<0){perDay[d]+=-t.b;out+=-t.b;}else inn+=t.b;});
-  var days=perDay.filter(function(v){return v>0;}).length,maxI=perDay.indexOf(Math.max.apply(null,perDay));
-  h+='<div class="grid2" style="margin-bottom:14px">'+kpi("📤","Ausgaben im Monat",'<span class="neg">'+C.eur(out,0)+"</span>")+
-    kpi("📆","Tage mit Ausgaben",days+" von "+dim)+
-    kpi("🔝","Teuerster Tag",out?new Date(y,mo,maxI+1).toLocaleDateString("de-DE",{day:"numeric",month:"short"})+" · "+C.eur(perDay[maxI],0):"–")+
-    (st.dall?kpi("📥","Eingänge",'<span class="pos">'+C.eur(inn,0)+"</span>"):kpi("⌀","Ø pro Tag",C.eur(out/dim,0)))+"</div>";
-  if(out)h+='<div class="panel"><h3>Ausgaben pro Tag</h3>'+C.barChart(perDay.map(function(v,i){var wd=new Date(y,mo,i+1).getDay();return {label:String(i+1),value:v,color:(wd===0||wd===6)?"#7c4dff":"#e040fb"};}),{fmt:function(v){return C.eur(v);}})+'<div class="note">Wochenenden in Lila.</div></div>';
-  if(!list.length)return h+'<div class="empty">Keine '+(st.dall?"Buchungen":"Ausgaben")+" in diesem Monat.</div>";
-  /* nach Tagen gruppiert */
+  h+='<div class="filt">'+DTY.map(function(t){return '<button class="tg'+(on[t.k]?" on":"")+'" style="--tc:'+t.c+'" onclick="F2.dty(\''+t.k+'\')"><i></i>'+t.l+"</button>";}).join("")+
+    '<button class="pill'+(allOn?" on":"")+'" onclick="F2.dtyAll()">Alles</button></div>';
+  /* Summen je Art und Tag */
+  var sums={aus:0,ein:0,neu:0},per={aus:Array(dim).fill(0),ein:Array(dim).fill(0),neu:Array(dim).fill(0)},active=Array(dim).fill(false);
+  list.forEach(function(t){var ty=txType(t,R),d=+t.d.slice(8,10)-1,v=Math.abs(t.b);sums[ty]+=ty==="neu"?t.b:v;per[ty][d]+=v;active[d]=true;});
+  var kp=[];
+  if(on.aus)kp.push(kpi("📤","Ausgaben",'<span class="neg">'+C.eur(sums.aus,0)+"</span>"));
+  if(on.ein)kp.push(kpi("📥","Einnahmen",'<span class="pos">'+C.eur(sums.ein,0)+"</span>"));
+  if(on.neu)kp.push(kpi("↔️","Sparen / Umbuchungen (netto)",sEur(sums.neu,0)));
+  if(on.aus&&on.ein)kp.push(kpi("⚖️","Saldo",sEur(sums.ein-sums.aus,0)));
+  kp.push(kpi("📆","Tage mit Buchungen",active.filter(Boolean).length+" von "+dim));
+  if(on.aus&&sums.aus){var mi=per.aus.indexOf(Math.max.apply(null,per.aus));kp.push(kpi("🔝","Teuerster Tag",new Date(y,mo,mi+1).toLocaleDateString("de-DE",{day:"numeric",month:"short"})+" · "+C.eur(per.aus[mi],0)));kp.push(kpi("⌀","Ø Ausgaben pro Tag",C.eur(sums.aus/dim,0)));}
+  h+='<div class="grid2" style="margin-bottom:14px">'+kp.join("")+"</div>";
+  var series=DTY.filter(function(t){return on[t.k];}).map(function(t){return {l:t.l,c:t.c,v:per[t.k]};});
+  /* je Buchungsart ein eigenes Diagramm mit eigener Skala – sonst drückt z. B. das Gehalt die Ausgaben flach */
+  if(list.length)h+='<div class="panel">'+series.map(function(sr){return '<h3 style="color:'+sr.c+';margin-top:4px">'+sr.l+' pro Tag</h3>'+dayChart(y,mo,dim,[sr],series.length>1?170:210);}).join('<div style="height:10px"></div>')+
+    '<div class="note" style="margin-top:6px">Wochenenden hell hinterlegt. Auf dem Handy seitlich wischen, Balken antippen für den Betrag.</div></div>';
+  if(!list.length)return h+'<div class="empty">Keine passenden Buchungen in diesem Monat.</div>';
   var groups={};list.forEach(function(t){(groups[t.d]=groups[t.d]||[]).push(t);});
   h+='<div class="panel" style="padding:0 14px 4px">';
   Object.keys(groups).sort().reverse().forEach(function(d){var g=groups[d],sum=g.reduce(function(s,t){return s+t.b;},0),dt=new Date(d);
     h+='<div class="dayh"><b>'+WT[dt.getDay()]+", "+dt.toLocaleDateString("de-DE",{day:"numeric",month:"long"})+"</b>"+sEur(sum)+"</div>";
-    g.forEach(function(t){var c=F.category(t,R),ko=data.konten[t.k];
+    g.forEach(function(t){var c=F.category(t,R),ko=data.konten[t.k],ty=txType(t,R);
       h+='<div class="dtx"><div class="row"><div style="min-width:0"><div style="color:#fff;font-size:13px;overflow-wrap:anywhere">'+C.esc(t.p||t.t||"—")+'</div>'+
         '<div class="small muted" style="overflow-wrap:anywhere">'+C.esc(ko?ko.name:t.k)+(t.z?" · "+C.esc(t.z.slice(0,70)):"")+"</div>"+
         '<button class="cat'+(c===F.UNKAT?" u":"")+'" onclick="F2.cat(\''+C.esc(c).replace(/'/g,"\\'")+'\')">'+C.esc(c)+'</button></div>'+
-        '<div class="a '+(t.b<0?"neg":"pos")+'" style="font-weight:700;white-space:nowrap">'+(t.b<0?"−":"+")+C.eur(Math.abs(t.b))+"</div></div>"+
+        '<div class="a" style="font-weight:700;white-space:nowrap;color:'+(ty==="neu"?"#7eb8ff":t.b<0?"#ff8a80":"#69f0ae")+'">'+(t.b<0?"−":"+")+C.eur(Math.abs(t.b))+"</div></div>"+
         '<input class="rem" placeholder="Bemerkung …" value="'+C.esc(t.note||"")+'" onchange="F2.note(\''+t.id+'\',this.value)" enterkeyhint="done" onkeydown="if(event.key===\'Enter\')this.blur()"></div>';});
   });
   return h+"</div>";
@@ -408,7 +439,8 @@ window.F2={
       nr.words.forEach(function(w){w=String(w).toLowerCase().trim();if(w&&ex.words.indexOf(w)<0){ex.words.push(w);added++;}});});
     persist();flash("✓ "+added+" Schlüsselwörter übernommen");});},
   dmv:function(d){var y=+st.dm.slice(0,4),m=+st.dm.slice(5,7)-1+d;var dt=new Date(y,m,1);st.dm=dt.getFullYear()+"-"+("0"+(dt.getMonth()+1)).slice(-2);render();window.scrollTo(0,0);},
-  dall:function(v){st.dall=v;render();},
+  dty:function(k){var n=Object.assign({},st.dty);n[k]=!n[k];if(!n.aus&&!n.ein&&!n.neu)return;st.dty=n;render();},
+  dtyAll:function(){var all=st.dty.aus&&st.dty.ein&&st.dty.neu;st.dty=all?{aus:true,ein:false,neu:false}:{aus:true,ein:true,neu:true};render();},
   note:function(id,v){v=String(v||"").trim().slice(0,500);data.tx.forEach(function(t){if(t.id===id){if(v)t.note=v;else delete t.note;t.nt=Date.now();}});persist();C.paintStatus();},
   loadHist:function(){st.hist="loading";render();C.versions(AREA,40).then(function(v){st.hist=v;render();F2.checkAll();},function(e){st.hist={err:"Versionen konnten nicht geladen werden: "+e.message};render();});},
   checkAll:function(){ /* nacheinander prüfen, damit die API nicht überlastet wird */
