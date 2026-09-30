@@ -54,6 +54,9 @@ input[type=number]:focus{outline:none;border-color:var(--accent);box-shadow:0 0 
 .etot td{background:var(--panel2);font-weight:700;border-top:1px solid var(--border);color:#fff;}
 .etot td:first-child{background:var(--panel2);color:#fff;}
 .evm{color:#34466b!important;}
+.ecard td.est{color:#ffcc80!important;font-style:italic;}
+.ecard td.est::before{content:"≈ ";}
+.estnote{font-size:11px;color:#ffcc80;margin:-4px 0 12px;font-style:italic;}
 .einits{display:flex;flex-wrap:wrap;gap:12px;background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:14px;align-items:center;}
 .eil{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;}
 .eif{display:flex;align-items:center;gap:6px;}
@@ -454,31 +457,64 @@ function clearAll(){
 }
 
 const toN=v=>{const n=parseFloat(v);return isNaN(n)?null:n};
-function series(s,ends){const r=[];let p=toN(s);for(const e of ends){const n=toN(e);r.push(p!==null&&n!==null&&n>=p?n-p:null);if(n!==null)p=n;}return r;}
+/* Monatsverbrauch aus Zählerständen. Fehlen Stände, wird die Differenz bis zum nächsten
+   bekannten Stand auf die Lückenmonate verteilt (Gewichte: siehe wf, sonst Tage im Monat).
+   Geschätzte Monate sind in r.est markiert. */
+const DIM=(y,m)=>new Date(y,m+1,0).getDate();
+function series(s,ends,y,wf){
+  const n=ends.map(toN),r=Array(12).fill(null),est=Array(12).fill(false);
+  let p=toN(s),pIdx=-1;
+  for(let i=0;i<12;i++){
+    if(n[i]===null)continue;
+    if(p!==null&&n[i]>=p){
+      const diff=n[i]-p;
+      if(i-pIdx===1)r[i]=diff;
+      else{
+        const months=[];for(let k=pIdx+1;k<=i;k++)months.push(k);
+        let w=wf?wf(months):null;
+        if(!w||w.length!==months.length||w.some(x=>!(x>0)))w=months.map(k=>DIM(y||2001,k));
+        const tw=w.reduce((a,b)=>a+b,0);
+        months.forEach((k,j)=>{r[k]=diff*w[j]/tw;est[k]=true;});
+      }
+    }
+    p=n[i];pIdx=i;
+  }
+  r.est=est;return r;
+}
+/* Nur echte Monatswerte (Vormonat erfasst) – dient als saisonales Profil für Schätzungen */
+function exactSeries(s,ends){const n=ends.map(toN),r=[];let p=toN(s);for(let i=0;i<12;i++){r.push(p!==null&&n[i]!==null&&n[i]>=p?n[i]-p:null);p=n[i];}return r;}
+function prevProfile(y,startKey,monthKey){
+  const d=S.data[y-1];if(!d||!d.m)return null;   /* bewusst kein yd(): legt sonst leere Jahre an */
+  const ex=exactSeries(d[startKey],d.m.map(m=>m[monthKey]));
+  return months=>months.map(k=>ex[k]);
+}
 
 function cG(y){
   const d=yd(y),z=toN(S.fixed.gas_z)||0.95;
-  const vols=series(d.gas_s,d.m.map(m=>m.g));
+  const vols=series(d.gas_s,d.m.map(m=>m.g),y,prevProfile(y,'gas_s','g'));
   return vols.map((vm3,i)=>{
     const t=tariffAt('gas',y,i);
     const ap=t?toN(t.ap)/100:null,gp=t?toN(t.gp):null,bw=t?(toN(t.bw)||11.0):null;
     const v=(vm3!==null && bw!==null)?vm3*bw*z:null;
-    return{vm3,v,bw,ap:t?toN(t.ap):null,ak:v!==null&&ap?v*ap:null,gk:gp,tot:v!==null&&ap?v*ap+(gp||0):null,tariff:t};
+    return{est:vols.est[i],vm3,v,bw,ap:t?toN(t.ap):null,ak:v!==null&&ap?v*ap:null,gk:gp,tot:v!==null&&ap?v*ap+(gp||0):null,tariff:t};
   });
 }
 function cW(y){
   const d=yd(y);
-  const vols=series(d.w_s,d.m.map(m=>m.w));
+  const vols=series(d.w_s,d.m.map(m=>m.w),y,prevProfile(y,'w_s','w'));
   return vols.map((v,i)=>{
     const t=tariffAt('wasser',y,i);
     const wa=t?toN(t.wap):null,aa=t?toN(t.awap):null,gp=t?toN(t.gp):null;
-    return{v,wk:v!==null&&wa?v*wa:null,ak:v!==null&&aa?v*aa:null,gk:gp,tot:v!==null&&wa&&aa?v*wa+v*aa+(gp||0):null,tariff:t};
+    return{est:vols.est[i],v,wk:v!==null&&wa?v*wa:null,ak:v!==null&&aa?v*aa:null,gk:gp,tot:v!==null&&wa&&aa?v*wa+v*aa+(gp||0):null,tariff:t};
   });
 }
 function cS(y){
   const d=yd(y);
-  const b=series(d.stb_s,d.m.map(m=>m.sb)),e=series(d.ste_s,d.m.map(m=>m.se));
-  const dg=series(d.stdg_s,d.m.map(m=>m.sdg)),ug=series(d.stug_s,d.m.map(m=>m.sug));
+  const pvW=months=>months.map(k=>toN(d.m[k].pe));   /* Einspeisung folgt der PV-Erzeugung */
+  const eFallback=prevProfile(y,'ste_s','se');
+  const b=series(d.stb_s,d.m.map(m=>m.sb),y,prevProfile(y,'stb_s','sb')),
+        e=series(d.ste_s,d.m.map(m=>m.se),y,months=>{const w=pvW(months);return w.every(x=>x>0)?w:(eFallback?eFallback(months):null);});
+  const dg=series(d.stdg_s,d.m.map(m=>m.sdg),y,prevProfile(y,'stdg_s','sdg')),ug=series(d.stug_s,d.m.map(m=>m.sug),y,prevProfile(y,'stug_s','sug'));
   return b.map((bi,i)=>{
     const t=tariffAt('strom',y,i);
     const ap=t?toN(t.ap)/100:null,ep=t?toN(t.ep)/100:null,gp=t?toN(t.gp):null;
@@ -495,7 +531,7 @@ function cS(y){
     const aut=(ev!==null && totV!==null && totV>0)?ev/totV*100:null;
     const bk=bi!==null&&ap?bi*ap:null,ek=ei!==null&&ep?ei*ep:null;
     const evk=ev!==null&&ap?ev*ap:null;
-    return{b:bi,e:ei,pe,pas,pis,pvDir,ev,totV,aut,
+    return{bEst:b.est[i],eEst:e.est[i],dgEst:dg.est[i],ugEst:ug.est[i],b:bi,e:ei,pe,pas,pis,pvDir,ev,totV,aut,
       dg:dg[i],ug:ug[i],bk,gk:gp,ek,evk,
       net:bk!==null?bk-(ek||0)+(gp||0):null,
       dgP:dg[i]!==null&&bi?dg[i]/bi*100:null,ugP:ug[i]!==null&&bi?ug[i]/bi*100:null,tariff:t};
@@ -536,7 +572,7 @@ function si(id,v){
   else if(id==='fix_z'){S.fixed.gas_z=v;}
   scheduleSave();
 }
-function ub(){updDashboard();
+function ub(){setTimeout(markEst,0);updDashboard();
   if(S.tab==='gas')updG();
   else if(S.tab==='wasser')updW();
   else if(S.tab==='strom'){
@@ -546,6 +582,22 @@ function ub(){updDashboard();
   }
 }
 function setT(id,v){const el=document.getElementById(id);if(el)el.textContent=v;}
+/* geschätzte Monatswerte kennzeichnen (kursiv, ≈) */
+function markEst(){
+  const mk=(ids,i,on)=>ids.forEach(p=>{const el=document.getElementById(p+i);if(el)el.classList.toggle('est',!!on);});
+  if(S.tab==='gas')cG(S.year).forEach((c,i)=>mk(['gvm','gv','ga','gt'],i,c.est));
+  else if(S.tab==='wasser')cW(S.year).forEach((c,i)=>mk(['wv','wwk','wak','wt'],i,c.est));
+  else if(S.tab==='strom'){const c=cS(S.year);
+    if(S.st==='haupt')c.forEach((x,i)=>{mk(['sbv','sbk'],i,x.bEst);mk(['sev','sek','spvd','sev_all','spvk'],i,x.eEst);mk(['snet'],i,x.bEst||x.eEst);});
+    else if(S.st==='dg'||S.st==='ug')c.forEach((x,i)=>mk(['uzv','uzp'],i,S.st==='dg'?x.dgEst:x.ugEst));}
+  /* leere Zellen nicht als Schätzung markieren */
+  document.querySelectorAll('#eapp td.est').forEach(td=>{if(td.textContent.trim()==='–')td.classList.remove('est');});
+}
+function estHint(){
+  const y=S.year,g=cG(y).some(c=>c.est),w=cW(y).some(c=>c.est),st=cS(y).some(c=>c.bEst||c.eEst||c.dgEst||c.ugEst);
+  if(!g&&!w&&!st)return '';
+  return `<div class="estnote">≈ Enthält geschätzte Monate (${[g&&'Gas',w&&'Wasser',st&&'Strom'].filter(Boolean).join(', ')}): Bei fehlenden Zählerständen wird die Differenz auf die Lückenmonate verteilt.</div>`;
+}
 function updG(){const c=cG(S.year);c.forEach((ci,i)=>{setT('gvm'+i,fM(ci.vm3));setT('gv'+i,fK(ci.v));setT('ga'+i,fE(ci.ak));setT('gg'+i,fE(ci.gk));setT('gt'+i,fE(ci.tot));setT('gtr'+i,ci.tariff?fromLabel(ci.tariff.from):'–');});setT('gvmt',fM(sm(c.map(x=>x.vm3))));setT('gvt',fK(sm(c.map(x=>x.v))));setT('gat',fE(sm(c.map(x=>x.ak))));setT('ggt',fE(sm(c.map(x=>x.gk))));setT('gtt',fE(sm(c.map(x=>x.tot))));}
 function updW(){const c=cW(S.year);c.forEach((ci,i)=>{setT('wv'+i,fM(ci.v));setT('wwk'+i,fE(ci.wk));setT('wak'+i,fE(ci.ak));setT('wg'+i,fE(ci.gk));setT('wt'+i,fE(ci.tot));setT('wtr'+i,ci.tariff?fromLabel(ci.tariff.from):'–');});}
 function updS(){const c=cS(S.year);c.forEach((ci,i)=>{setT('sbv'+i,fK(ci.b));setT('sev'+i,fK(ci.e));setT('sbk'+i,fE(ci.bk));setT('sek'+i,ci.ek!==null?'+\u202f'+fE(ci.ek):'–');setT('spvk'+i,ci.evk!==null?'\u2248\u202f'+fE(ci.evk):'–');setT('snet'+i,fE(ci.net));setT('str'+i,ci.tariff?fromLabel(ci.tariff.from):'–');setT('spvd'+i,fK(ci.pvDir));setT('spas'+i,fK(ci.pas));setT('sev_all'+i,fK(ci.ev));});}
@@ -805,12 +857,12 @@ return`<div class="tariff-info" style="margin-bottom:14px">
 <td>${ni('mpe_'+i,m.pe,'0.1',85)}</td>
 <td>${ni('mpas_'+i,m.pas,'0.1',85)}</td>
 <td>${ni('mpis_'+i,m.pis,'0.1',85)}</td>
-<td class="evm">${fK(ci.e)}</td>
-<td style="${ci.pvDir!==null?'color:'+C.pv:''}" class="${ci.pvDir===null?'evm':''}">${fK(ci.pvDir)}</td>
-<td style="${ci.ev!==null?'color:'+C.pv+';font-weight:600':''}" class="${ci.ev===null?'evm':''}">${fK(ci.ev)}</td>
-<td class="evm">${fK(ci.b)}</td>
-<td class="${ci.totV===null?'evm':''}">${fK(ci.totV)}</td>
-<td class="${ci.aut===null?'evm':''}" style="${ci.aut!==null?'color:'+C.pv:''}">${fP(ci.aut)}</td></tr>`}).join('')}</tbody>
+<td class="evm${ci.eEst?' est':''}">${fK(ci.e)}</td>
+<td style="${ci.pvDir!==null?'color:'+C.pv:''}" class="${ci.pvDir===null?'evm':''}${ci.eEst?' est':''}">${fK(ci.pvDir)}</td>
+<td style="${ci.ev!==null?'color:'+C.pv+';font-weight:600':''}" class="${ci.ev===null?'evm':''}${ci.eEst?' est':''}">${fK(ci.ev)}</td>
+<td class="evm${ci.bEst?' est':''}">${fK(ci.b)}</td>
+<td class="${ci.totV===null?'evm':''}${ci.bEst||ci.eEst?' est':''}">${fK(ci.totV)}</td>
+<td class="${ci.aut===null?'evm':''}${ci.bEst||ci.eEst?' est':''}" style="${ci.aut!==null?'color:'+C.pv:''}">${fP(ci.aut)}</td></tr>`}).join('')}</tbody>
 <tfoot><tr class="etot"><td>Gesamt ${yr}</td><td>${fK(tPE)}</td><td>${fK(tPAS)}</td><td>${fK(tPIS)}</td><td>${fK(tE)}</td><td>${fK(tPVD)}</td><td>${fK(tEV)}</td><td>${fK(tB)}</td><td>${fK(tV)}</td><td>${fP(yAut)}</td></tr></tfoot></table></div>
 <div class="efn"><b>Erzeugung</b>: Was die PV-Anlage gesamt produziert hat · <b>Aus Speicher</b>: Speicher-Entladung in den Hausverbrauch · <b>In Speicher</b>: Speicher-Beladung aus PV.<br>Berechnet: <b>PV direkt</b> = Erzeugung − Einspeisung − In Speicher · <b>EV gesamt</b> = PV direkt + Aus Speicher · <b>Autarkie</b> = EV gesamt ÷ (Bezug + EV gesamt).</div>
 ${savebar()}`;}
@@ -858,14 +910,15 @@ function yearBar(){
 function rApp(){
   const tabs=[{id:'uebersicht',lbl:'📊 Übersicht'},{id:'gas',lbl:'Gas',c:'gas'},{id:'wasser',lbl:'Wasser',c:'wat'},{id:'strom',lbl:'Strom',c:'stb'},{id:'preise',lbl:'⚙️ Tarife'},{id:'daten',lbl:'💾 Daten'}];
   let cnt='';
-  if(S.tab==='uebersicht')cnt=yearBar()+`<div id="dashContainer">${rDashboard()}</div>`;
-  else if(S.tab==='gas')cnt=yearBar()+rGas();
-  else if(S.tab==='wasser')cnt=yearBar()+rWas();
-  else if(S.tab==='strom')cnt=yearBar()+rStrom();
+  if(S.tab==='uebersicht')cnt=yearBar()+estHint()+`<div id="dashContainer">${rDashboard()}</div>`;
+  else if(S.tab==='gas')cnt=yearBar()+estHint()+rGas();
+  else if(S.tab==='wasser')cnt=yearBar()+estHint()+rWas();
+  else if(S.tab==='strom')cnt=yearBar()+estHint()+rStrom();
   else if(S.tab==='preise')cnt=`<span class="esmsg" id="esmsg"></span>`+rPreise();
   else cnt=`<span class="esmsg" id="esmsg"></span>`+rData();
   document.getElementById('tabs').innerHTML=tabs.map(t=>`<button class="tab${S.tab===t.id?' on':''}" onclick="stab('${t.id}')">${t.c?dot(C[t.c])+' ':''}${t.lbl}</button>`).join('');
   document.getElementById('eapp').innerHTML=cnt;
+  markEst();
   if(S.tab==='uebersicht')setTimeout(doCharts,40);
 }
 function stab(t){S.tab=t;rApp();window.scrollTo(0,0);}
