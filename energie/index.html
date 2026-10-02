@@ -368,7 +368,8 @@ function aggregateCsv(text){
       dt_h=5/60;  /* letzte Zeile */
     }
     const key=t.getFullYear()+'-'+t.getMonth();  /* 0-indexed */
-    if(!monthly[key])monthly[key]={pe:0,pas:0,pis:0,bezug:0,einsp:0,hv:0,hasHv:idx.hv>=0,hasB:idx.bezug>=0};
+    if(!monthly[key])monthly[key]={pe:0,pas:0,pis:0,bezug:0,einsp:0,hv:0,hasHv:idx.hv>=0,hasB:idx.bezug>=0,tMin:t.getTime(),tMax:t.getTime()};
+    monthly[key].tMin=Math.min(monthly[key].tMin,t.getTime());monthly[key].tMax=Math.max(monthly[key].tMax,t.getTime());
     const m=monthly[key];
     m.pe   += parseCsvNum(c[idx.pv])*dt_h;
     m.bezug+= parseCsvNum(c[idx.bezug])*dt_h;
@@ -380,82 +381,73 @@ function aggregateCsv(text){
   return monthly;
 }
 
-let csvProcessing=0,csvAggregated={},csvErrors=[];
+let csvProcessing=0,csvParts=[],csvErrors=[];
 function handleCsv(ev){
   const files=ev.target.files;
   if(!files.length)return;
-  csvAggregated={};csvErrors=[];csvProcessing=files.length;
-  const accu=document.getElementById('csvAccu')?.checked;
+  csvParts=[];csvErrors=[];csvProcessing=files.length;
   csvStatus(`Verarbeite ${files.length} Datei(en)…`);
   for(const f of files){
     const reader=new FileReader();
     reader.onload=e=>{
-      try{
-        const mAgg=aggregateCsv(e.target.result);
-        /* In csvAggregated mergen */
-        for(const k in mAgg){
-          if(!csvAggregated[k])csvAggregated[k]={pe:0,pas:0,pis:0,bezug:0,einsp:0,hv:0,hasHv:false,hasB:false,_files:0};
-          csvAggregated[k].hv+=mAgg[k].hv;csvAggregated[k].hasHv=csvAggregated[k].hasHv||mAgg[k].hasHv;csvAggregated[k].hasB=csvAggregated[k].hasB||mAgg[k].hasB;
-          csvAggregated[k].pe   += mAgg[k].pe;
-          csvAggregated[k].pas  += mAgg[k].pas;
-          csvAggregated[k].pis  += mAgg[k].pis;
-          csvAggregated[k].bezug+= mAgg[k].bezug;
-          csvAggregated[k].einsp+= mAgg[k].einsp;
-          csvAggregated[k]._files+=1;
-        }
-      }catch(err){csvErrors.push(f.name+': '+err.message);}
-      csvProcessing--;
-      if(csvProcessing===0)finishCsvImport(accu);
+      try{const mAgg=aggregateCsv(e.target.result);for(const k in mAgg)csvParts.push(Object.assign({k,file:f.name},mAgg[k]));}
+      catch(err){csvErrors.push(f.name+': '+err.message);}
+      if(--csvProcessing===0)finishCsvImport();
     };
-    reader.onerror=()=>{
-      csvErrors.push(f.name+': Lesefehler');
-      csvProcessing--;
-      if(csvProcessing===0)finishCsvImport(accu);
-    };
+    reader.onerror=()=>{csvErrors.push(f.name+': Lesefehler');if(--csvProcessing===0)finishCsvImport();};
     reader.readAsText(f,'utf-8');
   }
   ev.target.value='';
 }
-function finishCsvImport(accu){
+/* Import ohne Doppelzählung:
+   Pro Monat werden die importierten Zeiträume (z. B. Kalenderwochen) einzeln gemerkt (m.src).
+   Gleicher Zeitraum erneut importiert → ersetzt sich selbst. Monatswerte = Summe der Zeiträume.
+   Bereits vorhandene Monatswerte (aus früheren Importen oder von Hand) werden erst ersetzt,
+   wenn der Monat vollständig abgedeckt ist – so überschreiben z. B. drei Tage nicht den ganzen Monat. */
+const SLOT=5*60000;
+function monthCoverage(y,m,src){
+  const start=new Date(y,m,1).getTime(),end=new Date(y,m+1,1).getTime(),list=Object.values(src);
+  if(!list.length)return {complete:false,days:0};
+  const t0=Math.min(...list.map(x=>x.t0)),t1=Math.max(...list.map(x=>x.t1));
+  const covered=list.reduce((a,x)=>a+(x.t1-x.t0+SLOT),0);
+  return {complete:t0<=start+30*60000&&t1>=end-30*60000&&covered>=end-start-3*3600000,days:covered/86400000};
+}
+function finishCsvImport(){
   if(csvErrors.length){csvStatus('⚠ Fehler: '+csvErrors.join(' | '),true);return;}
-  const keys=Object.keys(csvAggregated);
-  if(!keys.length){csvStatus('⚠ Keine Daten gefunden',true);return;}
-  /* Bestätigung */
-  const summary=keys.sort().map(k=>{
-    const[y,m]=k.split('-').map(Number);
-    const a=csvAggregated[k];
-    return `${MO[m]} ${y}: PV ${a.pe.toFixed(0)} · Sp.bel ${a.pis.toFixed(0)} · Sp.entl ${a.pas.toFixed(0)}${a.hasHv?' · Haus '+a.hv.toFixed(0):''} kWh`;
-  }).join('\n');
-  const action=accu?'ADDIEREN zu':'ERSETZEN der';
-  if(!confirm(`CSV-Import: ${action} bestehenden Werte für folgende Monate?\n\n${summary}\n\nFortfahren?`))
-    {csvStatus('Abgebrochen.');return;}
-  /* In S.data einfügen */
-  let count=0;
-  for(const k of keys){
-    const[y,m]=k.split('-').map(Number);
-    const yr=yd(y);
-    const a=csvAggregated[k];
-    const round=v=>Math.round(v*10)/10; /* 1 Nachkommastelle */
-    if(accu){
-      yr.m[m].pe =((parseFloat(yr.m[m].pe) ||0)+a.pe ).toFixed(1).replace(/\.0$/,'');
-      yr.m[m].pas=((parseFloat(yr.m[m].pas)||0)+a.pas).toFixed(1).replace(/\.0$/,'');
-      yr.m[m].pis=((parseFloat(yr.m[m].pis)||0)+a.pis).toFixed(1).replace(/\.0$/,'');
-      if(a.hasHv)yr.m[m].hv=((parseFloat(yr.m[m].hv)||0)+a.hv).toFixed(1).replace(/\.0$/,'');
-      yr.m[m].xe=((parseFloat(yr.m[m].xe)||0)+a.einsp).toFixed(1).replace(/\.0$/,'');
-      if(a.hasB)yr.m[m].xb=((parseFloat(yr.m[m].xb)||0)+a.bezug).toFixed(1).replace(/\.0$/,'');
-    }else{
-      yr.m[m].pe =round(a.pe ).toString();
-      yr.m[m].pas=round(a.pas).toString();
-      yr.m[m].pis=round(a.pis).toString();
-      /* gemessener Hausverbrauch und Netzwerte laut SENEC */
-      if(a.hasHv)yr.m[m].hv=round(a.hv).toString();
-      yr.m[m].xe=round(a.einsp).toString();
-      if(a.hasB)yr.m[m].xb=round(a.bezug).toString();
-    }
-    count++;
-  }
-  scheduleSave();
-  csvStatus(`✓ ${count} Monat(e) importiert und gespeichert.`);
+  if(!csvParts.length){csvStatus('⚠ Keine Daten gefunden',true);return;}
+  const byMonth={};csvParts.forEach(p=>(byMonth[p.k]=byMonth[p.k]||[]).push(p));
+  const keys=Object.keys(byMonth).sort((a,b)=>{const[ya,ma]=a.split('-').map(Number),[yb,mb]=b.split('-').map(Number);return ya-yb||ma-mb;});
+  /* Vorschau berechnen, ohne zu speichern */
+  const plan=keys.map(k=>{
+    const[y,m]=k.split('-').map(Number),cur=(S.data[y]&&S.data[y].m[m])||{};
+    const src=JSON.parse(JSON.stringify(cur.src||{}));let skipped=0;
+    byMonth[k].forEach(p=>{
+      const key=p.tMin+'-'+p.tMax,entry={t0:p.tMin,t1:p.tMax,pe:p.pe,pas:p.pas,pis:p.pis,hv:p.hasHv?p.hv:null,xe:p.einsp,xb:p.hasB?p.bezug:null};
+      if(src[key]){src[key]=entry;return;}
+      /* liegt der neue Zeitraum innerhalb eines vorhandenen → schon enthalten */
+      if(Object.values(src).some(x=>x.t0<=p.tMin&&x.t1>=p.tMax)){skipped++;return;}
+      /* vorhandene Zeiträume, die ganz im neuen liegen, werden ersetzt */
+      Object.keys(src).forEach(q=>{if(src[q].t0>=p.tMin&&src[q].t1<=p.tMax)delete src[q];});
+      /* teilweise Überlappung → zur Sicherheit nicht übernehmen */
+      if(Object.values(src).some(x=>x.t0<p.tMax&&x.t1>p.tMin)){skipped++;return;}
+      src[key]=entry;});
+    const cov=monthCoverage(y,m,src);
+    const legacy=!cur.srcApplied&&['pe','pas','pis'].some(f=>cur[f]!==undefined&&cur[f]!=='');
+    const apply=cov.complete||!legacy;
+    return {k,y,m,src,cov,legacy,apply,skipped};
+  });
+  const sumSrc=(src,f)=>{const v=Object.values(src);if(v.some(x=>x[f]==null))return null;return v.reduce((a,x)=>a+x[f],0);};
+  const line=p=>`${MO[p.m]} ${p.y}: ${p.apply?(p.cov.complete?'✓ vollständig':'◐ teilweise ('+Math.round(p.cov.days)+' Tage)')+` – PV ${Math.round(sumSrc(p.src,'pe'))}`+(sumSrc(p.src,'hv')!=null?` · Haus ${Math.round(sumSrc(p.src,'hv'))}`:'')+' kWh':`⏸ bisherige Werte bleiben, bis der Monat vollständig ist (bisher ${Math.round(p.cov.days)} Tage)`}`;
+  if(!confirm(`CSV-Import:\n\n${plan.map(line).join('\n')}\n\nJeder Zeitraum zählt nur einmal – erneutes Importieren ist unbedenklich.\n\nFortfahren?`)){csvStatus('Abgebrochen.');return;}
+  const r1=v=>v==null?'':(Math.round(v*10)/10).toString();
+  let done=0,pending=0;
+  plan.forEach(p=>{
+    const mm=yd(p.y).m[p.m];mm.src=p.src;
+    if(p.apply){['pe','pas','pis','hv','xe','xb'].forEach(f=>{const v=sumSrc(p.src,f);if(v!=null)mm[f]=r1(v);});mm.srcApplied=true;done++;}
+    else pending++;
+  });
+  saveState(false);
+  csvStatus(`✓ ${done} Monat(e) übernommen`+(pending?` · ${pending} Monat(e) warten auf die restlichen Wochen`:'')+'.');
   rApp();
 }
 
@@ -884,7 +876,7 @@ return`<div class="tariff-info" style="margin-bottom:14px">
   Lädt eine oder mehrere CSV-Dateien (5-Minuten-Werte in kW) und aggregiert sie automatisch zu Monatssummen.
   <span style="display:block;margin-top:6px">
     <button class="btn btn-pri" onclick="triggerCsvImport()" style="margin-right:8px">📂 CSV-Datei(en) wählen</button>
-    <label style="font-size:11px;color:#8fa6cc"><input type="checkbox" id="csvAccu" checked style="vertical-align:middle"> An vorhandene Monatswerte addieren (für mehrere Wochen-CSVs eines Monats)</label>
+    <span style="font-size:11px;color:#8fa6cc">Wochen-CSVs einfach alle auswählen – jeder Zeitraum zählt nur einmal, erneutes Importieren ist unbedenklich.</span>
     <input type="file" id="csvInput" accept=".csv,text/csv" multiple onchange="handleCsv(event)">
   </span>
   <span id="csvStatus" style="display:block;margin-top:6px;font-family:ui-monospace,monospace;font-size:11px;color:#7eb8ff"></span>
