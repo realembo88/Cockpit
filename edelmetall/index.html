@@ -119,7 +119,15 @@ function dayChange(id){var ds=histDates();if(ds.length<2)return null;var a=data.
 
 /* ---------- Kurse laden ---------- */
 function getJ(u){return fetch(u,{cache:"no-store"}).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;});}
-function loadFx(){return getJ("https://api.frankfurter.app/latest?from=USD&to=EUR").then(function(j){return j&&j.rates&&j.rates.EUR||null;});}
+/* Wechselkurs USD→EUR: neue Frankfurter-Adresse, alte als Ersatz; sonst letzter bekannter Kurs */
+function loadFx(){
+  var urls=["https://api.frankfurter.dev/v1/latest?base=USD&symbols=EUR","https://api.frankfurter.app/latest?from=USD&to=EUR"];
+  function tryU(i){if(i>=urls.length)return Promise.resolve(null);
+    return getJ(urls[i]).then(function(j){var v=j&&j.rates&&j.rates.EUR;return v>0?v:tryU(i+1);});}
+  return tryU(0);
+}
+function lastFx(){if(st.prices&&st.prices.fx)return {fx:st.prices.fx,old:true};var ds=Object.keys(data.history).sort();
+  for(var i=ds.length-1;i>=0;i--){var h=data.history[ds[i]];if(h&&h.fx)return {fx:h.fx,old:true,date:ds[i]};}return null;}
 function loadMetal(sym){return getJ("https://api.gold-api.com/price/"+sym).then(function(j){return j&&typeof j.price==="number"&&j.price>0?j.price:null;});}
 function loadStock(){
   var sym="GME",yurl="https://query1.finance.yahoo.com/v8/finance/chart/"+sym+"?interval=1d&range=1mo";
@@ -146,15 +154,19 @@ function refresh(){
   if(st.loading)return;
   st.loading=true;render();
   Promise.all([loadFx()].concat(METALS.map(function(m){return loadMetal(m.sym);})).concat([loadStock()])).then(function(r){
-    var fx=r[0],usd={},ok=false;
+    var fx=r[0],usd={},ok=false,fxOld=false;
     METALS.forEach(function(m,i){if(r[i+1]!=null){usd[m.id]=r[i+1];ok=true;}});
+    if(ok&&!fx){var lf=lastFx();if(lf){fx=lf.fx;fxOld=true;}}   /* Wechselkurs-Dienst aus → letzter bekannter Kurs */
+    st.fxOld=fxOld;st.diag={fx:!!r[0],metal:ok};
     if(ok&&fx){
       st.prices={ts:Date.now(),fx:fx,usd:usd};st.priceErr=false;localSet(LOCAL_PRICE_KEY,st.prices);
       var today=C.today(),gme=st.stock.GME&&st.stock.GME.price;
       var snap={fx:+fx.toFixed(5),usd:{}};METALS.forEach(function(m){if(usd[m.id])snap.usd[m.id]=+usd[m.id].toFixed(3);});if(gme)snap.gme=+gme.toFixed(3);
       /* höchstens ein Schnappschuss pro Tag im gemeinsamen Datensatz – hält die Sync schlank */
       var hasPos=METALS.some(function(m){return items(null,m.id).length;});
-      if(hasPos&&!data.history[today]){data.history[today]=snap;persist();}
+      if(hasPos&&!data.history[today]&&!fxOld){data.history[today]=snap;data._sumTs=Date.now();persist();}
+      /* Startseiten-Kachel aktuell halten – höchstens alle 6 Stunden, damit die Sync nicht ständig schreibt */
+      else if(hasPos&&(!data._summary||data._summary.k==="—"||Date.now()-(data._sumTs||0)>6*3600e3)){data._sumTs=Date.now();persist();}
     }else st.priceErr=true;
     st.loading=false;render();
   },function(){st.loading=false;st.priceErr=true;render();});
@@ -181,7 +193,8 @@ function vDash(){
   var t=totals(null),has=METALS.some(function(m){return items(null,m.id).length;});
   var h="";
   if(!has)return '<div class="empty"><div class="big">🪙</div>Noch kein Bestand erfasst.<br><span class="small">Spiel deine Bestandsdatei unter <b>💾 Daten</b> ein.</span><br><button class="btn" style="margin-top:14px" onclick="E.tab(\'daten\')">Zum Import</button></div>';
-  if(st.priceErr)h+='<div class="banner">⚠ Die Kursquelle ist gerade nicht erreichbar. '+(st.prices?"Angezeigt wird der letzte bekannte Kurs – siehe Datum.":"Es liegt noch kein Kurs vor.")+"</div>";
+  if(st.priceErr)h+='<div class="banner">⚠ '+(st.diag&&!st.diag.metal?"Die Metallkurse (gold-api.com) sind gerade nicht erreichbar. ":"Die Kursquelle ist gerade nicht erreichbar. ")+(st.prices?"Angezeigt wird der letzte bekannte Kurs – siehe Datum.":"Es liegt noch kein Kurs vor.")+' <a href="#" onclick="E.refresh();return false" style="color:#ffcc80">Erneut versuchen</a></div>';
+  else if(st.fxOld)h+='<div class="banner">ℹ Der Wechselkurs-Dienst antwortet gerade nicht – gerechnet wird mit dem letzten bekannten Dollarkurs.</div>';
   var pl=t.v!=null?t.v-t.c:null;
   h+='<div class="hero2"><div class="lab">Portfoliowert Edelmetalle</div><div class="big">'+(t.v!=null?C.eur(t.v):"—")+'</div>'+
     '<div class="small"><span class="muted">Einkauf '+C.eur(t.c)+"</span>"+(pl!=null?' · <b class="'+(pl>=0?"pos":"neg")+'">'+signEur(pl)+(t.c?" ("+(pl>=0?"+":"−")+C.num(Math.abs(pl/t.c*100),1)+" %)":"")+"</b>":"")+"</div>"+
