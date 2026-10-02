@@ -485,17 +485,27 @@ function series(s,ends,y,wf){
   }
   r.est=est;return r;
 }
+/* Anfangsstand eines Jahres: eingetragener Wert, sonst der Dezember-Stand des Vorjahres */
+const START_MAP={gas_s:'g',w_s:'w',stb_s:'sb',ste_s:'se',stdg_s:'sdg',stug_s:'sug'};
+function startVal(y,key){
+  const d=S.data[y];const own=d?d[key]:'';
+  if(own!==undefined&&own!==null&&String(own).trim()!=='')return own;
+  const p=S.data[y-1];if(!p||!p.m||!p.m[11])return own;
+  const dec=p.m[11][START_MAP[key]];
+  return (dec!==undefined&&dec!==null&&String(dec).trim()!=='')?dec:own;
+}
+function startCarried(y,key){const d=S.data[y];return !(d&&d[key]&&String(d[key]).trim()!=='')&&startVal(y,key)!==(d?d[key]:undefined)&&toN(startVal(y,key))!==null;}
 /* Nur echte Monatswerte (Vormonat erfasst) – dient als saisonales Profil für Schätzungen */
 function exactSeries(s,ends){const n=ends.map(toN),r=[];let p=toN(s);for(let i=0;i<12;i++){r.push(p!==null&&n[i]!==null&&n[i]>=p?n[i]-p:null);p=n[i];}return r;}
 function prevProfile(y,startKey,monthKey){
   const d=S.data[y-1];if(!d||!d.m)return null;   /* bewusst kein yd(): legt sonst leere Jahre an */
-  const ex=exactSeries(d[startKey],d.m.map(m=>m[monthKey]));
+  const ex=exactSeries(startVal(y-1,startKey),d.m.map(m=>m[monthKey]));
   return months=>months.map(k=>ex[k]);
 }
 
 function cG(y){
   const d=yd(y),z=toN(S.fixed.gas_z)||0.95;
-  const vols=series(d.gas_s,d.m.map(m=>m.g),y,prevProfile(y,'gas_s','g'));
+  const vols=series(startVal(y,'gas_s'),d.m.map(m=>m.g),y,prevProfile(y,'gas_s','g'));
   return vols.map((vm3,i)=>{
     const t=tariffAt('gas',y,i);
     const ap=t?toN(t.ap)/100:null,gp=t?toN(t.gp):null,bw=t?(toN(t.bw)||11.0):null;
@@ -505,7 +515,7 @@ function cG(y){
 }
 function cW(y){
   const d=yd(y);
-  const vols=series(d.w_s,d.m.map(m=>m.w),y,prevProfile(y,'w_s','w'));
+  const vols=series(startVal(y,'w_s'),d.m.map(m=>m.w),y,prevProfile(y,'w_s','w'));
   return vols.map((v,i)=>{
     const t=tariffAt('wasser',y,i);
     const wa=t?toN(t.wap):null,aa=t?toN(t.awap):null,gp=t?toN(t.gp):null;
@@ -529,8 +539,15 @@ function cS(y){
   const pvW=months=>months.map(k=>toN(d.m[k].pe));   /* Einspeisung folgt der PV-Erzeugung */
   const xeW=months=>months.map(k=>toN(d.m[k].xe));   /* … oder besser der von SENEC gemessenen Einspeisung */
   const eFallback=prevProfile(y,'ste_s','se');
-  const b=series(d.stb_s,d.m.map(m=>m.sb),y,prevProfile(y,'stb_s','sb')),
-        e=series(d.ste_s,d.m.map(m=>m.se),y,months=>{const x=xeW(months);if(x.every(v=>v>0))return x;const w=pvW(months);return w.every(v=>v>0)?w:(eFallback?eFallback(months):null);});
+  const b=series(startVal(y,'stb_s'),d.m.map(m=>m.sb),y,prevProfile(y,'stb_s','sb')),
+        e=series(startVal(y,'ste_s'),d.m.map(m=>m.se),y,months=>{
+          const x=xeW(months),w=pvW(months);
+          if(x.every(v=>v>0))return x;
+          /* einzelne Monate ohne SENEC-Werte: aus der Erzeugung schätzen – mit dem Verhältnis
+             Einspeisung/Erzeugung, das SENEC in den übrigen Monaten der Lücke gemessen hat */
+          if(w.every(v=>v>0)){let sx=0,sw=0;months.forEach((k,j)=>{if(x[j]>0){sx+=x[j];sw+=w[j];}});
+            if(sw>0)return months.map((k,j)=>x[j]>0?x[j]:w[j]*sx/sw);return w;}
+          return eFallback?eFallback(months):null;});
   /* Ohne Zählerstände (z. B. fehlender Anfangsstand): SENEC-Einspeisung als Schätzung einsetzen */
   for(let i=0;i<12;i++){if(e[i]===null){const xe=toN(d.m[i].xe);if(xe!==null){e[i]=xe;e.est[i]=true;}}}
   /* Gesamtverbrauch des Hauses je Monat – dient als Verlaufsprofil, wenn Unterzähler-Stände fehlen */
@@ -540,7 +557,7 @@ function cS(y){
     const hv=toN(d.m[i].hv);if(hv!==null&&hv>0)return hv;
     return (bi!==null&&ev!==null)?bi+ev:null;});
   const uzW=(sK,mK)=>{const pp=prevProfile(y,sK,mK);return months=>{const w=months.map(k=>houseV[k]);return w.every(x=>x>0)?w:(pp?pp(months):null);};};
-  const dg=series(d.stdg_s,d.m.map(m=>m.sdg),y,uzW('stdg_s','sdg')),ug=series(d.stug_s,d.m.map(m=>m.sug),y,uzW('stug_s','sug'));
+  const dg=series(startVal(y,'stdg_s'),d.m.map(m=>m.sdg),y,uzW('stdg_s','sdg')),ug=series(startVal(y,'stug_s'),d.m.map(m=>m.sug),y,uzW('stug_s','sug'));
   const hasWB=S.wb&&S.wb.sessions&&S.wb.sessions.length>0;
   return b.map((bi,i)=>{
     const t=tariffAt('strom',y,i);
@@ -614,7 +631,14 @@ function ub(){setTimeout(markEst,0);updDashboard();
 }
 function setT(id,v){const el=document.getElementById(id);if(el)el.textContent=v;}
 /* geschätzte Monatswerte kennzeichnen (kursiv, ≈) */
+function showCarried(){
+  const ids={i_gas:'gas_s',i_was:'w_s',i_stb:'stb_s',i_ste:'ste_s',i_dg:'stdg_s',i_ug:'stug_s'};
+  Object.keys(ids).forEach(id=>{const el=document.getElementById(id);if(!el)return;
+    if(startCarried(S.year,ids[id])){el.placeholder=startVal(S.year,ids[id]);el.title='Übernommen aus Dezember '+(S.year-1)+' – eigener Wert hat Vorrang';el.style.borderColor='#ffcc8066';}
+    else{el.placeholder='';el.title='';el.style.borderColor='';}});
+}
 function markEst(){
+  showCarried();
   const mk=(ids,i,on)=>ids.forEach(p=>{const el=document.getElementById(p+i);if(el)el.classList.toggle('est',!!on);});
   if(S.tab==='gas')cG(S.year).forEach((c,i)=>mk(['gvm','gv','ga','gt'],i,c.est));
   else if(S.tab==='wasser')cW(S.year).forEach((c,i)=>mk(['wv','wwk','wak','wt'],i,c.est));
