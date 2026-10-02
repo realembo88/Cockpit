@@ -704,9 +704,12 @@ function rDashboard(){
     <div class="ecw"><div class="ecw-t"><span>Jahresvergleich ${pyr} ↔ ${yr}</span>
       <div class="eleg" style="margin:0;font-size:10px"><div class="eli"><div class="els" style="background:${C.tx}"></div>${pyr}</div><div class="eli"><div class="els" style="background:${C.cur}"></div>${yr}</div></div>
     </div><div class="canvas-wrap"><canvas id="chComp"></canvas></div></div>
-    <div class="ecw ch-big"><div class="ecw-t"><span>Verbrauchsentwicklung über 12 Monate (kumulativ)</span>
-      <div class="eleg" style="margin:0"><div class="eli"><div class="els" style="background:${C.gas}"></div>Gas (kWh)</div><div class="eli"><div class="els" style="background:${C.stb}"></div>Strombezug (kWh)</div><div class="eli"><div class="els" style="background:${C.wat}"></div>Wasser (m³ × 100)</div></div>
-    </div><div class="canvas-wrap" style="height:200px"><canvas id="chTrend"></canvas></div></div>
+    <div class="ecw ch-big"><div class="ecw-t"><span>Verbrauchsentwicklung ${yr} (kumulativ) – jede Größe mit eigener Skala</span></div>
+      <div class="cg" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr))">
+        <div><div class="eleg" style="margin:0 0 4px"><div class="eli"><div class="els" style="background:${C.gas}"></div>Gas (kWh)</div></div><div class="canvas-wrap" style="height:170px"><canvas id="chTrendG"></canvas></div></div>
+        <div><div class="eleg" style="margin:0 0 4px"><div class="eli"><div class="els" style="background:${C.stb}"></div>Strombezug</div><div class="eli"><div class="els" style="background:${C.pv}"></div>Hausverbrauch gesamt (kWh)</div></div><div class="canvas-wrap" style="height:170px"><canvas id="chTrendS"></canvas></div></div>
+        <div><div class="eleg" style="margin:0 0 4px"><div class="eli"><div class="els" style="background:${C.wat}"></div>Wasser (m³)</div></div><div class="canvas-wrap" style="height:170px"><canvas id="chTrendW"></canvas></div></div>
+      </div></div>
   </div>
 </div>`;
 }
@@ -752,15 +755,15 @@ function doCharts(){
     {label:String(pyr),data:pv,backgroundColor:C.tx},
     {label:String(yr),data:cv,backgroundColor:C.cur}]},
     options:{...base,scales:{...base.scales,y:{...base.scales.y,ticks:{...base.scales.y.ticks,callback:v=>v+'€'}}}}});
-  let gCum=0,sCum=0,wCum=0;
-  const gT=a.gc.map(c=>{if(c.v!==null)gCum+=c.v;return c.v!==null?gCum:null});
-  const sT=a.sc.map(c=>{if(c.b!==null)sCum+=c.b;return c.b!==null?sCum:null});
-  const wT=a.wc.map(c=>{if(c.v!==null)wCum+=c.v;return c.v!==null?wCum*100:null});
-  mkC('chTrend',{type:'line',data:{labels:MO,datasets:[
-    {label:'Gas',data:gT,borderColor:C.gas,backgroundColor:C.gas+'33',tension:.3,fill:false,pointRadius:3},
-    {label:'Strom',data:sT,borderColor:C.stb,backgroundColor:C.stb+'33',tension:.3,fill:false,pointRadius:3},
-    {label:'Wasser×100',data:wT,borderColor:C.wat,backgroundColor:C.wat+'33',tension:.3,fill:false,pointRadius:3}]},
-    options:{...base,scales:{...base.scales,y:{...base.scales.y,ticks:{...base.scales.y.ticks,callback:v=>v.toLocaleString('de-DE')}}}}});
+  /* kumulierte Reihen; Monate ohne Wert unterbrechen die Linie nicht, sondern bleiben leer */
+  const cum=arr=>{let s=0;return arr.map(v=>{if(v===null||v===undefined)return null;s+=v;return Math.round(s*10)/10;});};
+  const gT=cum(a.gc.map(c=>c.v)),sT=cum(a.sc.map(c=>c.b)),hT=cum(a.sc.map(c=>c.totV)),wT=cum(a.wc.map(c=>c.vm3!==undefined?c.vm3:c.v));
+  const tOpt=unit=>({...base,plugins:{...base.plugins,legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.dataset.label+': '+(ctx.parsed.y||0).toLocaleString('de-DE',{maximumFractionDigits:1})+' '+unit}}},
+    scales:{...base.scales,y:{...base.scales.y,beginAtZero:true,ticks:{...base.scales.y.ticks,callback:v=>v.toLocaleString('de-DE')}}}});
+  const ln=(label,data,col,dash)=>({label,data,borderColor:col,backgroundColor:col+'33',tension:.3,fill:false,pointRadius:2,spanGaps:true,borderDash:dash||[]});
+  mkC('chTrendG',{type:'line',data:{labels:MO,datasets:[ln('Gas',gT,C.gas)]},options:tOpt('kWh')});
+  mkC('chTrendS',{type:'line',data:{labels:MO,datasets:[ln('Hausverbrauch',hT,C.pv,[4,3]),ln('Strombezug',sT,C.stb)]},options:tOpt('kWh')});
+  mkC('chTrendW',{type:'line',data:{labels:MO,datasets:[ln('Wasser',wT,C.wat)]},options:tOpt('m³')});
 }
 
 function rTariffBlock(kind){
@@ -1001,18 +1004,31 @@ function rStromVT(){
   const rows=c.map(ci=>{
     const parts=[ci.dg,ci.ug].concat(useWB?[ci.wb||0]:[]);
     const rest=(ci.totV!==null&&parts.every(v=>v!==null))?ci.totV-parts.reduce((a,b)=>a+b,0):null;
-    return Object.assign({rest,restP:(rest!==null&&ci.totV)?rest/ci.totV*100:null},ci);});
-  const tot=k=>sm(rows.map(r=>r[k]));
-  const tT=tot('totV'),tR=tot('rest');
+    return Object.assign({},ci,{rest,wb:useWB?(ci.wb||0):null});});
+  const KEYS=[['dg','DG','#C084FC'],['ug','UG','#22B8CF']].concat(useWB?[['wb','Wallbox','#F97316']]:[]).concat([['rest','Hauptwohnung','#FACC15']]);
+  /* Anteil am Hausverbrauch je Zelle */
+  const pct=(v,t)=>(v!==null&&v!==undefined&&t)?`<span class="vtp">${fN(v/t*100,1)} %</span>`:'';
+  /* Jahreswerte nur über Monate, in denen alle Teile vorliegen – sonst ergänzen sich die Prozente nicht zu 100 % */
+  const full=rows.filter(r=>r.rest!==null);
+  const tT=full.reduce((a,r)=>a+r.totV,0);
+  const tot=k=>full.reduce((a,r)=>a+(r[k]||0),0);
+  const estCls=(r,k)=>{const house=r.totSrc==='calc'&&(r.bEst||r.eEst);
+    const on=k==='dg'?r.dgEst:k==='ug'?r.ugEst:k==='rest'?(r.dgEst||r.ugEst||house):false;return on?' est':'';};
   const bar=r=>{if(!r.totV||r.rest===null)return '';const seg=(v,col)=>v>0?`<i style="display:inline-block;height:8px;width:${(v/r.totV*100).toFixed(1)}%;background:${col}"></i>`:'';
-    return `<div style="display:flex;width:120px;background:var(--field);border-radius:4px;overflow:hidden">${seg(r.dg,'#C084FC')}${seg(r.ug,'#22B8CF')}${useWB?seg(r.wb||0,'#F97316'):''}${seg(Math.max(0,r.rest),'#FACC15')}</div>`;};
-  return `<div class="tariff-info">Die Hauptwohnung braucht keinen eigenen Zähler: Sie ergibt sich als <b>Rest</b> aus dem Gesamtverbrauch des Hauses (Netzbezug + PV-Eigenverbrauch) minus Dachgeschoss, Untergeschoss${useWB?' und Wallbox':''}. Fehlen bei DG oder UG Zählerstände, werden sie nach dem Verbrauchsverlauf des Hauses verteilt – dafür reicht es, die Unterzähler z.&nbsp;B. quartalsweise abzulesen.</div>
-<div class="eleg"><div class="eli"><span style="color:#69f0ae">●</span>&nbsp;gemessen (SENEC)</div><div class="eli"><div class="els" style="background:#C084FC"></div>DG</div><div class="eli"><div class="els" style="background:#22B8CF"></div>UG</div>${useWB?'<div class="eli"><div class="els" style="background:#F97316"></div>Wallbox</div>':''}<div class="eli"><div class="els" style="background:#FACC15"></div>Hauptwohnung (Rest)</div></div>
-<div class="etw"><table><thead><tr><th>Monat</th><th>Haus gesamt</th><th>DG</th><th>UG</th>${useWB?'<th>Wallbox</th>':''}<th>Hauptwohnung</th><th>Anteil</th><th>Aufteilung</th></tr></thead>
-<tbody>${rows.map((r,i)=>`<tr><td>${MO[i]}</td><td class="${r.totV===null?'evm':''}${r.totSrc==='calc'&&(r.bEst||r.eEst)?' est':''}" title="${r.totSrc==='senec'?'gemessen (SENEC)':'berechnet'}">${fK(r.totV)}${r.totSrc==='senec'?' <span style="color:#69f0ae;font-size:10px">●</span>':''}</td><td class="${r.dg===null?'evm':''}${r.dgEst?' est':''}">${fK(r.dg)}</td><td class="${r.ug===null?'evm':''}${r.ugEst?' est':''}">${fK(r.ug)}</td>${useWB?`<td>${fK(r.wb||0)}</td>`:''}
-<td style="${r.rest!==null&&r.rest<0?'color:#ff8a80':'font-weight:600'}" class="${r.rest===null?'evm':''}${(r.dgEst||r.ugEst||(r.totSrc==='calc'&&(r.bEst||r.eEst)))&&r.rest!==null?' est':''}">${fK(r.rest)}${r.rest!==null&&r.rest<0?' ⚠':''}</td><td class="${r.restP===null?'evm':''}">${fP(r.restP)}</td><td>${bar(r)}</td></tr>`).join('')}</tbody>
-<tfoot><tr class="etot"><td>Gesamt ${yr}</td><td>${fK(tT)}</td><td>${fK(tot('dg'))}</td><td>${fK(tot('ug'))}</td>${useWB?`<td>${fK(tot('wb'))}</td>`:''}<td>${fK(tR)}</td><td>${tT&&tR!==null?fP(tR/tT*100):'–'}</td><td></td></tr></tfoot></table></div>
-<div class="efn">${rows.some(r=>r.totSrc==='senec')?'<b>Haus gesamt</b> stammt – wo vorhanden – aus dem von SENEC <b>gemessenen</b> Hausverbrauch (Spalte „Stromverbrauch“ im CSV-Import), sonst aus Netzbezug + PV-Eigenverbrauch berechnet. ':'💡 Genauer wird es mit dem gemessenen Hausverbrauch: Importiere die SENEC-CSV-Dateien unter „PV-Daten“ einfach noch einmal, dann wird die Spalte „Stromverbrauch“ mit übernommen. '}Leer bleibt ein Monat, wenn Gesamtverbrauch oder ein Unterzähler fehlen. Ein negativer Rest (⚠) bedeutet, dass die Unterzähler zusammen mehr zeigen als das ganze Haus verbraucht hat – meist stimmen dann PV-Daten oder ein Zählerstand nicht.${useWB?' Wallbox-Werte stammen aus evcc; Monate ohne Ladung zählen mit 0.':''}</div>`;
+    return `<div style="display:flex;width:120px;background:var(--field);border-radius:4px;overflow:hidden">${KEYS.map(k=>seg(Math.max(0,r[k[0]]||0),k[2])).join('')}</div>`;};
+  const skipped=rows.filter(r=>r.totV!==null&&r.rest===null).length;
+  return `<style>.vtp{display:block;font-size:10px;color:var(--muted);font-weight:400;font-style:normal;margin-top:1px}.ecard td.est .vtp{color:#c9a27a}.ecard td.est .vtp::before{content:""}</style>
+<div class="tariff-info">Die Hauptwohnung braucht keinen eigenen Zähler: Sie ergibt sich als <b>Rest</b> aus dem Gesamtverbrauch des Hauses minus ${useWB?'Dachgeschoss, Untergeschoss und Wallbox':'Dachgeschoss und Untergeschoss'}. Unter jedem Wert steht sein <b>Anteil am Hausverbrauch</b>. Fehlen bei DG oder UG Zählerstände, werden sie nach dem Verbrauchsverlauf des Hauses verteilt – dafür reicht es, die Unterzähler z.&nbsp;B. quartalsweise abzulesen.</div>
+<div class="eleg"><div class="eli"><span style="color:#69f0ae">●</span>&nbsp;gemessen (SENEC)</div>${KEYS.map(k=>`<div class="eli"><div class="els" style="background:${k[2]}"></div>${k[0]==='rest'?'Hauptwohnung (Rest)':k[1]}</div>`).join('')}</div>
+<div class="etw"><table><thead><tr><th>Monat</th><th>Haus gesamt</th>${KEYS.map(k=>`<th>${k[1]}</th>`).join('')}<th>Aufteilung</th></tr></thead>
+<tbody>${rows.map((r,i)=>`<tr><td>${MO[i]}</td><td class="${r.totV===null?'evm':''}${r.totSrc==='calc'&&(r.bEst||r.eEst)?' est':''}" title="${r.totSrc==='senec'?'gemessen (SENEC)':'berechnet'}">${fK(r.totV)}${r.totSrc==='senec'?' <span style="color:#69f0ae;font-size:10px">●</span>':''}</td>
+${KEYS.map(k=>{const v=r[k[0]],neg=k[0]==='rest'&&v!==null&&v<0;
+  return `<td class="${v===null?'evm':''}${v!==null?estCls(r,k[0]):''}" style="${neg?'color:#ff8a80':k[0]==='rest'&&v!==null?'font-weight:600':''}">${fK(v)}${neg?' ⚠':''}${r.rest!==null?pct(v,r.totV):''}</td>`;}).join('')}
+<td>${bar(r)}</td></tr>`).join('')}</tbody>
+<tfoot><tr class="etot"><td>Gesamt ${yr}</td><td>${full.length?fK(tT):'–'}</td>${KEYS.map(k=>`<td>${full.length?fK(tot(k[0]))+pct(tot(k[0]),tT):'–'}</td>`).join('')}<td></td></tr></tfoot></table></div>
+<div class="efn">${rows.some(r=>r.totSrc==='senec')?'<b>Haus gesamt</b> stammt – wo vorhanden – aus dem von SENEC <b>gemessenen</b> Hausverbrauch (Spalte „Stromverbrauch“ im CSV-Import), sonst aus Netzbezug + PV-Eigenverbrauch berechnet. ':'💡 Genauer wird es mit dem gemessenen Hausverbrauch: Importiere die SENEC-CSV-Dateien unter „PV-Daten“ einfach noch einmal, dann wird die Spalte „Stromverbrauch“ mit übernommen. '}
+Die <b>Gesamtzeile</b> umfasst nur Monate, in denen alle Werte vorliegen${skipped?` (${skipped} Monat${skipped===1?'':'e'} ohne Unterzähler-Werte nicht enthalten)`:''} – so ergänzen sich die Anteile zu 100&nbsp;%.
+Ein negativer Rest (⚠) bedeutet, dass die Unterzähler zusammen mehr zeigen als das ganze Haus verbraucht hat – meist stimmen dann PV-Daten oder ein Zählerstand nicht.${useWB?' Wallbox-Werte stammen aus evcc; Monate ohne Ladung zählen mit 0.':''}</div>`;
 }
 
 function rData(){
