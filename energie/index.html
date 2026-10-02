@@ -97,6 +97,7 @@ input[type=file]{display:none;}
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="../assets/cockpit.js"></script>
+<script src="../assets/wallbox.js"></script>
 <script>
 document.getElementById("top").innerHTML=Cockpit.topbar({title:"Energie",icon:"🏠",sub:"Gas · Wasser · Strom · PV",accent:"#00c853",accent2:"#22b8cf"});
 Cockpit.paintStatus();
@@ -126,7 +127,7 @@ const TARIFF_NAMES={gas:'Gas',wasser:'Wasser / Abwasser',strom:'Strom'};
 const TARIFF_DOTS={gas:'#F97316',wasser:'#38BDF8',strom:'#FACC15'};
 
 const S={
-  year:(function(){try{var y=parseInt(localStorage.getItem('cockpit:energie:year'),10);return isNaN(y)?new Date().getFullYear():y;}catch(e){return new Date().getFullYear();}})(),tab:'preise',st:'haupt',dirty:false,lastSaved:null,
+  wb:{sessions:[]},year:(function(){try{var y=parseInt(localStorage.getItem('cockpit:energie:year'),10);return isNaN(y)?new Date().getFullYear():y;}catch(e){return new Date().getFullYear();}})(),tab:'preise',st:'haupt',dirty:false,lastSaved:null,
   tariffs:{gas:[],wasser:[],strom:[]},
   fixed:{gas_z:'0.95'},
   data:{}
@@ -191,7 +192,7 @@ function updTariffFromPart(kind,idx,part,val){
 }
 
 function payload(){
-  return {tariffs:S.tariffs,fixed:S.fixed,data:S.data,_summary:hubSummary()};
+  return {tariffs:S.tariffs,fixed:S.fixed,data:S.data,wallbox:S.wb,_summary:hubSummary()};
 }
 function hubSummary(){
   try{
@@ -235,6 +236,7 @@ function applyData(p){
   S.tariffs=Object.assign({gas:[],wasser:[],strom:[]},p&&p.tariffs||{});
   S.fixed=Object.assign({gas_z:'0.95'},p&&p.fixed||{});
   S.data=(p&&p.data)||{};
+  S.wb=Object.assign({sessions:[]},p&&p.wallbox||{});if(!Array.isArray(S.wb.sessions))S.wb.sessions=[];
   if(!S.fixed.gas_z)S.fixed.gas_z='0.95';
 }
 function loadState(){
@@ -526,7 +528,14 @@ function cS(y){
   const eFallback=prevProfile(y,'ste_s','se');
   const b=series(d.stb_s,d.m.map(m=>m.sb),y,prevProfile(y,'stb_s','sb')),
         e=series(d.ste_s,d.m.map(m=>m.se),y,months=>{const w=pvW(months);return w.every(x=>x>0)?w:(eFallback?eFallback(months):null);});
-  const dg=series(d.stdg_s,d.m.map(m=>m.sdg),y,prevProfile(y,'stdg_s','sdg')),ug=series(d.stug_s,d.m.map(m=>m.sug),y,prevProfile(y,'stug_s','sug'));
+  /* Gesamtverbrauch des Hauses je Monat – dient als Verlaufsprofil, wenn Unterzähler-Stände fehlen */
+  const houseV=b.map((bi,i)=>{const pe=toN(d.m[i].pe),pas=toN(d.m[i].pas),pis=toN(d.m[i].pis),ei=e[i];
+    const pvDir=(pe!==null&&ei!==null&&pis!==null)?Math.max(0,pe-ei-pis):null;
+    const ev=(pvDir!==null&&pas!==null)?pvDir+pas:(pvDir!==null?pvDir:(pas!==null?pas:null));
+    return (bi!==null&&ev!==null)?bi+ev:null;});
+  const uzW=(sK,mK)=>{const pp=prevProfile(y,sK,mK);return months=>{const w=months.map(k=>houseV[k]);return w.every(x=>x>0)?w:(pp?pp(months):null);};};
+  const dg=series(d.stdg_s,d.m.map(m=>m.sdg),y,uzW('stdg_s','sdg')),ug=series(d.stug_s,d.m.map(m=>m.sug),y,uzW('stug_s','sug'));
+  const hasWB=S.wb&&S.wb.sessions&&S.wb.sessions.length>0;
   return b.map((bi,i)=>{
     const t=tariffAt('strom',y,i);
     const ap=t?toN(t.ap)/100:null,ep=t?toN(t.ep)/100:null,gp=t?toN(t.gp):null;
@@ -546,7 +555,10 @@ function cS(y){
     return{bEst:b.est[i],eEst:e.est[i],dgEst:dg.est[i],ugEst:ug.est[i],b:bi,e:ei,pe,pas,pis,pvDir,ev,totV,aut,
       dg:dg[i],ug:ug[i],bk,gk:gp,ek,evk,
       net:bk!==null?bk-(ek||0)+(gp||0):null,
-      ...uzSplit('dg',dg[i],totV,aut,ap),...uzSplit('ug',ug[i],totV,aut,ap),tariff:t};
+      ...uzSplit('dg',dg[i],totV,aut,ap),...uzSplit('ug',ug[i],totV,aut,ap),
+      ...(function(){if(!hasWB)return {wb:null};const w=Wallbox.sum(Wallbox.inMonth(S.wb.sessions,y,i));
+        return {wb:w.kwh,wbN:w.n,wbPV:w.pv,wbNet:w.net,wbSolar:w.solar,wbCost:w.price,wbP:(totV&&w.kwh)?w.kwh/totV*100:null};})(),
+      tariff:t};
   });
 }
 
@@ -911,7 +923,66 @@ function rStrom(){const st=S.st;return`<div class="ecard"><div class="ecard-t">$
 <button class="estab ${st==='pv'?'act':''}" onclick="sst('pv')">${dot(C.pv)} PV-Daten · Erzeugung / Speicher</button>
 <button class="estab ${st==='dg'?'act':''}" onclick="sst('dg')">Unterzähler Dachgeschoss</button>
 <button class="estab ${st==='ug'?'act':''}" onclick="sst('ug')">Unterzähler Untergeschoss</button>
-</div>${st==='haupt'?rStromH():st==='pv'?rStromPV():st==='dg'?rStromUZ('dg'):rStromUZ('ug')}</div>`;}
+<button class="estab ${st==='wb'?'act':''}" onclick="sst('wb')">🔌 Wallbox (evcc)</button>
+<button class="estab ${st==='vt'?'act':''}" onclick="sst('vt')">🧩 Verteilung</button>
+</div>${st==='haupt'?rStromH():st==='pv'?rStromPV():st==='dg'?rStromUZ('dg'):st==='ug'?rStromUZ('ug'):st==='wb'?rStromWB():rStromVT()}</div>`;}
+
+/* ---------- Wallbox aus evcc ---------- */
+function rStromWB(){
+  const c=cS(S.year),yr=S.year,ss=S.wb.sessions||[];
+  const imp=`<div class="tariff-block"><div class="tariff-block-t"><span>⬆ Ladevorgänge aus evcc übernehmen</span></div>
+  <div style="font-size:12px;color:#b9c8e6;line-height:1.6;margin-bottom:10px">Im <b>Heimnetz</b> <a href="http://evcc.local:7070/api/sessions" target="_blank" rel="noopener" style="color:#7eb8ff">evcc.local:7070/api/sessions</a> öffnen, den gesamten Text markieren und kopieren, dann hier einfügen. Alternativ die Datei aus evcc (Ladevorgänge → Export) wählen. Bereits vorhandene Ladungen werden erkannt, du kannst also jederzeit erneut importieren.</div>
+  <textarea id="wbPaste" style="width:100%;height:70px;background:var(--field);border:1px solid var(--border);border-radius:10px;color:#e8eaf6;font-size:11px;padding:8px;font-family:ui-monospace,monospace" placeholder='[{"id":6,"created":"2026-09-26T08:49:02…'></textarea>
+  <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button class="btn btn-pri" onclick="wbImport()">✓ Übernehmen</button>
+  <label class="btn" style="cursor:pointer">📁 Datei wählen<input type="file" accept=".json,.csv,application/json,text/csv" onchange="wbFile(event)"></label>
+  ${ss.length?`<span style="font-size:12px;color:var(--muted);align-self:center">${ss.length} Ladungen gespeichert · letzte ${new Date(ss[ss.length-1].end).toLocaleDateString('de-DE')}</span>`:''}</div></div>`;
+  if(!ss.length)return imp+'<div class="tariff-empty">Noch keine Ladevorgänge übernommen.</div>';
+  const tK=sm(c.map(x=>x.wb)),tPV=sm(c.map(x=>x.wbPV)),tNet=sm(c.map(x=>x.wbNet)),tC=sm(c.map(x=>x.wbCost)),tN=sm(c.map(x=>x.wbN));
+  let aW=0,aT=0;c.forEach(ci=>{if(ci.wb&&ci.totV){aW+=ci.wb;aT+=ci.totV;}});
+  const recent=ss.slice().reverse().slice(0,8);
+  return imp+`<div class="etw"><table><thead><tr><th>Monat</th><th>Ladungen</th><th>Geladen</th><th>PV-Anteil</th><th>davon PV</th><th>davon Netz</th><th>Kosten (evcc)</th><th>Ø ct/kWh</th><th>Anteil Haus</th></tr></thead>
+<tbody>${c.map((ci,i)=>`<tr><td>${MO[i]}</td><td class="${ci.wbN?'':'evm'}">${ci.wbN||'–'}</td><td class="${ci.wb?'':'evm'}">${ci.wb?fK(ci.wb):'–'}</td>
+<td style="${ci.wbSolar!=null?'color:'+C.pv:''}" class="${ci.wbSolar!=null?'':'evm'}">${ci.wbSolar!=null?fP(ci.wbSolar):'–'}</td>
+<td style="color:${C.pv}" class="${ci.wb?'':'evm'}">${ci.wb?fK(ci.wbPV):'–'}</td><td class="${ci.wb?'':'evm'}">${ci.wb?fK(ci.wbNet):'–'}</td>
+<td class="${ci.wbCost!=null&&ci.wb?'':'evm'}">${ci.wbCost!=null&&ci.wb?fE(ci.wbCost):'–'}</td><td class="${ci.wbCost!=null&&ci.wb?'':'evm'}">${ci.wbCost!=null&&ci.wb?fN(ci.wbCost/ci.wb*100,1):'–'}</td>
+<td class="${ci.wbP!=null?'':'evm'}">${ci.wbP!=null?fP(ci.wbP):'–'}</td></tr>`).join('')}</tbody>
+<tfoot><tr class="etot"><td>Gesamt ${yr}</td><td>${tN||'–'}</td><td>${fK(tK)}</td><td>${tK?fP(tPV/tK*100):'–'}</td><td style="color:${C.pv}">${fK(tPV)}</td><td>${fK(tNet)}</td><td>${fE(tC)}</td><td>${tK&&tC!=null?fN(tC/tK*100,1):'–'}</td><td>${aT?fP(aW/aT*100):'–'}</td></tr></tfoot></table></div>
+<div class="ecard-t" style="border:none;padding:0;margin:16px 0 8px;font-size:13px">Letzte Ladungen</div>
+<div class="etw"><table><thead><tr><th>Ende</th><th>Fahrzeug</th><th>Geladen</th><th>PV</th><th>Kosten</th></tr></thead><tbody>${recent.map(x=>`<tr><td>${new Date(x.end).toLocaleString('de-DE',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'})}</td><td>${Cockpit.esc(x.vehicle||'–')}</td><td>${fN(x.kwh,1)} kWh</td><td style="color:${C.pv}">${x.solar!=null?fP(x.solar):'–'}</td><td>${x.price!=null?fE(x.price):'–'}</td></tr>`).join('')}</tbody></table></div>
+<div class="efn"><b>PV-Anteil</b> wird von evcc während der Ladung <b>gemessen</b> – anders als bei DG/UG keine Schätzung. <b>Kosten</b> sind die Berechnung von evcc: Netzstrom zum in evcc hinterlegten Strompreis, Sonnenstrom zum dort hinterlegten Solarpreis (meist die Einspeisevergütung, also das, was dir der Strom sonst eingebracht hätte). Ladungen werden dem Monat zugeordnet, in dem sie enden.</div>`;
+}
+function wbApply(text){
+  const list=Wallbox.parse(text);
+  if(!list){showFeedback('⚠ Format nicht erkannt – bitte den Text von /api/sessions vollständig kopieren');return;}
+  if(!list.length){showFeedback('⚠ Keine Ladungen im Text gefunden');return;}
+  const before=(S.wb.sessions||[]).length;
+  S.wb.sessions=Wallbox.mergeSessions(S.wb.sessions,list);
+  const neu=S.wb.sessions.length-before;
+  saveState(false);rApp();
+  showFeedback('✓ '+neu+' neue Ladung'+(neu===1?'':'en')+' übernommen'+(list.length-neu>0?' · '+(list.length-neu)+' schon vorhanden':''));
+}
+function wbImport(){const t=document.getElementById('wbPaste');if(t)wbApply(t.value);}
+function wbFile(ev){const f=ev.target.files&&ev.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>wbApply(String(r.result));r.readAsText(f);ev.target.value='';}
+
+/* ---------- Verteilung: Hauptwohnung als Rest ---------- */
+function rStromVT(){
+  const c=cS(S.year),yr=S.year,useWB=(S.wb.sessions||[]).length>0;
+  const rows=c.map(ci=>{
+    const parts=[ci.dg,ci.ug].concat(useWB?[ci.wb||0]:[]);
+    const rest=(ci.totV!==null&&parts.every(v=>v!==null))?ci.totV-parts.reduce((a,b)=>a+b,0):null;
+    return Object.assign({rest,restP:(rest!==null&&ci.totV)?rest/ci.totV*100:null},ci);});
+  const tot=k=>sm(rows.map(r=>r[k]));
+  const tT=tot('totV'),tR=tot('rest');
+  const bar=r=>{if(!r.totV||r.rest===null)return '';const seg=(v,col)=>v>0?`<i style="display:inline-block;height:8px;width:${(v/r.totV*100).toFixed(1)}%;background:${col}"></i>`:'';
+    return `<div style="display:flex;width:120px;background:var(--field);border-radius:4px;overflow:hidden">${seg(r.dg,'#C084FC')}${seg(r.ug,'#22B8CF')}${useWB?seg(r.wb||0,'#F97316'):''}${seg(Math.max(0,r.rest),'#FACC15')}</div>`;};
+  return `<div class="tariff-info">Die Hauptwohnung braucht keinen eigenen Zähler: Sie ergibt sich als <b>Rest</b> aus dem Gesamtverbrauch des Hauses (Netzbezug + PV-Eigenverbrauch) minus Dachgeschoss, Untergeschoss${useWB?' und Wallbox':''}. Fehlen bei DG oder UG Zählerstände, werden sie nach dem Verbrauchsverlauf des Hauses verteilt – dafür reicht es, die Unterzähler z.&nbsp;B. quartalsweise abzulesen.</div>
+<div class="eleg"><div class="eli"><div class="els" style="background:#C084FC"></div>DG</div><div class="eli"><div class="els" style="background:#22B8CF"></div>UG</div>${useWB?'<div class="eli"><div class="els" style="background:#F97316"></div>Wallbox</div>':''}<div class="eli"><div class="els" style="background:#FACC15"></div>Hauptwohnung (Rest)</div></div>
+<div class="etw"><table><thead><tr><th>Monat</th><th>Haus gesamt</th><th>DG</th><th>UG</th>${useWB?'<th>Wallbox</th>':''}<th>Hauptwohnung</th><th>Anteil</th><th>Aufteilung</th></tr></thead>
+<tbody>${rows.map((r,i)=>`<tr><td>${MO[i]}</td><td class="${r.totV===null?'evm':''}${r.bEst||r.eEst?' est':''}">${fK(r.totV)}</td><td class="${r.dg===null?'evm':''}${r.dgEst?' est':''}">${fK(r.dg)}</td><td class="${r.ug===null?'evm':''}${r.ugEst?' est':''}">${fK(r.ug)}</td>${useWB?`<td>${fK(r.wb||0)}</td>`:''}
+<td style="${r.rest!==null&&r.rest<0?'color:#ff8a80':'font-weight:600'}" class="${r.rest===null?'evm':''}${(r.dgEst||r.ugEst||r.bEst||r.eEst)&&r.rest!==null?' est':''}">${fK(r.rest)}${r.rest!==null&&r.rest<0?' ⚠':''}</td><td class="${r.restP===null?'evm':''}">${fP(r.restP)}</td><td>${bar(r)}</td></tr>`).join('')}</tbody>
+<tfoot><tr class="etot"><td>Gesamt ${yr}</td><td>${fK(tT)}</td><td>${fK(tot('dg'))}</td><td>${fK(tot('ug'))}</td>${useWB?`<td>${fK(tot('wb'))}</td>`:''}<td>${fK(tR)}</td><td>${tT&&tR!==null?fP(tR/tT*100):'–'}</td><td></td></tr></tfoot></table></div>
+<div class="efn">Leer bleibt ein Monat, wenn Gesamtverbrauch (PV-Daten) oder ein Unterzähler fehlen. Ein negativer Rest (⚠) bedeutet, dass die Unterzähler zusammen mehr zeigen als das ganze Haus verbraucht hat – meist stimmen dann PV-Daten oder ein Zählerstand nicht.${useWB?' Wallbox-Werte stammen aus evcc; Monate ohne Ladung zählen mit 0.':''}</div>`;
+}
 
 function rData(){
   const years=Object.keys(S.data).filter(y=>S.data[y]&&S.data[y].m&&S.data[y].m.some(m=>Object.values(m).some(v=>v!==''))).sort();
@@ -966,9 +1037,10 @@ function mergeEnergie(l,r,lU,rU){
       Object.keys(Object.assign({},om,nm)).forEach(k=>mm[k]=pick(nm[k],om[k]));return mm;});
     out.data[y]=yr;
   });
-  const saved={t:S.tariffs,f:S.fixed,d:S.data};
-  S.tariffs=out.tariffs;S.fixed=out.fixed;S.data=out.data;out._summary=hubSummary();
-  S.tariffs=saved.t;S.fixed=saved.f;S.data=saved.d;
+  out.wallbox={sessions:Wallbox.mergeSessions((older.wallbox||{}).sessions,(newer.wallbox||{}).sessions)};
+  const saved={t:S.tariffs,f:S.fixed,d:S.data,w:S.wb};
+  S.tariffs=out.tariffs;S.fixed=out.fixed;S.data=out.data;S.wb=out.wallbox;out._summary=hubSummary();
+  S.tariffs=saved.t;S.fixed=saved.f;S.data=saved.d;S.wb=saved.w;
   return out;
 }
 Cockpit.registerMerge('energie',mergeEnergie);
