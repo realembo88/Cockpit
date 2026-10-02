@@ -373,6 +373,34 @@ function restoreFrom(old){
   return {n:n,p:p,r:r};
 }
 function countCats(d){d=norm(clone(d));return d.tx.filter(function(t){return t.cat||t.note;}).length+Object.keys(d.pmap).length+Object.keys(d.tmap).length;}
+/* Regelwerk komplett ersetzen. o.rename = {alteKategorie: neueKategorie | {in:…, out:…}}.
+   Zuordnungen (Einzelbuchungen, Empfänger, Buchungsart) und eigene Schlüsselwörter wandern mit;
+   Kategorien ohne Gegenstück entfallen, ihre Buchungen werden wieder automatisch zugeordnet. */
+function replaceRules(o){
+  var oldRules=data.rules||F.DEFAULT_RULES,ren=o.rename||{},neu=clone(o.rules).map(function(r){r.words=(r.words||[]).map(function(w){return String(w).toLowerCase().trim();}).filter(Boolean);return r;});
+  var names={};neu.forEach(function(r){names[r.name]=1;});
+  function target(old,sign){var t=ren[old];if(t&&typeof t==="object")t=sign>=0?t["in"]:t.out;if(!t&&names[old])t=old;return t&&names[t]?t:null;}
+  /* Vorschau */
+  var used={};data.tx.forEach(function(t){var c=t.cat||(t.p&&data.pmap[F.partnerKey(t.p)])||(!t.p&&t.t&&data.tmap[F.partnerKey(t.t)]);if(c)used[c]=(used[c]||0)+1;});
+  var gone=Object.keys(used).filter(function(c){return !target(c,1)&&!target(c,-1);});
+  var moved=Object.keys(used).filter(function(c){var a=target(c,1),b=target(c,-1);return (a&&a!==c)||(b&&b!==c);});
+  if(!confirm("Regelwerk ersetzen?\n\n"+neu.length+" Kategorien werden eingerichtet."+
+    (moved.length?"\n\nUmbenannt (Zuordnungen bleiben erhalten):\n"+moved.map(function(c){var a=target(c,1),b=target(c,-1);return "• "+c+" → "+(a===b?a:(a||"–")+" / "+(b||"–"))+" ("+used[c]+")";}).join("\n"):"")+
+    (gone.length?"\n\nEntfällt (Buchungen werden neu zugeordnet):\n"+gone.map(function(c){return "• "+c+" ("+used[c]+")";}).join("\n"):"")+
+    "\n\nTipp: Vorher unter Import → Sicherung einen Export machen."))return;
+  /* eigene Schlüsselwörter alter Kategorien mitnehmen, sofern im neuen Regelwerk noch nicht vergeben */
+  var taken={};neu.forEach(function(r){r.words.forEach(function(w){taken[w]=1;});});
+  oldRules.forEach(function(r){var tg=target(r.name,r.onlyIn?1:-1)||target(r.name,1);if(!tg)return;var nr=neu.filter(function(x){return x.name===tg;})[0];
+    (r.words||[]).forEach(function(w){if(!taken[w]){nr.words.push(w);taken[w]=1;}});});
+  var now=Date.now(),cnt={tx:0,reset:0,p:0};
+  data.tx.forEach(function(t){if(!t.cat)return;var tg=target(t.cat,t.b);if(tg){if(tg!==t.cat){t.cat=tg;t.ct=now;cnt.tx++;}}else{delete t.cat;t.ct=now;cnt.reset++;}});
+  /* Empfänger/Buchungsart: Vorzeichen aus den zugehörigen Buchungen ableiten */
+  function signOf(match){var s=0;data.tx.forEach(function(t){if(match(t))s+=t.b;});return s;}
+  Object.keys(data.pmap).forEach(function(k){var tg=target(data.pmap[k],signOf(function(t){return F.partnerKey(t.p)===k;}));if(tg){if(tg!==data.pmap[k])cnt.p++;data.pmap[k]=tg;}else delete data.pmap[k];});
+  Object.keys(data.tmap).forEach(function(k){var tg=target(data.tmap[k],signOf(function(t){return !t.p&&F.partnerKey(t.t)===k;}));if(tg){if(tg!==data.tmap[k])cnt.p++;data.tmap[k]=tg;}else delete data.tmap[k];});
+  data.rules=neu;persist();st.tab="regeln";
+  flash("✓ Neues Regelwerk aktiv: "+cnt.tx+" Buchungen und "+cnt.p+" Zuordnungen umbenannt"+(cnt.reset?", "+cnt.reset+" zur Neuzuordnung freigegeben":""));
+}
 function ensureRules(){if(!data.rules)data.rules=clone(F.DEFAULT_RULES);}
 window.F2={
   tab:function(t){st.tab=t;st.edit=null;render();window.scrollTo(0,0);},
@@ -428,6 +456,7 @@ window.F2={
   resetRules:function(){if(!confirm("Alle Regeln auf den Standard zurücksetzen? Eigene Schlüsselwörter gehen verloren."))return;data.rules=null;persist();flash("✓ Standardregeln aktiv");},
   rulesImp:function(inp){var f=inp.files&&inp.files[0];inp.value="";if(!f)return;C.readFile(f).then(function(t){
     var o;try{o=JSON.parse(t);}catch(e){flash("⚠ Kein gültiges JSON",true);return;}
+    if(o&&o.mode==="replace"&&Array.isArray(o.rules)){replaceRules(o);return;}
     var list=Array.isArray(o)?o:(o&&Array.isArray(o.rules)?o.rules:null);if(!list){flash("⚠ Keine Regeln erkannt",true);return;}
     ensureRules();var added=0;
     list.forEach(function(nr){if(!nr||!nr.name||!Array.isArray(nr.words))return;
