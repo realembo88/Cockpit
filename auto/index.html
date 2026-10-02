@@ -17,6 +17,7 @@
 <div class="content" id="main"></div>
 </div>
 <script src="../assets/cockpit.js"></script>
+<script src="../assets/wallbox.js"></script>
 <script>
 (function(){
 "use strict";
@@ -43,6 +44,7 @@ function merge(l,r,lU,rU){
     var entries=Object.keys(byId).map(function(id){return byId[id];}).sort(function(x,y){return x.odo-y.odo||x.id-y.id;});
     out[k]={startOdo:newer[k].startOdo!=null?newer[k].startOdo:(a.startOdo!=null?a.startOdo:b.startOdo),
       lastPrice:newer[k].lastPrice!=null?newer[k].lastPrice:(a.lastPrice!=null?a.lastPrice:b.lastPrice),
+      startDate:newer[k].startDate||a.startDate||b.startDate||null,
       entries:entries,deleted:Object.keys(del).map(Number).sort()};
   });
   return out;
@@ -110,7 +112,26 @@ function viewAdd(){var k=car(),f=st.form;
   var fields=[["Datum","date","date",""],["Aktueller Kilometerstand (km)","odo","text","z. B. 13250","numeric"],[k.fillLabel,"fill","text",k.fillPh,"decimal"],[k.priceLabel,"price","text","z. B. "+String(k.defPrice).replace(".",","),"decimal"],["Notiz (optional)","note","text",k.notePh]];
   return '<div class="panel"><h3>'+k.icon+" "+(k.electric?"Ladevorgang":"Tankvorgang")+" – "+k.short+"</h3>"+fields.map(function(x){
     return '<div class="field"><label>'+x[0]+'</label><input type="'+x[2]+'"'+(x[4]?' inputmode="'+x[4]+'"':"")+' placeholder="'+C.esc(x[3])+'" value="'+C.esc(f[x[1]])+'" oninput="A.f(\''+x[1]+'\',this.value)"></div>';}).join("")+
-    '<div id="prev">'+preview()+'</div><button class="btn grad full" onclick="A.add()">＋ Eintrag speichern</button></div>';
+    '<div id="wbbox">'+wbBox()+'</div><div id="prev">'+preview()+'</div><button class="btn grad full" onclick="A.add()">＋ Eintrag speichern</button></div>';
+}
+/* Wallbox-Ladungen (evcc) seit dem letzten Eintrag als Vorschlag */
+function wbBox(){
+  var k=car();if(!k.electric||!window.Wallbox)return "";
+  var e=C.getLocal("energie",null),ss=(e&&e.wallbox&&e.wallbox.sessions)||[];
+  if(!ss.length)return '<div class="small muted" style="margin:-4px 0 12px">💡 Tipp: Übernimm unter <b>Energie → Strom → Wallbox</b> deine Ladungen aus evcc, dann werden sie hier automatisch vorgeschlagen.</div>';
+  var c=cd(),last=c.entries.length?c.entries[c.entries.length-1]:null,from,fromTxt;
+  if(last){var made=new Date(last.id);from=(!isNaN(made)&&made.toISOString().slice(0,10)===last.date)?last.id:new Date(last.date+"T23:59:59").getTime();fromTxt=new Date(last.date).toLocaleDateString("de-DE");}
+  else if(c.startDate){from=new Date(c.startDate+"T00:00:00").getTime();fromTxt=new Date(c.startDate).toLocaleDateString("de-DE");}
+  else return '<div class="small muted" style="margin:-4px 0 12px">🔌 Wallbox-Vorschläge gibt es ab dem nächsten Eintrag (es fehlt noch ein Startdatum).</div>';
+  var fd=st.form.date||C.today(),to=fd===C.today()?Date.now():new Date(fd+"T23:59:59").getTime();
+  var list=Wallbox.between(ss,from,to).filter(function(x){return !x.vehicle||/corsa/i.test(x.vehicle);});
+  var w=Wallbox.sum(list);
+  if(!w.n)return '<div class="small muted" style="margin:-4px 0 12px">🔌 Seit '+fromTxt+' keine Ladung an der Wallbox.</div>';
+  st.wbSug={kwh:w.kwh,ppk:w.ppk};
+  return '<div class="panel" style="background:var(--panel2);border-color:#0095ff55;margin-bottom:14px"><div class="small" style="margin-bottom:8px"><b style="color:#fff">🔌 Wallbox seit '+fromTxt+'</b></div>'+
+    '<div class="chips" style="margin:0 0 10px"><span>'+w.n+' Ladung'+(w.n===1?'':'en')+'</span><span style="color:#00c853">'+C.num(w.kwh,1)+' kWh</span>'+(w.solar!=null?'<span style="color:#69f0ae">☀ '+C.num(w.solar,0)+' % PV</span>':'')+(w.price!=null?'<span style="color:#00bcd4">'+C.eur(w.price)+' · Ø '+C.num(w.ppk*100,1)+' ct/kWh</span>':'')+'</div>'+
+    '<button class="btn" style="padding:8px 12px;font-size:13px" onclick="A.useWB()">Übernehmen</button>'+
+    '<div class="small muted" style="margin-top:8px">Öffentlich geladen? Dann die Menge nach dem Übernehmen dazurechnen und den Preis anpassen.</div></div>';
 }
 function preview(){var k=car(),c=cd(),f=st.form;var odo=C.parseNum(f.odo),fill=C.parseNum(f.fill),price=C.parseNum(f.price);
   if(isNaN(odo)||isNaN(fill)||c.startOdo==null)return "";
@@ -154,13 +175,14 @@ function applyImport(raw){var d;try{d=JSON.parse(raw);}catch(e){flash("⚠ Kein 
 window.A={
   car:function(id){st.car=id;st.setup=false;st.form=blankForm();if(st.tab==="daten"||st.tab==="vergleich")st.tab="uebersicht";render();},
   tab:function(t){st.tab=t;render();},
-  f:function(k,v){st.form[k]=v;var p=document.getElementById("prev");if(p)p.innerHTML=preview();},
+  f:function(k,v){st.form[k]=v;var p=document.getElementById("prev");if(p)p.innerHTML=preview();if(k==="date"){var b=document.getElementById("wbbox");if(b)b.innerHTML=wbBox();}},
+  useWB:function(){var w=st.wbSug;if(!w)return;st.form.fill=String(Math.round(w.kwh*10)/10).replace(".",",");if(w.ppk!=null)st.form.price=String(Math.round(w.ppk*1000)/1000).replace(".",",");if(!st.form.note)st.form.note="Wallbox (evcc)";render();},
   si:function(v){st.startInput=v;},
   openSetup:function(){st.setup=true;st.startInput=cd().startOdo!=null?String(cd().startOdo):"";render();},
   closeSetup:function(){st.setup=false;render();},
   setStart:function(){var v=C.parseNum(st.startInput);if(isNaN(v)||v<0){flash("⚠ Bitte gültigen Kilometerstand eingeben",true);return;}
     var c=cd();if(c.entries.length&&v>=c.entries[0].odo){flash("⚠ Start muss unter dem ersten Eintrag liegen",true);return;}
-    c.startOdo=v;st.setup=false;persist();flash("Startzählerstand gesetzt ✓");},
+    c.startOdo=v;if(!c.startDate)c.startDate=C.today();st.setup=false;persist();flash("Startzählerstand gesetzt ✓");},
   add:function(){var c=cd(),f=st.form,odo=C.parseNum(f.odo),fill=C.parseNum(f.fill),price=C.parseNum(f.price);
     if(c.startOdo==null){flash("⚠ Bitte zuerst den Startzählerstand setzen",true);return;}
     if(isNaN(odo)||isNaN(fill)||fill<=0){flash("⚠ Kilometerstand und Menge ausfüllen",true);return;}
@@ -176,7 +198,7 @@ window.A={
 };
 
 render();
-C.autoPull([AREA],function(a,d){data=norm(d);render();});
+C.autoPull([AREA,"energie"],function(a,d){if(a===AREA)data=norm(d);render();});
 })();
 </script>
 </body>
