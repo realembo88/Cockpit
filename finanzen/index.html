@@ -366,12 +366,18 @@ function vRules(){
   if(st.chk&&st.trf){var tr=st.trf,vol=tr.reduce(function(a,p){return a+p["in"].b;},0);
     h+='<div style="border-top:1px solid var(--border);margin-top:14px;padding-top:12px"><b class="small">Überträge zwischen eigenen Konten</b>';
     if(!tr.length)h+='<div style="color:#69f0ae;margin-top:6px">✓ Alle erkannten Überträge sind als Umbuchung markiert.</div>';
-    else h+='<div style="color:#ffb74d;font-weight:700;margin:6px 0">⚠ '+tr.length+' Überträge (je '+C.eur(vol,0)+' Ein- und Ausgang) zählen noch als Einnahme und Ausgabe</div>'+
-      '<div class="note" style="margin-bottom:10px">Gleicher Betrag geht auf einem deiner Konten ab und innerhalb von 3 Tagen auf einem anderen ein. Beispiele:<br>'+
-      tr.slice(0,6).map(function(p){return '• '+new Date(p.out.d).toLocaleDateString("de-DE")+' · '+C.eur(p["in"].b)+' · '+C.esc((data.konten[p.out.k]||{}).name||p.out.k)+' → '+C.esc((data.konten[p["in"].k]||{}).name||p["in"].k);}).join("<br>")+
-      (tr.length>6?'<br>… und '+(tr.length-6)+' weitere':'')+'</div>'+
-      '<button class="btn" onclick="F2.trfApply()">Alle als Umbuchung markieren</button>'+
-      '<div class="note" style="margin-top:8px">Prüfe die Beispiele kurz: Erkannt wird nur über Betrag, Datum und unterschiedliche Konten. Einzelne Fehlgriffe kannst du danach unter Buchungen wieder ändern.</div>';
+    else{var sel=tr.filter(function(p){return p.on;}),man=tr.filter(function(p){return p.manual;}).length;
+      h+='<div style="color:#ffb74d;font-weight:700;margin:6px 0">⚠ '+tr.length+' mögliche Überträge (je '+C.eur(vol,0)+' Ein- und Ausgang)</div>'+
+      '<div class="note" style="margin-bottom:8px">Gleicher Betrag geht auf einem deiner Konten ab und innerhalb von 3 Tagen auf einem anderen ein. Hake ab, was wirklich ein Übertrag ist.'+(man?' <b>'+man+'</b> Paare enthalten eine Buchung, die du selbst schon anders zugeordnet hast – die sind nicht angehakt.':'')+'</div>'+
+      '<div class="small" style="margin-bottom:6px"><a href="#" onclick="F2.trfAll(true);return false" style="color:#7eb8ff">alle anhaken</a> · <a href="#" onclick="F2.trfAll(false);return false" style="color:#7eb8ff">keine</a></div>'+
+      '<div style="max-height:340px;overflow:auto;border:1px solid var(--border);border-radius:10px;padding:4px 8px;margin-bottom:10px">'+
+      tr.map(function(p,ix){var o=p.out,i=p["in"],ko=function(k){return C.esc((data.konten[k]||{}).name||k);};
+        return '<label style="display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-bottom:1px solid #152038;cursor:pointer"><input type="checkbox" '+(p.on?'checked ':'')+'onchange="F2.trfT('+ix+',this.checked)" style="margin-top:3px">'+
+          '<span style="flex:1;min-width:0;font-size:12px"><b style="color:#fff">'+C.eur(i.b)+'</b> · '+new Date(o.d).toLocaleDateString("de-DE")+(o.d!==i.d?'–'+new Date(i.d).toLocaleDateString("de-DE",{day:"numeric",month:"numeric"}):'')+'<br>'+
+          '<span class="muted">'+ko(o.k)+' → '+ko(i.k)+'</span><br><span class="muted">'+C.esc((o.p||o.t||"—").slice(0,32))+' / '+C.esc((i.p||i.t||"—").slice(0,32))+'</span>'+
+          (p.manual?'<br><span style="color:#ffb74d">bisher: '+C.esc(F.category(o,rules()))+' / '+C.esc(F.category(i,rules()))+'</span>':'')+'</span></label>';}).join("")+'</div>'+
+      '<button class="btn" onclick="F2.trfApply()">'+sel.length+' angehakte als Umbuchung markieren</button>'+
+      '<div class="note" style="margin-top:8px">Einzelne Fehlgriffe kannst du danach unter Buchungen jederzeit wieder ändern.</div>';}
     h+='</div>';}
   h+='</div>';
   var ks=Object.keys(data.konten);
@@ -454,11 +460,15 @@ function checkData(){
     /* 3) gleiches Konto, aber abweichender Text (z. B. Zeichensatz) → Variante entfernen; exakt gleicher Text bleibt (echte Wiederholung) */
     var perK={};g.filter(function(t){return drop.indexOf(t)<0;}).forEach(function(t){(perK[t.k]=perK[t.k]||[]).push(t);});
     Object.keys(perK).forEach(function(kk){var l=perK[kk];if(l.length<2)return;
-      var variants={};l.forEach(function(t){var v=t.p+"\u0001"+t.z;(variants[v]=variants[v]||[]).push(t);});
+      /* nur echte Schreibvarianten (Zeichensatz, Leerzeichen): voller Text ohne Sonderzeichen gleich, Rohtext verschieden.
+         Unterscheidet sich der Text inhaltlich (z. B. andere Referenznummer), sind es getrennte Buchungen. */
+      var full={};l.forEach(function(t){var f=normTxt(t.p)+"|"+normTxt(t.z)+"|"+normTxt(t.t);(full[f]=full[f]||[]).push(t);});
+      Object.keys(full).forEach(function(f){var ll=full[f];if(ll.length<2)return;
+      var variants={};ll.forEach(function(t){var v=t.p+"\u0001"+t.z;(variants[v]=variants[v]||[]).push(t);});
       var vs=Object.keys(variants);if(vs.length<2)return;
       /* behalten wird die Textvariante mit den meisten Kategorien/Bemerkungen */
       vs.sort(function(a,b){var s=function(v){return variants[v].reduce(function(n,t){return n+(t.cat?2:0)+(t.note?1:0);},0);};return s(b)-s(a);});
-      var main=variants[vs[0]];vs.slice(1).forEach(function(v){variants[v].forEach(function(t,i){if(i<main.length){drop.push(t);keepers.push(main[i]);}});});});
+      var main=variants[vs[0]];vs.slice(1).forEach(function(v){variants[v].forEach(function(t,i){if(i<main.length){drop.push(t);keepers.push(main[i]);}});});});});
     if(drop.length){groups.push({pairs:drop.map(function(t,i){return {drop:t,keep:keepers[i]};})});remove=remove.concat(drop);}
   });
   var dupKonten=Object.keys(copyOf).map(function(k){var d=remove.filter(function(t){return t.k===k;}).length;
@@ -479,13 +489,15 @@ function findTransfers(){
     cand.sort(function(a,b){return Math.abs(new Date(a.d)-new Date(o.d))-Math.abs(new Date(b.d)-new Date(o.d));});
     var i=cand[0];used[i.id]=1;used[o.id]=1;
     if(isNeu(o)&&isNeu(i))return;   /* schon korrekt */
-    pairs.push({out:o,"in":i});
+    /* von Hand einer anderen Kategorie zugeordnet → standardmäßig nicht anhaken */
+    var man=(o.cat&&!F.isNeutral(o.cat,R))||(i.cat&&!F.isNeutral(i.cat,R));
+    pairs.push({out:o,"in":i,manual:!!man,on:!man});
   });
   return pairs;
 }
 function applyTransfers(pairs,cat){
   var now=Date.now();
-  pairs.forEach(function(p){[p.out,p["in"]].forEach(function(t){var x=data.tx.filter(function(y){return y.id===t.id;})[0];if(x){x.cat=cat;x.ct=now;}});});
+  pairs.filter(function(p){return p.on;}).forEach(function(p){[p.out,p["in"]].forEach(function(t){var x=data.tx.filter(function(y){return y.id===t.id;})[0];if(x){x.cat=cat;x.ct=now;}});});
   persist();
 }
 function applyDedupe(res){
@@ -585,7 +597,9 @@ window.F2={
     flash("✓ Wiederhergestellt: "+r.n+" Kategorien, "+r.p+" Zuordnungen, "+r.r+" Regel-Ergänzungen");},
   ptgt:function(i,v){st.pending[i].target=v;render();},
   check:function(){st.chk=checkData();st.trf=findTransfers();render();},
-  trfApply:function(){var n=st.trf.length;var cat=(rules().filter(function(r){return r.name==="Sparen & Umbuchung";})[0]||rules().filter(function(r){return r.neutral;})[0]||{}).name;if(!cat){flash("⚠ Keine Umbuchungs-Kategorie vorhanden",true);return;}if(!confirm(n+" Paare ("+(n*2)+" Buchungen) als „"+cat+"“ markieren?"))return;applyTransfers(st.trf,cat);st.trf=findTransfers();flash("✓ "+(n*2)+" Buchungen als Umbuchung markiert");},
+  trfT:function(i,v){st.trf[i].on=v;var b=document.querySelector('button[onclick="F2.trfApply()"]');if(b)b.textContent=st.trf.filter(function(p){return p.on;}).length+' angehakte als Umbuchung markieren';},
+  trfAll:function(v){st.trf.forEach(function(p){p.on=v;});render();},
+  trfApply:function(){var n=st.trf.filter(function(p){return p.on;}).length;if(!n){flash("⚠ Nichts angehakt",true);return;}var cat=(rules().filter(function(r){return r.name==="Sparen & Umbuchung";})[0]||rules().filter(function(r){return r.neutral;})[0]||{}).name;if(!cat){flash("⚠ Keine Umbuchungs-Kategorie vorhanden",true);return;}if(!confirm(n+" Paare ("+(n*2)+" Buchungen) als „"+cat+"“ markieren?"))return;applyTransfers(st.trf,cat);st.trf=findTransfers();flash("✓ "+(n*2)+" Buchungen als Umbuchung markiert");},
   chkReset:function(){st.chk=null;st.trf=null;render();},
   dedupe:function(){if(!st.chk)return;var n=st.chk.remove.length;if(!confirm(n+" doppelte Buchungen entfernen?"))return;applyDedupe(st.chk);st.chk=checkData();flash("✓ "+n+" doppelte Buchungen entfernt");},
   rmP:function(k){delete data.pmap[k];persist();render();},
@@ -595,6 +609,7 @@ window.F2={
     data.tx.forEach(function(t){if(t.k===k)data.deleted.push(t.id);});data.tx=data.tx.filter(function(t){return t.k!==k;});delete data.konten[k];persist();render();flash("✓ Gelöscht");}
 };
 
+window.__finCheck={checkData:checkData,findTransfers:findTransfers};
 render();
 C.autoPull([AREA],function(a,d){data=norm(d);render();});
 })();
