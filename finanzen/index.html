@@ -312,7 +312,10 @@ function vImport(){
       var neu=b.txs.filter(function(t){return !ids[t.id];}).length;
       var ds=b.txs.map(function(t){return t.d;}).sort();
       h+='<div class="rule"><div class="small muted" style="margin-bottom:8px">'+b.bank+" · "+C.esc(b.file)+" · "+b.txs.length+" Buchungen ("+new Date(ds[0]).toLocaleDateString("de-DE")+" – "+new Date(ds[ds.length-1]).toLocaleDateString("de-DE")+') · <b style="color:#69f0ae">'+neu+" neu</b>"+(b.txs.length-neu?", "+(b.txs.length-neu)+" schon vorhanden":"")+"</div>"+
-        '<div class="field"><label>Kontoname</label><input id="pn'+i+'" value="'+C.esc(ex?ex.name:b.name)+'"></div>'+
+        (Object.keys(data.konten).length?'<div class="field"><label>Zu welchem Konto gehört die Datei?</label><select id="pt'+i+'" onchange="F2.ptgt('+i+',this.value)"><option value="'+C.esc(b.key)+'"'+(b.target===b.key?" selected":"")+'>'+(data.konten[b.key]?C.esc(data.konten[b.key].name)+" (erkannt)":"Neues Konto anlegen")+'</option>'+
+          Object.keys(data.konten).filter(function(k){return k!==b.key;}).map(function(k){return '<option value="'+C.esc(k)+'"'+(b.target===k?" selected":"")+'>'+C.esc(data.konten[k].name)+'</option>';}).join("")+'</select></div>':'')+
+        (b.target!==b.key&&b.overlap?'<div class="small" style="color:#ffb74d;margin:-6px 0 10px">⚠ '+b.overlap.n+' Buchungen dieser Datei gibt es schon in „'+C.esc(data.konten[b.overlap.k].name)+'“ – vermutlich dasselbe Konto (z. B. Datei umbenannt). Vorausgewählt, damit nichts doppelt entsteht.</div>':'')+
+        '<div class="field"><label>Kontoname</label><input id="pn'+i+'" value="'+C.esc(data.konten[b.target]?data.konten[b.target].name:(ex?ex.name:b.name))+'"></div>'+
         '<div class="field" style="margin-bottom:0"><label>Bereich</label><select id="pb'+i+'"><option value="privat"'+((ex?ex.bereich:b.bereich)==="privat"?" selected":"")+'>Privat</option><option value="geschaeft"'+((ex?ex.bereich:b.bereich)==="geschaeft"?" selected":"")+">Geschäft</option></select></div></div>";});
     h+='<div class="row2"><button class="btn" onclick="F2.commit()">✓ Übernehmen</button><button class="btn ghost" onclick="F2.cancel()">Abbrechen</button></div></div>';
     if(st.pendingInfo.length)h+='<div class="panel" style="border-color:#ff980066">'+st.pendingInfo.map(function(x){return '<div class="small" style="color:#ffb74d">⚠ '+C.esc(x)+"</div>";}).join("")+"</div>";
@@ -351,6 +354,16 @@ function vRules(){
   h+='<div class="panel"><h3>👤 Empfänger-Zuordnungen</h3><div class="note" style="margin-bottom:10px">Entstehen über „Als Regel merken“ bei einer Buchung und haben <b>Vorrang</b> vor allen Kategorien-Regeln.</div>'+
     (function(){var tk=Object.keys(data.tmap).sort();return tk.length?'<div class="small muted" style="margin:6px 0 4px">Nach Buchungsart (bei Buchungen ohne Empfänger):</div>'+tk.map(function(k){return '<div class="kv"><span style="overflow-wrap:anywhere">'+C.esc(k)+'</span><span style="white-space:nowrap">'+C.esc(data.tmap[k])+' <button class="pill" style="padding:2px 8px" onclick="F2.rmT(\''+C.esc(k).replace(/'/g,"\\'")+'\')">✕</button></span></div>';}).join("")+'<div class="small muted" style="margin:10px 0 4px">Nach Empfänger:</div>':"";})()+
     (pk.length?pk.map(function(k){return '<div class="kv"><span style="overflow-wrap:anywhere">'+C.esc(k)+'</span><span style="white-space:nowrap">'+C.esc(data.pmap[k])+' <button class="pill" style="padding:2px 8px" onclick="F2.rmP(\''+C.esc(k).replace(/'/g,"\\'")+'\')">✕</button></span></div>';}).join(""):'<div class="note">Noch keine Empfänger-Zuordnungen.</div>')+"</div>";
+  h+='<div class="panel" style="border-color:#7eb8ff55"><h3>🔍 Datenprüfung</h3><div class="note" style="margin-bottom:10px">Findet Buchungen, die doppelt vorliegen – z. B. weil dasselbe Konto zweimal importiert wurde (andere Dateinamen, Excel-Speicherung, anderer Zeichensatz). Echte Wiederholungen im selben Konto bleiben unangetastet.</div>';
+  if(!st.chk)h+='<button class="btn" onclick="F2.check()">Jetzt prüfen</button>';
+  else if(!st.chk.remove.length)h+='<div style="color:#69f0ae">✓ Keine doppelten Buchungen gefunden.</div><button class="btn ghost" style="margin-top:8px" onclick="F2.check()">Erneut prüfen</button>';
+  else{var c=st.chk,sum=c.remove.reduce(function(a,t){return a+t.b;},0);
+    h+='<div style="color:#ffb74d;font-weight:700;margin-bottom:6px">⚠ '+c.remove.length+' doppelte Buchungen gefunden</div>'+
+      (c.dupKonten.length?'<div class="note" style="margin-bottom:8px">Konten, die Kopien eines anderen sind:<br>'+c.dupKonten.map(function(x){return '• '+C.esc(x.name)+' ist eine Kopie von „'+C.esc(x.of)+'“ – '+x.d+' von '+x.n+' Buchungen doppelt';}).join("<br>")+'</div>':'')+
+      '<div class="note" style="margin-bottom:10px">Beispiele:<br>'+c.remove.slice(0,5).map(function(t){return '• '+new Date(t.d).toLocaleDateString("de-DE")+' · '+C.esc((t.p||t.t||"—").slice(0,30))+' · '+C.eur(t.b)+' · '+C.esc((data.konten[t.k]||{}).name||t.k);}).join("<br>")+'</div>'+
+      '<button class="btn" style="background:#ff9800" onclick="F2.dedupe()">'+c.remove.length+' Doppelte entfernen</button> <button class="btn ghost" onclick="F2.chkReset()">Abbrechen</button>'+
+      '<div class="note" style="margin-top:8px">Kategorien und Bemerkungen der entfernten Buchungen werden auf die behaltene übertragen. Vorher am besten unter Import → Sicherung exportieren.</div>';}
+  h+='</div>';
   var ks=Object.keys(data.konten);
   h+='<div class="panel"><h3>🏦 Konten</h3>'+(ks.length?ks.map(function(k){var ko=data.konten[k],n=data.tx.filter(function(t){return t.k===k;}).length;
     return '<div class="rule"><div class="field"><label>'+C.esc(ko.bank||"")+" · "+n+' Buchungen</label><input value="'+C.esc(ko.name)+'" onchange="F2.kname(\''+C.esc(k)+'\',this.value)"></div>'+
@@ -401,6 +414,57 @@ function replaceRules(o){
   data.rules=neu;persist();st.tab="regeln";
   flash("✓ Neues Regelwerk aktiv: "+cnt.tx+" Buchungen und "+cnt.p+" Zuordnungen umbenannt"+(cnt.reset?", "+cnt.reset+" zur Neuzuordnung freigegeben":""));
 }
+/* ---------- Datenprüfung: doppelte Buchungen und doppelte Konten finden ---------- */
+/* Fingerabdruck unabhängig von Konto und Zeichensatz: nur a–z/0–9, damit „Müller“ und „MÃ¼ller“ gleich aussehen */
+function normTxt(x){return String(x||"").toLowerCase().replace(/[^a-z0-9]/g,"");}
+function fp(t){return t.d+"|"+t.b.toFixed(2)+"|"+normTxt(t.p).slice(0,24)+"|"+normTxt(t.z).slice(0,40);}
+function checkData(){
+  var kN={};data.tx.forEach(function(t){kN[t.k]=(kN[t.k]||0)+1;});
+  var by={};data.tx.forEach(function(t){(by[fp(t)]=by[fp(t)]||[]).push(t);});
+  /* 1) Konten-Paare: Wie viele Buchungen von B finden sich auch in A? */
+  var shared={};
+  Object.keys(by).forEach(function(k){var ks={};by[k].forEach(function(t){ks[t.k]=1;});var l=Object.keys(ks);
+    for(var a=0;a<l.length;a++)for(var b=0;b<l.length;b++)if(a!==b){var key=l[a]+"→"+l[b];shared[key]=(shared[key]||0)+1;}});
+  /* B gilt als Kopie von A, wenn mindestens die Hälfte von B auch in A vorkommt.
+     Richtung: Konto ohne erkannte IBAN ist die Kopie, sonst das kleinere. */
+  var copyOf={};
+  Object.keys(shared).forEach(function(key){var p=key.split("→"),A=p[0],B=p[1];
+    if(shared[key]/kN[B]<0.5)return;
+    var bWorse=/\?\?\?\?/.test(B)&&!/\?\?\?\?/.test(A);var aWorse=/\?\?\?\?/.test(A)&&!/\?\?\?\?/.test(B);
+    if(aWorse)return;if(!bWorse&&(kN[B]>kN[A]||(kN[B]===kN[A]&&B<A)))return;
+    if(!copyOf[B])copyOf[B]=A;});
+  var groups=[],remove=[];
+  Object.keys(by).forEach(function(k){var g=by[k];if(g.length<2)return;
+    var drop=[],keepers=[];
+    /* 2) Kopie-Konto → gegen das Original abgleichen */
+    var orig=g.filter(function(t){return !copyOf[t.k];});
+    var copies=g.filter(function(t){return copyOf[t.k];});
+    copies.forEach(function(t){var o=orig.filter(function(x){return x.k===copyOf[t.k]&&keepers.indexOf(x)<0;})[0];
+      if(o){drop.push(t);keepers.push(o);}});
+    /* 3) gleiches Konto, aber abweichender Text (z. B. Zeichensatz) → Variante entfernen; exakt gleicher Text bleibt (echte Wiederholung) */
+    var perK={};g.filter(function(t){return drop.indexOf(t)<0;}).forEach(function(t){(perK[t.k]=perK[t.k]||[]).push(t);});
+    Object.keys(perK).forEach(function(kk){var l=perK[kk];if(l.length<2)return;
+      var variants={};l.forEach(function(t){var v=t.p+"\u0001"+t.z;(variants[v]=variants[v]||[]).push(t);});
+      var vs=Object.keys(variants);if(vs.length<2)return;
+      /* behalten wird die Textvariante mit den meisten Kategorien/Bemerkungen */
+      vs.sort(function(a,b){var s=function(v){return variants[v].reduce(function(n,t){return n+(t.cat?2:0)+(t.note?1:0);},0);};return s(b)-s(a);});
+      var main=variants[vs[0]];vs.slice(1).forEach(function(v){variants[v].forEach(function(t,i){if(i<main.length){drop.push(t);keepers.push(main[i]);}});});});
+    if(drop.length){groups.push({pairs:drop.map(function(t,i){return {drop:t,keep:keepers[i]};})});remove=remove.concat(drop);}
+  });
+  var dupKonten=Object.keys(copyOf).map(function(k){var d=remove.filter(function(t){return t.k===k;}).length;
+    return {k:k,name:(data.konten[k]||{}).name||k,of:(data.konten[copyOf[k]]||{}).name||copyOf[k],n:kN[k],d:d};});
+  return {groups:groups,remove:remove,dupKonten:dupKonten};
+}
+function applyDedupe(res){
+  var now=Date.now(),drop={};res.remove.forEach(function(t){drop[t.id]=1;});
+  res.groups.forEach(function(g){g.pairs.forEach(function(pr){var k=pr.keep,t=pr.drop;
+    if(t.cat&&(!k.cat||(t.ct||0)>(k.ct||0))){k.cat=t.cat;k.ct=now;}if(t.note&&!k.note){k.note=t.note;k.nt=now;}});});
+  data.tx=data.tx.filter(function(t){return !drop[t.id];});
+  Object.keys(drop).forEach(function(id){if(data.deleted.indexOf(id)<0)data.deleted.push(id);});
+  /* leere Konten entfernen */
+  res.dupKonten.forEach(function(x){if(!data.tx.some(function(t){return t.k===x.k;}))delete data.konten[x.k];});
+  persist();
+}
 function ensureRules(){if(!data.rules)data.rules=clone(F.DEFAULT_RULES);}
 window.F2={
   tab:function(t){st.tab=t;st.edit=null;render();window.scrollTo(0,0);},
@@ -434,10 +498,16 @@ window.F2={
       /* gleiche Konten aus mehreren Dateien zusammenfassen */
       var by={};blocks.forEach(function(b){if(by[b.key]){var seen={};by[b.key].txs.forEach(function(t){seen[t.id]=1;});b.txs.forEach(function(t){if(!seen[t.id])by[b.key].txs.push(t);});by[b.key].file+=", "+b.file;if(b.saldo&&(!by[b.key].saldo||b.saldo.d>by[b.key].saldo.d))by[b.key].saldo=b.saldo;}else by[b.key]=b;});
       st.pending=Object.keys(by).map(function(k){return by[k];});st.pendingInfo=info;
+      /* passt die Datei zu einem vorhandenen Konto (gleiche Buchungen)? Dann dieses vorschlagen */
+      var known={};data.tx.forEach(function(t){(known[fp(t)]=known[fp(t)]||{})[t.k]=1;});
+      st.pending.forEach(function(b){var hits={};b.txs.forEach(function(t){var m=known[fp(t)];if(m)Object.keys(m).forEach(function(k){hits[k]=(hits[k]||0)+1;});});
+        var best=null,bn=0;Object.keys(hits).forEach(function(k){if(hits[k]>bn){bn=hits[k];best=k;}});
+        b.target=data.konten[b.key]?b.key:(best&&bn/b.txs.length>=0.3?best:b.key);b.overlap=best?{k:best,n:bn}:null;});
       if(!st.pending.length){st.pending=null;flash("⚠ "+(info[0]||"Keine Buchungen gefunden"),true);return;}
       render();});},
   commit:function(){var ids={};data.tx.forEach(function(t){ids[t.id]=1;});var del={};data.deleted.forEach(function(d){del[d]=1;});var total=0,dup=0;
     st.pending.forEach(function(b,i){var name=document.getElementById("pn"+i).value.trim()||b.name,ber=document.getElementById("pb"+i).value;
+      var sel=document.getElementById("pt"+i);if(sel&&sel.value&&sel.value!==b.key){b.key=sel.value;b.bank=(data.konten[b.key]||{}).bank||b.bank;F.assignIds(b,b.key);}
       var ko=data.konten[b.key]||{};ko.name=name;ko.bank=b.bank;ko.bereich=ber;if(b.saldo&&(!ko.saldo||b.saldo.d>=ko.saldo.d))ko.saldo=b.saldo;data.konten[b.key]=ko;
       var neu=0;b.txs.forEach(function(t){if(ids[t.id]){dup++;return;}if(del[t.id]){delete del[t.id];}ids[t.id]=1;data.tx.push(t);neu++;});total+=neu;
       data.imports.push({ts:Date.now(),file:b.file,konto:name,neu:neu,dup:b.txs.length-neu});});
@@ -480,6 +550,10 @@ window.F2={
     flash("✓ Wiederhergestellt: "+r.n+" Kategorien, "+r.p+" Zuordnungen, "+r.r+" Regel-Ergänzungen");},
   restoreBackup:function(){var bk=C.getBackup(AREA);if(!bk)return;var r=restoreFrom(bk.rec.data);persist();st.tab="uebersicht";
     flash("✓ Wiederhergestellt: "+r.n+" Kategorien, "+r.p+" Zuordnungen, "+r.r+" Regel-Ergänzungen");},
+  ptgt:function(i,v){st.pending[i].target=v;render();},
+  check:function(){st.chk=checkData();render();},
+  chkReset:function(){st.chk=null;render();},
+  dedupe:function(){if(!st.chk)return;var n=st.chk.remove.length;if(!confirm(n+" doppelte Buchungen entfernen?"))return;applyDedupe(st.chk);st.chk=checkData();flash("✓ "+n+" doppelte Buchungen entfernt");},
   rmP:function(k){delete data.pmap[k];persist();render();},
   kname:function(k,v){if(data.konten[k]){data.konten[k].name=v.trim()||data.konten[k].name;persist();}},
   kber:function(k,v){if(data.konten[k]){data.konten[k].bereich=v;persist();render();}},
