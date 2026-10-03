@@ -363,6 +363,16 @@ function vRules(){
       '<div class="note" style="margin-bottom:10px">Beispiele:<br>'+c.remove.slice(0,5).map(function(t){return '• '+new Date(t.d).toLocaleDateString("de-DE")+' · '+C.esc((t.p||t.t||"—").slice(0,30))+' · '+C.eur(t.b)+' · '+C.esc((data.konten[t.k]||{}).name||t.k);}).join("<br>")+'</div>'+
       '<button class="btn" style="background:#ff9800" onclick="F2.dedupe()">'+c.remove.length+' Doppelte entfernen</button> <button class="btn ghost" onclick="F2.chkReset()">Abbrechen</button>'+
       '<div class="note" style="margin-top:8px">Kategorien und Bemerkungen der entfernten Buchungen werden auf die behaltene übertragen. Vorher am besten unter Import → Sicherung exportieren.</div>';}
+  if(st.chk&&st.trf){var tr=st.trf,vol=tr.reduce(function(a,p){return a+p["in"].b;},0);
+    h+='<div style="border-top:1px solid var(--border);margin-top:14px;padding-top:12px"><b class="small">Überträge zwischen eigenen Konten</b>';
+    if(!tr.length)h+='<div style="color:#69f0ae;margin-top:6px">✓ Alle erkannten Überträge sind als Umbuchung markiert.</div>';
+    else h+='<div style="color:#ffb74d;font-weight:700;margin:6px 0">⚠ '+tr.length+' Überträge (je '+C.eur(vol,0)+' Ein- und Ausgang) zählen noch als Einnahme und Ausgabe</div>'+
+      '<div class="note" style="margin-bottom:10px">Gleicher Betrag geht auf einem deiner Konten ab und innerhalb von 3 Tagen auf einem anderen ein. Beispiele:<br>'+
+      tr.slice(0,6).map(function(p){return '• '+new Date(p.out.d).toLocaleDateString("de-DE")+' · '+C.eur(p["in"].b)+' · '+C.esc((data.konten[p.out.k]||{}).name||p.out.k)+' → '+C.esc((data.konten[p["in"].k]||{}).name||p["in"].k);}).join("<br>")+
+      (tr.length>6?'<br>… und '+(tr.length-6)+' weitere':'')+'</div>'+
+      '<button class="btn" onclick="F2.trfApply()">Alle als Umbuchung markieren</button>'+
+      '<div class="note" style="margin-top:8px">Prüfe die Beispiele kurz: Erkannt wird nur über Betrag, Datum und unterschiedliche Konten. Einzelne Fehlgriffe kannst du danach unter Buchungen wieder ändern.</div>';
+    h+='</div>';}
   h+='</div>';
   var ks=Object.keys(data.konten);
   h+='<div class="panel"><h3>🏦 Konten</h3>'+(ks.length?ks.map(function(k){var ko=data.konten[k],n=data.tx.filter(function(t){return t.k===k;}).length;
@@ -454,6 +464,29 @@ function checkData(){
   var dupKonten=Object.keys(copyOf).map(function(k){var d=remove.filter(function(t){return t.k===k;}).length;
     return {k:k,name:(data.konten[k]||{}).name||k,of:(data.konten[copyOf[k]]||{}).name||copyOf[k],n:kN[k],d:d};});
   return {groups:groups,remove:remove,dupKonten:dupKonten};
+}
+/* Interne Überträge: gleicher Betrag geht auf einem eigenen Konto ab und auf einem anderen ein (±3 Tage).
+   Beide Seiten sollten als Umbuchung zählen, sonst werden Einnahmen UND Ausgaben aufgebläht. */
+function findTransfers(){
+  var R=rules(),day=86400000;
+  var isNeu=function(t){return F.isNeutral(F.category(t,R),R);};
+  var outs=data.tx.filter(function(t){return t.b<=-1;}),ins={};
+  data.tx.forEach(function(t){if(t.b>=1){var k=t.b.toFixed(2);(ins[k]=ins[k]||[]).push(t);}});
+  var used={},pairs=[];
+  outs.sort(function(a,b){return a.d.localeCompare(b.d);}).forEach(function(o){
+    var cand=(ins[(-o.b).toFixed(2)]||[]).filter(function(i){return !used[i.id]&&i.k!==o.k&&Math.abs(new Date(i.d)-new Date(o.d))<=3*day;});
+    if(!cand.length)return;
+    cand.sort(function(a,b){return Math.abs(new Date(a.d)-new Date(o.d))-Math.abs(new Date(b.d)-new Date(o.d));});
+    var i=cand[0];used[i.id]=1;used[o.id]=1;
+    if(isNeu(o)&&isNeu(i))return;   /* schon korrekt */
+    pairs.push({out:o,"in":i});
+  });
+  return pairs;
+}
+function applyTransfers(pairs,cat){
+  var now=Date.now();
+  pairs.forEach(function(p){[p.out,p["in"]].forEach(function(t){var x=data.tx.filter(function(y){return y.id===t.id;})[0];if(x){x.cat=cat;x.ct=now;}});});
+  persist();
 }
 function applyDedupe(res){
   var now=Date.now(),drop={};res.remove.forEach(function(t){drop[t.id]=1;});
@@ -551,8 +584,9 @@ window.F2={
   restoreBackup:function(){var bk=C.getBackup(AREA);if(!bk)return;var r=restoreFrom(bk.rec.data);persist();st.tab="uebersicht";
     flash("✓ Wiederhergestellt: "+r.n+" Kategorien, "+r.p+" Zuordnungen, "+r.r+" Regel-Ergänzungen");},
   ptgt:function(i,v){st.pending[i].target=v;render();},
-  check:function(){st.chk=checkData();render();},
-  chkReset:function(){st.chk=null;render();},
+  check:function(){st.chk=checkData();st.trf=findTransfers();render();},
+  trfApply:function(){var n=st.trf.length;var cat=(rules().filter(function(r){return r.name==="Sparen & Umbuchung";})[0]||rules().filter(function(r){return r.neutral;})[0]||{}).name;if(!cat){flash("⚠ Keine Umbuchungs-Kategorie vorhanden",true);return;}if(!confirm(n+" Paare ("+(n*2)+" Buchungen) als „"+cat+"“ markieren?"))return;applyTransfers(st.trf,cat);st.trf=findTransfers();flash("✓ "+(n*2)+" Buchungen als Umbuchung markiert");},
+  chkReset:function(){st.chk=null;st.trf=null;render();},
   dedupe:function(){if(!st.chk)return;var n=st.chk.remove.length;if(!confirm(n+" doppelte Buchungen entfernen?"))return;applyDedupe(st.chk);st.chk=checkData();flash("✓ "+n+" doppelte Buchungen entfernt");},
   rmP:function(k){delete data.pmap[k];persist();render();},
   kname:function(k,v){if(data.konten[k]){data.konten[k].name=v.trim()||data.konten[k].name;persist();}},
