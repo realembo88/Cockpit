@@ -20,9 +20,9 @@ function setPriv(b){try{localStorage.setItem(PRIV_KEY,b?"1":"0");}catch(e){}
   window.dispatchEvent(new CustomEvent("cockpit:priv",{detail:!!b}));}
 function togglePriv(){setPriv(!priv());}
 /* Euro-Betrag – im Diskretionsmodus maskiert */
-function eur(n,d){if(n==null||isNaN(n))return "–";return priv()?MASK+" €":eurRaw(n,d);}
+function eur(n,d){if(n==null||isNaN(n))return "–";return priv()?MASK+"\u00a0€":eurRaw(n,d);}
 /* bereits fertige Texte (z. B. Kachel-Zusammenfassungen) nachträglich maskieren */
-function maskText(t){if(!priv()||t==null)return t;return String(t).replace(/([+−\-]?)\d[\d.,]*(\s|\u202f)?€/g,"$1"+MASK+" €");}
+function maskText(t){if(!priv()||t==null)return t;return String(t).replace(/[+−\-]?\d[\d.,]*(\s|\u202f|\u00a0)?€/g,MASK+"\u00a0€");}
 function eyeButton(){var p=priv();return '<button id="cp-eye" class="eye" onclick="Cockpit.togglePriv()" title="'+(p?"Beträge anzeigen":"Beträge ausblenden")+'" aria-label="Beträge ein- oder ausblenden">'+(p?"🙈":"👁")+'</button>';}
 try{document.documentElement.classList.toggle("priv",priv());}catch(e){}
 function int(n){return (n==null||isNaN(n))?"–":Math.round(n).toLocaleString("de-DE");}
