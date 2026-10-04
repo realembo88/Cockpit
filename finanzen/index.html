@@ -185,7 +185,7 @@ function vDash(){
   if(N)h+='<div class="note" style="margin:-6px 0 14px">Umbuchungen und Sparen ('+C.eur(N,0)+') sind darin nicht enthalten, weil das Geld nur zwischen deinen Konten wandert.</div>';
   if(unk)h+='<div class="panel" style="border-color:#ff980066;cursor:pointer" onclick="F2.showUnk()"><b style="color:#ffb74d">⚠ '+unk+" Buchungen unkategorisiert</b><div class=\"note\">Tippen, um sie zuzuordnen – am schnellsten über „Als Regel merken“.</div></div>";
   var lab=F.MON.map(function(m){return m;});
-  h+='<div class="panel"><h3>Saldo pro Monat</h3>'+C.barChart(lab.map(function(m,i){var v=rep.ein[i]+rep.aus[i];return {label:m,value:v,color:v>=0?"#00c853":"#ff5252"};}),{fmt:function(v){return C.eur(v,0);}})+"</div>";
+  h+='<div class="panel"><h3>Saldo pro Monat</h3>'+C.barChart(lab.map(function(m,i){var v=rep.ein[i]+rep.aus[i];return {label:m,value:v,color:v>=0?"#00c853":"#ff5252"};}),{money:true,fmt:function(v){return C.eur(v,0);}})+"</div>";
   h+='<div class="panel"><h3>Einnahmen & Ausgaben pro Monat</h3>'+groupChart(F.MON,[{name:"Einnahmen",color:"#00c853",values:rep.ein},{name:"Ausgaben",color:"#e040fb",values:rep.aus}],function(v){return C.eur(v,0);})+"</div>";
   h+='<div class="panel"><h3 style="color:#00c853">Einnahmen nach Kategorie</h3>'+catBars(rep,R,1,"#00c853")+"</div>";
   h+='<div class="panel"><h3>Ausgaben nach Kategorie</h3>'+catBars(rep,R,-1,"#e040fb")+"</div>";
@@ -203,7 +203,7 @@ function groupChart(labels,series,fmt){
   mx*=1.12;var iW=W-pL-pR,iH=H-pT-pB,slot=iW/n,bw=Math.max(3,Math.min(14,slot*0.8/k));
   function y(v){return pT+iH*(1-v/mx);}
   var o='<svg viewBox="0 0 '+W+" "+H+'" width="100%" role="img">';
-  for(var g=0;g<=3;g++){var gv=mx*g/3,gy=y(gv);o+='<line x1="'+pL+'" y1="'+gy+'" x2="'+(W-pR)+'" y2="'+gy+'" stroke="#1e2a4a" stroke-dasharray="3 3"/><text x="'+(pL-5)+'" y="'+(gy+3)+'" fill="#5c7aaa" font-size="9" text-anchor="end">'+C.int(gv)+"</text>";}
+  for(var g=0;g<=3;g++){var gv=mx*g/3,gy=y(gv);o+='<line x1="'+pL+'" y1="'+gy+'" x2="'+(W-pR)+'" y2="'+gy+'" stroke="#1e2a4a" stroke-dasharray="3 3"/><text x="'+(pL-5)+'" y="'+(gy+3)+'" fill="#5c7aaa" font-size="9" text-anchor="end">'+(C.priv()?"":C.int(gv))+"</text>";}
   labels.forEach(function(l,i){var cx=pL+slot*(i+.5),x0=cx-bw*k/2;
     series.forEach(function(s,j){var v=Math.abs(s.values[i]||0),yy=y(v);
       o+='<rect x="'+(x0+j*bw+.5)+'" y="'+yy+'" width="'+(bw-1)+'" height="'+Math.max(0,pT+iH-yy)+'" rx="2" fill="'+s.color+'"><title>'+C.esc(l+" – "+s.name+": "+fmt(v))+"</title></rect>";});
@@ -231,7 +231,7 @@ function eurPanel(){
 function eurBuild(year,keys,name){
   var R=rules(),ks={};keys.forEach(function(k){ks[k]=1;});
   var tx=data.tx.filter(function(t){return ks[t.k]&&t.d.slice(0,4)===String(year);}).sort(function(a,b){return a.d.localeCompare(b.d)||a.b-b.b;});
-  var e=function(v){return C.eur(v);},esc=C.esc;
+  var e=function(v){return C.eurRaw(v);},esc=C.esc;
   var byCat={};tx.forEach(function(t){var c=F.category(t,R);(byCat[c]=byCat[c]||[]).push(t);});
   var cats=Object.keys(byCat).map(function(c){var s=byCat[c].reduce(function(a,t){return a+t.b;},0);return {c:c,s:s,n:byCat[c].length,neu:F.isNeutral(c,R)};});
   var inc=cats.filter(function(x){return !x.neu&&x.s>0;}).sort(function(a,b){return b.s-a.s;});
@@ -301,7 +301,7 @@ function dayChart(y,mo,dim,series,hh){
   function yy(v){return pT+iH*(1-v/mx);}
   var o='<svg viewBox="0 0 '+W+" "+H+'" width="100%" role="img">';
   for(var d=0;d<dim;d++){var wd=new Date(y,mo,d+1).getDay();if(wd===0||wd===6)o+='<rect x="'+(pL+slot*d)+'" y="'+pT+'" width="'+slot+'" height="'+iH+'" fill="#ffffff" fill-opacity=".045"/>';}
-  for(var g=0;g<=3;g++){var gv=mx*g/3,gy=yy(gv);o+='<line x1="'+pL+'" y1="'+gy+'" x2="'+(W-pR)+'" y2="'+gy+'" stroke="#1e2a4a" stroke-dasharray="3 3"/><text x="'+(pL-6)+'" y="'+(gy+3)+'" fill="#5c7aaa" font-size="10" text-anchor="end">'+C.int(gv)+"</text>";}
+  for(var g=0;g<=3;g++){var gv=mx*g/3,gy=yy(gv);o+='<line x1="'+pL+'" y1="'+gy+'" x2="'+(W-pR)+'" y2="'+gy+'" stroke="#1e2a4a" stroke-dasharray="3 3"/><text x="'+(pL-6)+'" y="'+(gy+3)+'" fill="#5c7aaa" font-size="10" text-anchor="end">'+(C.priv()?"":C.int(gv))+"</text>";}
   for(d=0;d<dim;d++){var cx=pL+slot*(d+.5),x0=cx-bw*k/2,wd2=new Date(y,mo,d+1).getDay();
     series.forEach(function(s,j){var v=s.v[d];if(!v)return;var top=yy(v);
       o+='<rect x="'+(x0+j*bw+.5)+'" y="'+top+'" width="'+(bw-1)+'" height="'+Math.max(1,pT+iH-top)+'" rx="2" fill="'+s.c+'"><title>'+(d+1)+". · "+C.esc(s.l)+": "+C.eur(v)+"</title></rect>";});
@@ -703,6 +703,7 @@ window.F2={
     data.tx.forEach(function(t){if(t.k===k)data.deleted.push(t.id);});data.tx=data.tx.filter(function(t){return t.k!==k;});delete data.konten[k];persist();render();flash("✓ Gelöscht");}
 };
 
+window.addEventListener('cockpit:priv',function(){if(!document.body.classList.contains('eur-on'))render();});
 window.__finCheck={checkData:checkData,findTransfers:findTransfers};
 render();
 C.autoPull([AREA],function(a,d){data=norm(d);render();});
