@@ -146,11 +146,11 @@ function summaryFor(d){
   if(!has)y=+d.tx.reduce(function(m,t){return t.d>m?t.d:m;},"0000").slice(0,4);
   var r=F.report(d.tx,R,{year:y}),s=F.sum(r.ein)+F.sum(r.aus),mi=new Date().getMonth();
   var unk=d.tx.filter(function(t){return F.category(t,R)===F.UNKAT;}).length;
-  return {k:(s>=0?"+":"−")+C.eur(Math.abs(s),0),s:"Saldo "+y+(y===thisYear?" · Ausgaben "+F.MON[mi]+" "+C.eur(Math.abs(r.aus[mi]),0):"")+(unk?" · "+unk+" offen":"")};
+  return {k:(s>=0?"+":"−")+C.eurRaw(Math.abs(s),0),s:"Saldo "+y+(y===thisYear?" · Ausgaben "+F.MON[mi]+" "+C.eurRaw(Math.abs(r.aus[mi]),0):"")+(unk?" · "+unk+" offen":"")};
 }
 function persist(){data._summary=summaryFor(data);F.setPartnerMap(data.pmap,data.tmap);C.save(AREA,data);}
 function flash(t,warn){st.flash={t:t,warn:!!warn};render();clearTimeout(flash.tm);flash.tm=setTimeout(function(){st.flash=null;render();},warn?4500:2600);}
-function sEur(v,d){return '<span class="'+(v>=0?"pos":"neg")+'">'+(v>=0?"+":"−")+C.eur(Math.abs(v),d)+"</span>";}
+function sEur(v,d){return '<span class="'+(v>=0?"pos":"neg")+'">'+(C.priv()?"":(v>=0?"+":"−"))+C.eur(Math.abs(v),d)+"</span>";}
 
 /* ---------- Rahmen ---------- */
 function render(){
@@ -703,6 +703,8 @@ window.F2={
     data.tx.forEach(function(t){if(t.k===k)data.deleted.push(t.id);});data.tx=data.tx.filter(function(t){return t.k!==k;});delete data.konten[k];persist();render();flash("✓ Gelöscht");}
 };
 
+/* alte, versehentlich maskiert gespeicherte Kachel-Zusammenfassung erneuern */
+if(data._summary&&/•••/.test(JSON.stringify(data._summary)))persist();
 window.addEventListener('cockpit:priv',function(){if(!document.body.classList.contains('eur-on'))render();});
 window.__finCheck={checkData:checkData,findTransfers:findTransfers};
 render();
