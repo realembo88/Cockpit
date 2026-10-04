@@ -199,7 +199,7 @@ function hubSummary(){
     const y=new Date().getFullYear(),a=dashData(y);
     const tot=(a.tg||0)+(a.tw||0)+(a.ts||0);
     if(!tot&&a.aut===null)return {k:'—',s:'Noch keine Werte '+y};
-    return {k:tot?fE(tot).replace(/\u202f/g,' '):'—',s:'Kosten '+y+(a.aut!==null?' · Autarkie '+fN(a.aut,0)+' %':'')};
+    return {k:tot?Cockpit.eurRaw(tot):'—',s:'Kosten '+y+(a.aut!==null?' · Autarkie '+fN(a.aut,0)+' %':'')};
   }catch(e){return {k:'—',s:''};}
 }
 function saveState(manual){
@@ -1095,6 +1095,7 @@ Cockpit.registerMerge('energie',mergeEnergie);
 if(typeof Chart!=='undefined'){Chart.defaults.color='#5c7aaa';Chart.defaults.borderColor='rgba(255,255,255,.06)';Chart.defaults.font.family="'DM Sans','Segoe UI',system-ui,sans-serif";}
 S.tab='uebersicht';
 loadState();rApp();
+try{const _p=Cockpit.getLocal('energie',null);if(_p&&_p._summary&&/•••/.test(JSON.stringify(_p._summary)))saveState(false);}catch(e){}
 window.addEventListener('cockpit:priv',()=>rApp());
 Cockpit.autoPull(['energie'],function(a,d){if(d){applyData(d);rApp();}});
 
