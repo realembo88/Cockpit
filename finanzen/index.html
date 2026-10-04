@@ -63,6 +63,39 @@
 .search{width:100%;background:var(--field);border:1px solid var(--border);border-radius:10px;padding:11px 13px;color:#fff;font-size:14px;margin-bottom:10px;}
 select.inl{background:var(--field);border:1px solid var(--border);color:#fff;border-radius:8px;padding:7px 8px;font-size:12px;max-width:100%;}
 input[type=file]{display:none;}
+/* EÜR-Bericht: am Bildschirm als Overlay, beim Drucken nur das Dokument */
+#eurOverlay{display:none;}
+body.eur-on #eurOverlay{display:block;position:fixed;inset:0;z-index:50;overflow:auto;background:#e9edf3;padding:0 0 40px;}
+body.eur-on .wrap{display:none;}
+.eur-bar{position:sticky;top:0;display:flex;gap:8px;align-items:center;padding:10px 14px;background:#0d1829;color:#fff;z-index:2;}
+.eur-tip{font-size:12px;color:#475569;text-align:center;padding:8px;}
+.eur-doc{background:#fff;color:#111827;max-width:820px;margin:0 auto;padding:28px 30px;font-size:12px;line-height:1.45;box-shadow:0 2px 12px rgba(0,0,0,.15);}
+.eur-doc h1{font-size:19px;margin:0 0 2px;color:#111827;}
+.eur-doc h2{font-size:14px;margin:22px 0 8px;color:#111827;border-bottom:2px solid #111827;padding-bottom:3px;}
+.eur-doc h3{font-size:12.5px;margin:16px 0 4px;color:#111827;}
+.eur-doc .sub{color:#4b5563;font-size:11px;}
+.eur-doc .r{text-align:right;}
+.eur-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;border-bottom:1px solid #d1d5db;padding-bottom:10px;}
+.eur-box{background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px;padding:9px 11px;margin-top:12px;font-size:11px;color:#374151;}
+.eur-t{width:100%;border-collapse:collapse;}
+.eur-t th{text-align:left;font-weight:600;color:#374151;border-bottom:1px solid #9ca3af;padding:4px 6px;font-size:11px;}
+.eur-t th.r{text-align:right;}
+.eur-t td{padding:3px 6px;border-bottom:1px solid #e5e7eb;vertical-align:top;color:#111827;}
+.eur-t tr.tot td{font-weight:700;border-top:1px solid #111827;border-bottom:none;}
+.eur-t td.r,.eur-t th.r{white-space:nowrap;}
+.eur-j td{font-size:10.5px;}
+.eur-j .note-l{color:#6b7280;font-style:italic;font-size:10px;}
+@media print{
+  @page{size:A4;margin:14mm 12mm;}
+  body{background:#fff!important;padding:0!important;}
+  :root{padding:0!important;}
+  body.eur-on .eur-bar,body.eur-on .eur-tip{display:none!important;}
+  body.eur-on #eurOverlay{position:static;background:#fff;padding:0;overflow:visible;}
+  .eur-doc{box-shadow:none;max-width:none;padding:0;}
+  .eur-t tr{page-break-inside:avoid;}
+  .eur-doc h2,.eur-doc h3{page-break-after:avoid;}
+  .eur-doc h2.pb{page-break-before:always;}
+}
 code{background:var(--field);padding:1px 5px;border-radius:4px;font-size:11px;}
 </style>
 </head>
@@ -95,7 +128,7 @@ function merge(l,r,lU,rU){
     by[t.id]=o;});
   var imp={};r.imports.concat(l.imports).forEach(function(i){imp[i.ts+"|"+i.file]=i;});
   var out={konten:Object.assign({},lU>=rU?r.konten:l.konten,newer.konten),rules:newer.rules,pmap:Object.assign({},lU>=rU?r.pmap:l.pmap,newer.pmap),tmap:Object.assign({},lU>=rU?r.tmap:l.tmap,newer.tmap),
-    tx:order.map(function(id){return by[id];}),deleted:Object.keys(del),imports:Object.keys(imp).map(function(k){return imp[k];}).sort(function(a,b){return a.ts-b.ts;}).slice(-50)};
+    eur:newer.eur||(lU>=rU?r.eur:l.eur),tx:order.map(function(id){return by[id];}),deleted:Object.keys(del),imports:Object.keys(imp).map(function(k){return imp[k];}).sort(function(a,b){return a.ts-b.ts;}).slice(-50)};
   out._summary=summaryFor(out);return out;
 }
 C.registerMerge(AREA,merge);
@@ -160,6 +193,7 @@ function vDash(){
   if(ks.length)h+='<div class="panel"><h3>Konten</h3>'+ks.map(function(k){var ko=data.konten[k],n=data.tx.filter(function(t){return t.k===k;}).length;
     return '<div class="kv"><span>'+C.esc(ko.name)+' <span class="small">· '+(ko.bereich==="geschaeft"?"Geschäft":"Privat")+" · "+n+" Buchungen</span></span><span>"+(ko.saldo?"<b style=\"color:#fff\">"+C.eur(ko.saldo.v)+'</b> <span class="small">'+new Date(ko.saldo.d).toLocaleDateString("de-DE")+"</span>":'<span class="small">kein Kontostand</span>')+"</span></div>";}).join("")+
     '<div class="note" style="margin-top:6px">Kontostände liefert nur der ING-Export mit. N26 enthält keinen Saldo.</div></div>';
+  h+=eurPanel();
   return h;
 }
 function groupChart(labels,series,fmt){
@@ -182,6 +216,62 @@ function catBars(rep,R,sign,color){
   var mx=Math.abs(list[0].v),tot=list.reduce(function(s,x){return s+Math.abs(x.v);},0);
   return list.slice(0,12).map(function(x){return '<div class="bar" style="cursor:pointer" onclick="F2.cat(\''+C.esc(x.c).replace(/'/g,"\\'")+'\')"><span class="l">'+C.esc(x.c)+'</span><span class="t"><i style="width:'+(Math.abs(x.v)/mx*100).toFixed(1)+'%;background:'+(x.c===F.UNKAT?"#ff9800":color)+'"></i></span><span class="v">'+C.eur(Math.abs(x.v),0)+' <span class="small muted">'+C.num(Math.abs(x.v)/tot*100,0)+" %</span></span></div>";}).join("");
 }
+/* ---------- EÜR-Bericht (Arbeitsgrundlage für die Steuerberatung) ---------- */
+function eurPanel(){
+  var gk=Object.keys(data.konten).filter(function(k){return data.konten[k].bereich==="geschaeft";});
+  if(!st.eurK)st.eurK=gk.slice();
+  var all=Object.keys(data.konten);
+  return '<div class="panel" style="border-color:#e040fb55"><h3>📄 EÜR-Bericht für die Steuerberatung</h3>'+
+    '<div class="note" style="margin-bottom:10px">Einnahmen-Überschuss-Rechnung aus den Kontobewegungen des gewählten Jahres ('+st.year+'), mit allen Buchungen als Belegliste. Ergebnis als druckfertige Ansicht → „Als PDF speichern“.</div>'+
+    '<div class="field"><label>Betrieb / Name im Bericht</label><input id="eurName" value="'+C.esc((data.eur&&data.eur.name)||"")+'" placeholder="z. B. Firmenname, Inhaber" onchange="F2.eurName(this.value)"></div>'+
+    '<div class="small muted" style="margin-bottom:6px">Einbezogene Konten:</div>'+
+    all.map(function(k){var ko=data.konten[k];return '<label style="display:flex;gap:8px;align-items:center;font-size:13px;padding:3px 0"><input type="checkbox" '+(st.eurK.indexOf(k)>-1?"checked ":"")+'onchange="F2.eurK(\''+C.esc(k)+'\',this.checked)">'+C.esc(ko.name)+' <span class="small muted">· '+(ko.bereich==="geschaeft"?"Geschäft":"Privat")+'</span></label>';}).join("")+
+    '<button class="btn" style="margin-top:12px" onclick="F2.eurOpen()">📄 EÜR '+st.year+' erstellen</button></div>';
+}
+function eurBuild(year,keys,name){
+  var R=rules(),ks={};keys.forEach(function(k){ks[k]=1;});
+  var tx=data.tx.filter(function(t){return ks[t.k]&&t.d.slice(0,4)===String(year);}).sort(function(a,b){return a.d.localeCompare(b.d)||a.b-b.b;});
+  var e=function(v){return C.eur(v);},esc=C.esc;
+  var byCat={};tx.forEach(function(t){var c=F.category(t,R);(byCat[c]=byCat[c]||[]).push(t);});
+  var cats=Object.keys(byCat).map(function(c){var s=byCat[c].reduce(function(a,t){return a+t.b;},0);return {c:c,s:s,n:byCat[c].length,neu:F.isNeutral(c,R)};});
+  var inc=cats.filter(function(x){return !x.neu&&x.s>0;}).sort(function(a,b){return b.s-a.s;});
+  var exp=cats.filter(function(x){return !x.neu&&x.s<=0;}).sort(function(a,b){return a.s-b.s;});
+  var neu=cats.filter(function(x){return x.neu;});
+  var sI=inc.reduce(function(a,x){return a+x.s;},0),sE=exp.reduce(function(a,x){return a+x.s;},0),res=sI+sE;
+  var unk=byCat[F.UNKAT]?byCat[F.UNKAT].length:0;
+  var mon=F.MON.map(function(m,i){var mm=String(i+1).padStart(2,"0"),l=tx.filter(function(t){return t.d.slice(5,7)===mm&&!F.isNeutral(F.category(t,R),R);});
+    var a=l.filter(function(t){return t.b>0;}).reduce(function(s,t){return s+t.b;},0),b=l.filter(function(t){return t.b<0;}).reduce(function(s,t){return s+t.b;},0);return [m,a,b,a+b];});
+  var kn=keys.map(function(k){return esc((data.konten[k]||{}).name||k);}).join(", ");
+  var row=function(l,v,cls){return '<tr'+(cls?' class="'+cls+'"':'')+'><td>'+l+'</td><td class="r">'+v+'</td></tr>';};
+  var h='<div class="eur-doc">';
+  h+='<div class="eur-head"><div><h1>Einnahmen-Überschuss-Rechnung '+year+'</h1><div class="sub">'+(name?esc(name)+' · ':'')+'Zeitraum 01.01.'+year+' – 31.12.'+year+'</div></div><div class="sub r">Erstellt am '+new Date().toLocaleDateString("de-DE")+'<br>'+tx.length+' Buchungen</div></div>';
+  h+='<div class="eur-box"><b>Grundlage:</b> Kontobewegungen ('+kn+'), Zufluss-/Abflussprinzip nach Buchungsdatum (§ 4 Abs. 3 EStG). Kleinunternehmerregelung (§ 19 UStG): Beträge ohne gesonderten Umsatzsteuerausweis.<br>'+
+    '<b>Hinweis:</b> Arbeitsgrundlage aus den Bankbuchungen, keine abschließende EÜR. Nicht enthalten sind Vorgänge außerhalb dieser Konten, z. B. Abschreibungen (AfA), bar oder privat bezahlte Betriebsausgaben, Privatnutzung von Kfz oder Telefon, Arbeitszimmer.'+
+    (unk?'<br><b style="color:#b45309">Achtung: '+unk+' Buchungen sind noch nicht kategorisiert.</b>':'')+'</div>';
+  h+='<h2>1. Ergebnis</h2><table class="eur-t">'+row('<b>Betriebseinnahmen</b>','<b>'+e(sI)+'</b>')+row('<b>Betriebsausgaben</b>','<b>'+e(sE)+'</b>')+row('<b>'+(res>=0?'Gewinn':'Verlust')+'</b>','<b>'+e(res)+'</b>','tot')+'</table>';
+  h+='<h2>2. Betriebseinnahmen nach Kategorie</h2><table class="eur-t"><tr><th>Kategorie</th><th class="r">Buchungen</th><th class="r">Betrag</th></tr>'+(inc.length?inc.map(function(x){return '<tr><td>'+esc(x.c)+'</td><td class="r">'+x.n+'</td><td class="r">'+e(x.s)+'</td></tr>';}).join(""):'<tr><td colspan="3">–</td></tr>')+'<tr class="tot"><td>Summe</td><td></td><td class="r">'+e(sI)+'</td></tr></table>';
+  h+='<h2>3. Betriebsausgaben nach Kategorie</h2><table class="eur-t"><tr><th>Kategorie</th><th class="r">Buchungen</th><th class="r">Betrag</th></tr>'+(exp.length?exp.map(function(x){return '<tr><td>'+esc(x.c)+'</td><td class="r">'+x.n+'</td><td class="r">'+e(x.s)+'</td></tr>';}).join(""):'<tr><td colspan="3">–</td></tr>')+'<tr class="tot"><td>Summe</td><td></td><td class="r">'+e(sE)+'</td></tr></table>';
+  if(neu.length)h+='<h2>4. Nicht gewinnwirksame Bewegungen</h2><div class="sub" style="margin-bottom:6px">Privateinlagen/-entnahmen, Umbuchungen und Geldanlagen – zur Abstimmung, nicht im Ergebnis enthalten.</div><table class="eur-t"><tr><th>Kategorie</th><th class="r">Buchungen</th><th class="r">Eingänge</th><th class="r">Ausgänge</th></tr>'+
+    neu.map(function(x){var a=byCat[x.c].filter(function(t){return t.b>0;}).reduce(function(s,t){return s+t.b;},0),b=byCat[x.c].filter(function(t){return t.b<0;}).reduce(function(s,t){return s+t.b;},0);return '<tr><td>'+esc(x.c)+'</td><td class="r">'+x.n+'</td><td class="r">'+e(a)+'</td><td class="r">'+e(b)+'</td></tr>';}).join("")+'</table>';
+  h+='<h2>'+(neu.length?5:4)+'. Monatsübersicht</h2><table class="eur-t"><tr><th>Monat</th><th class="r">Einnahmen</th><th class="r">Ausgaben</th><th class="r">Saldo</th></tr>'+mon.map(function(m){return '<tr><td>'+m[0]+'</td><td class="r">'+e(m[1])+'</td><td class="r">'+e(m[2])+'</td><td class="r">'+e(m[3])+'</td></tr>';}).join("")+'<tr class="tot"><td>Jahr</td><td class="r">'+e(sI)+'</td><td class="r">'+e(sE)+'</td><td class="r">'+e(res)+'</td></tr></table>';
+  h+='<h2 class="pb">'+(neu.length?6:5)+'. Buchungen nach Kategorie (Belegliste)</h2>';
+  inc.concat(exp).concat(neu).forEach(function(x){
+    h+='<h3>'+esc(x.c)+(x.neu?' <span class="sub">(nicht gewinnwirksam)</span>':'')+'</h3><table class="eur-t eur-j"><tr><th style="width:62px">Datum</th><th>Gegenpartei</th><th>Verwendungszweck</th><th class="r" style="width:96px">Betrag</th></tr>'+
+      byCat[x.c].map(function(t){return '<tr><td>'+new Date(t.d).toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit",year:"2-digit"})+'</td><td>'+esc(t.p||t.t||"—")+'</td><td>'+esc((t.z||"").slice(0,90))+(t.note?'<div class="note-l">Bemerkung: '+esc(t.note)+'</div>':'')+'</td><td class="r">'+e(t.b)+'</td></tr>';}).join("")+
+      '<tr class="tot"><td colspan="3">Summe '+esc(x.c)+'</td><td class="r">'+e(x.s)+'</td></tr></table>';});
+  h+='<div class="sub" style="margin-top:18px;text-align:center">Erstellt mit dem persönlichen Cockpit · Angaben ohne Gewähr, bitte mit der Steuerberatung abstimmen.</div></div>';
+  return {html:h,n:tx.length};
+}
+function eurShow(year,keys,name){
+  var r=eurBuild(year,keys,name);
+  var ov=document.getElementById("eurOverlay");if(!ov){ov=document.createElement("div");ov.id="eurOverlay";document.body.appendChild(ov);}
+  ov.innerHTML='<div class="eur-bar"><b>EÜR '+year+'</b><span style="flex:1"></span><button class="btn" onclick="window.print()">🖨 Als PDF speichern</button><button class="btn ghost" onclick="F2.eurClose()">✕</button></div>'+
+    '<div class="eur-tip">Tipp: Im Druckdialog als Ziel <b>„Als PDF speichern“</b> wählen.</div>'+r.html;
+  document.body.classList.add("eur-on");window.scrollTo(0,0);
+  var prev=document.title;document.title="EUER_"+year+(name?"_"+name.replace(/[^\wäöüÄÖÜß-]+/g,"_"):"");
+  window.addEventListener("afterprint",function f(){document.title=prev;window.removeEventListener("afterprint",f);});
+}
+
 function kpi(i,l,v){return '<div class="kpi"><div class="ico">'+i+'</div><div class="val">'+v+'</div><div class="lab">'+l+"</div></div>";}
 
 /* ---------- Monatsmatrix ---------- */
@@ -596,6 +686,10 @@ window.F2={
   restoreBackup:function(){var bk=C.getBackup(AREA);if(!bk)return;var r=restoreFrom(bk.rec.data);persist();st.tab="uebersicht";
     flash("✓ Wiederhergestellt: "+r.n+" Kategorien, "+r.p+" Zuordnungen, "+r.r+" Regel-Ergänzungen");},
   ptgt:function(i,v){st.pending[i].target=v;render();},
+  eurName:function(v){data.eur=Object.assign({},data.eur||{},{name:String(v||"").trim()});persist();},
+  eurK:function(k,on){st.eurK=st.eurK||[];var i=st.eurK.indexOf(k);if(on&&i<0)st.eurK.push(k);if(!on&&i>-1)st.eurK.splice(i,1);},
+  eurOpen:function(){if(!st.eurK||!st.eurK.length){flash("⚠ Bitte mindestens ein Konto auswählen",true);return;}var n=document.getElementById("eurName");if(n)F2.eurName(n.value);eurShow(st.year,st.eurK,(data.eur&&data.eur.name)||"");},
+  eurClose:function(){document.body.classList.remove("eur-on");},
   check:function(){st.chk=checkData();st.trf=findTransfers();render();},
   trfT:function(i,v){st.trf[i].on=v;var b=document.querySelector('button[onclick="F2.trfApply()"]');if(b)b.textContent=st.trf.filter(function(p){return p.on;}).length+' angehakte als Umbuchung markieren';},
   trfAll:function(v){st.trf.forEach(function(p){p.on=v;});render();},
