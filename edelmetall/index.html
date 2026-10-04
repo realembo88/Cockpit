@@ -104,7 +104,7 @@ function eurPerOz(id,pr){pr=pr||st.prices;return pr&&pr.usd&&pr.usd[id]&&pr.fx?p
 function value(d,id,pr){var p=eurPerOz(id,pr);return p==null?null:grams(d,id)/TROY*p;}
 function totals(d,pr){var v=0,c=0,ok=false;METALS.forEach(function(m){var g=grams(d,m.id);var x=value(d,m.id,pr);if(x!=null){v+=x;ok=true;}else if(g)ok=ok;c+=cost(d,m.id);});return {v:ok?v:null,c:c};}
 function giftValue(){var v=0,ok=false;METALS.forEach(function(m){var p=eurPerOz(m.id);if(p==null)return;items(null,m.id).forEach(function(x){if(!(+x.einkauf)){v+=x.gramm/TROY*p;ok=true;}});});return ok?v:null;}
-function amt(g){return st.unit==="oz"?C.num(g/TROY,3)+" oz":(g>=1000?C.num(g/1000,3)+" kg":C.num(g,2)+" g");}
+function amt(g){if(C.priv())return "••• "+(st.unit==="oz"?"oz":"g");return st.unit==="oz"?C.num(g/TROY,3)+" oz":(g>=1000?C.num(g/1000,3)+" kg":C.num(g,2)+" g");}
 function signEur(x,d){return (x>=0?"+":"−")+C.eur(Math.abs(x),d);}
 function summaryFor(d){
   var t=totals(d,st.prices);
@@ -205,7 +205,7 @@ function vDash(){
     var g=grams(null,m.id),p=eurPerOz(m.id),v=value(null,m.id),c=cost(null,m.id),dc=dayChange(m.id);
     return '<div class="mcard'+(st.chart===m.id?" on":"")+'" style="--mc:'+m.color+';opacity:'+(g?1:.55)+'" onclick="E.chart(\''+m.id+'\')"><div class="h"><span class="n"><span class="dot"></span>'+m.label+"</span>"+
       (dc!=null?'<span class="small '+(dc>=0?"pos":"neg")+'">'+(dc>=0?"▲":"▼")+" "+C.num(Math.abs(dc),2)+" %</span>":"")+"</div>"+
-      '<div class="p">'+(p!=null?C.eur(p/TROY)+" / g":"—")+'</div><div class="s">'+(p!=null?C.eur(p)+" / oz":"")+"</div>"+
+      '<div class="p">'+(p!=null?C.eurRaw(p/TROY)+" / g":"—")+'</div><div class="s">'+(p!=null?C.eurRaw(p)+" / oz":"")+"</div>"+
       (g?'<div class="hold"><div class="kv" style="padding:2px 0"><span>Bestand</span><span>'+amt(g)+'</span></div><div class="kv" style="padding:2px 0"><span>Wert</span><b style="color:'+m.color+'">'+(v!=null?C.eur(v,0):"—")+"</b></div>"+
         (v!=null?'<div class="kv" style="padding:2px 0"><span>G/V</span><span class="'+(v-c>=0?"pos":"neg")+'">'+signEur(v-c,0)+"</span></div>":"")+"</div>":'<div class="hold muted">Kein Bestand</div>')+"</div>";}).join("")+"</div>";
   /* Verlauf aus echten Tages-Schnappschüssen */
@@ -216,9 +216,9 @@ function vDash(){
     var pts,col,fmt;
     if(st.chart==="wert"||!METALS.some(function(x){return x.id===st.chart;})){col="#c9a84c";fmt=function(v){return C.eur(v,0);};
       pts=ds.map(function(d){var s=data.history[d],v=0;METALS.forEach(function(m){if(s.usd&&s.usd[m.id])v+=grams(null,m.id,d)/TROY*s.usd[m.id]*s.fx;});return {label:d.slice(8,10)+"."+d.slice(5,7)+".",value:v};});}
-    else{var mm=METALS.filter(function(x){return x.id===st.chart;})[0];col=mm.color;fmt=function(v){return C.eur(v,2)+"/g";};
+    else{var mm=METALS.filter(function(x){return x.id===st.chart;})[0];col=mm.color;fmt=function(v){return C.eurRaw(v,2)+"/g";};
       pts=ds.map(function(d){var s=data.history[d];return {label:d.slice(8,10)+"."+d.slice(5,7)+".",value:s.usd&&s.usd[mm.id]?s.usd[mm.id]*s.fx/TROY:null};});}
-    h+=C.lineChart(pts,{color:col,fmt:fmt})+'<div class="note" style="margin-top:6px">'+ds.length+" Tages-Schnappschüsse seit "+new Date(ds[0]).toLocaleDateString("de-DE")+(st.chart==="wert"?" · Wert mit dem jeweils damaligen Bestand":" · in €/g")+"</div>";
+    h+=C.lineChart(pts,{color:col,fmt:fmt,money:st.chart==="wert"})+'<div class="note" style="margin-top:6px">'+ds.length+" Tages-Schnappschüsse seit "+new Date(ds[0]).toLocaleDateString("de-DE")+(st.chart==="wert"?" · Wert mit dem jeweils damaligen Bestand":" · in €/g")+"</div>";
   }
   h+="</div>";
   h+='<div class="panel"><h3>Aufteilung</h3><div class="scroll-x"><table class="t"><thead><tr><th>Metall</th><th>Bestand</th><th>Wert</th><th>Einkauf</th><th>G/V</th><th>Anteil</th></tr></thead><tbody>'+
@@ -234,7 +234,7 @@ function vPos(){
     var sorted=it.slice().sort(function(a,b){return (b.datum||"").localeCompare(a.datum||"");});
     h+='<div class="grp" style="--mc:'+m.color+'"><div class="grp-h" onclick="E.toggle(\''+m.id+'\')"><span><span style="display:inline-block;transform:rotate('+(open?90:0)+'deg);transition:.2s;color:var(--muted)">▶</span> <b>'+m.label+'</b> <span class="small muted">'+it.length+' Positionen</span></span><b style="color:#fff">'+amt(grams(null,m.id))+"</b></div>";
     if(open)h+=sorted.map(function(x){var cv=p!=null?x.gramm/TROY*p:null;
-      return '<div class="pitem"><div><div class="t">'+C.esc(x.titel)+'</div><div class="m">'+(x.anzahl||1)+"× · "+C.num(x.gramm,1)+" g · "+(x.quelle?C.esc(x.quelle):"—")+(x.datum?" · "+new Date(x.datum).toLocaleDateString("de-DE"):"")+'</div></div><div style="display:flex;align-items:flex-start"><div class="r"><div style="color:'+m.color+';font-weight:700">'+(cv!=null?C.eur(cv):"—")+'</div><div class="m">'+(x.einkauf?"EK "+C.eur(x.einkauf):"ohne Einkauf")+'</div></div><button class="del" aria-label="Löschen" onclick="E.del(\''+m.id+"','"+x.id+"')\">✕</button></div></div>";}).join("");
+      return '<div class="pitem"><div><div class="t">'+C.esc(x.titel)+'</div><div class="m">'+(x.anzahl||1)+"× · "+(C.priv()?"•••":C.num(x.gramm,1))+" g · "+(x.quelle?C.esc(x.quelle):"—")+(x.datum?" · "+new Date(x.datum).toLocaleDateString("de-DE"):"")+'</div></div><div style="display:flex;align-items:flex-start"><div class="r"><div style="color:'+m.color+';font-weight:700">'+(cv!=null?C.eur(cv):"—")+'</div><div class="m">'+(x.einkauf?"EK "+C.eur(x.einkauf):"ohne Einkauf")+'</div></div><button class="del" aria-label="Löschen" onclick="E.del(\''+m.id+"','"+x.id+"')\">✕</button></div></div>";}).join("");
     h+="</div>";});
   return h+"</div>";
 }
@@ -253,7 +253,7 @@ function vStocks(){
   var pe=d.price&&fx?d.price*fx:null,val=pe!=null?pe*(hold.shares||0):null,pl=val!=null&&hold.einstand?val-hold.einstand:null;
   var dc=d.price&&d.prev?(d.price-d.prev)/d.prev*100:null;
   var h='<div class="hero2" style="border-color:'+s.color+'55;background:linear-gradient(135deg,'+s.color+'2e,var(--panel) 70%)"><div class="lab">'+s.label+" ("+s.sym+')</div><div class="big">'+(val!=null?C.eur(val):"—")+'</div>'+
-    '<div class="small"><span class="muted">'+C.int(hold.shares||0)+" Stück"+(d.price?" × "+C.num(d.price,2)+" $":"")+"</span>"+(dc!=null?' · <span class="'+(dc>=0?"pos":"neg")+'">'+(dc>=0?"▲":"▼")+" "+C.num(Math.abs(dc),2)+" %</span>":"")+(pl!=null?' · <b class="'+(pl>=0?"pos":"neg")+'">'+signEur(pl)+"</b>":"")+"</div></div>";
+    '<div class="small"><span class="muted">'+(C.priv()?"•••":C.int(hold.shares||0))+" Stück"+(d.price?" × "+C.num(d.price,2)+" $":"")+"</span>"+(dc!=null?' · <span class="'+(dc>=0?"pos":"neg")+'">'+(dc>=0?"▲":"▼")+" "+C.num(Math.abs(dc),2)+" %</span>":"")+(pl!=null?' · <b class="'+(pl>=0?"pos":"neg")+'">'+signEur(pl)+"</b>":"")+"</div></div>";
   if(st.stockErr&&!st.loading)h+='<div class="banner">⚠ '+C.esc(st.stockErr)+"</div>";
   if(d.hist&&d.hist.length>1)h+='<div class="panel"><h3 style="color:'+s.color+'">Kursverlauf 1 Monat ($)</h3>'+C.lineChart(d.hist,{color:s.color,fmt:function(v){return C.num(v,2)+" $";}})+'<div class="note">Echte Kurshistorie via '+C.esc(st.stockSrc)+"</div></div>";
   h+='<div class="panel"><h3>Bestand bearbeiten</h3><div class="row2"><div class="field"><label>Stückzahl</label><input id="s-sh" inputmode="decimal" value="'+(hold.shares||0)+'"></div><div class="field"><label>Einkauf gesamt (€)</label><input id="s-ek" inputmode="decimal" value="'+(hold.einstand||"")+'" placeholder="optional"></div></div><button class="btn full" onclick="E.saveStock()">Speichern</button></div>';
@@ -314,6 +314,7 @@ window.E={
   imp:function(inp){var f=inp.files&&inp.files[0];if(!f)return;C.readFile(f).then(function(t){try{importObj(JSON.parse(t));}catch(e){flash("⚠ Datei ist kein gültiges JSON",true);}});inp.value="";}
 };
 
+window.addEventListener('cockpit:priv',render);
 render();
 C.autoPull([AREA],function(a,d){data=norm(d);render();});
 refresh();
