@@ -89,3 +89,7 @@ table.t th{color:var(--muted);font-weight:500;}
 .tile .s{color:var(--muted);font-size:11px;margin-top:2px;}
 @media (min-width:640px){.tiles{grid-template-columns:repeat(4,1fr);}}
 svg text{font-family:inherit;}
+
+/* Diskretionsmodus-Schalter */
+.eye{background:transparent;border:1px solid var(--border);border-radius:20px;width:34px;height:30px;font-size:15px;cursor:pointer;line-height:1;padding:0;}
+.eye:active{transform:scale(.95);}

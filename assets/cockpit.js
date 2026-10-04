@@ -10,7 +10,21 @@ var SHA_PREFIX = "cockpit:sha:";
 /* ---------------- Hilfsfunktionen ---------------- */
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
 function num(n,d){d=(d==null?1:d);if(n==null||isNaN(n))return "–";return Number(n).toLocaleString("de-DE",{minimumFractionDigits:d,maximumFractionDigits:d});}
-function eur(n,d){if(n==null||isNaN(n))return "–";return Number(n).toLocaleString("de-DE",{minimumFractionDigits:d==null?2:d,maximumFractionDigits:d==null?2:d})+" €";}
+function eurRaw(n,d){if(n==null||isNaN(n))return "–";return Number(n).toLocaleString("de-DE",{minimumFractionDigits:d==null?2:d,maximumFractionDigits:d==null?2:d})+" €";}
+/* ---------- Diskretionsmodus: Geldbeträge ausblenden (Standard), pro Gerät gemerkt ---------- */
+var PRIV_KEY="cockpit:privacy",MASK="•••";
+function priv(){try{var v=localStorage.getItem(PRIV_KEY);return v===null?true:v==="1";}catch(e){return true;}}
+function setPriv(b){try{localStorage.setItem(PRIV_KEY,b?"1":"0");}catch(e){}
+  document.documentElement.classList.toggle("priv",!!b);
+  var el=document.getElementById("cp-eye");if(el){el.textContent=b?"🙈":"👁";el.title=b?"Beträge anzeigen":"Beträge ausblenden";}
+  window.dispatchEvent(new CustomEvent("cockpit:priv",{detail:!!b}));}
+function togglePriv(){setPriv(!priv());}
+/* Euro-Betrag – im Diskretionsmodus maskiert */
+function eur(n,d){if(n==null||isNaN(n))return "–";return priv()?MASK+" €":eurRaw(n,d);}
+/* bereits fertige Texte (z. B. Kachel-Zusammenfassungen) nachträglich maskieren */
+function maskText(t){if(!priv()||t==null)return t;return String(t).replace(/([+−\-]?)\d[\d.,]*(\s|\u202f)?€/g,"$1"+MASK+" €");}
+function eyeButton(){var p=priv();return '<button id="cp-eye" class="eye" onclick="Cockpit.togglePriv()" title="'+(p?"Beträge anzeigen":"Beträge ausblenden")+'" aria-label="Beträge ein- oder ausblenden">'+(p?"🙈":"👁")+'</button>';}
+try{document.documentElement.classList.toggle("priv",priv());}catch(e){}
 function int(n){return (n==null||isNaN(n))?"–":Math.round(n).toLocaleString("de-DE");}
 function parseNum(v){if(v==null)return NaN;if(typeof v==="number")return v;var s=String(v).trim().replace(/\s/g,"");if(s.indexOf(",")>-1&&s.indexOf(".")>-1)s=s.replace(/\./g,"").replace(",",".");else s=s.replace(",",".");return parseFloat(s);}
 function today(){return new Date().toISOString().slice(0,10);}
@@ -209,7 +223,7 @@ function topbar(o){
   return '<header class="topbar">'+
     (o.home===false?'':'<a class="home" href="'+base+'index.html" aria-label="Zur Startseite">⌂</a>')+
     '<div class="ttl"><b>'+(o.icon?o.icon+" ":"")+esc(o.title)+'</b>'+(o.sub?'<span>'+esc(o.sub)+'</span>':'')+'</div>'+
-    '<div class="right"><a id="cp-sync" class="sync" href="'+base+'einstellungen.html"><i></i></a></div></header>';
+    '<div class="right">'+eyeButton()+'<a id="cp-sync" class="sync" href="'+base+'einstellungen.html"><i></i></a></div></header>';
 }
 
 /* ---------------- Diagramme (SVG, ohne Bibliothek) ---------------- */
@@ -224,7 +238,7 @@ function lineChart(points,o){
   var iW=W-pL-pR,iH=H-pT-pB,n=points.length;
   function x(i){return pL+(n===1?iW/2:iW*i/(n-1));} function y(v){return pT+iH*(1-(v-mn)/(mx-mn));}
   var col=o.color||"var(--accent)",s='<svg viewBox="0 0 '+W+" "+H+'" width="100%" role="img">';
-  for(var g=0;g<=3;g++){var gv=mn+(mx-mn)*g/3,gy=y(gv);s+='<line x1="'+pL+'" y1="'+gy+'" x2="'+(W-pR)+'" y2="'+gy+'" stroke="#1e2a4a" stroke-dasharray="3 3"/><text x="'+(pL-5)+'" y="'+(gy+3)+'" fill="#5c7aaa" font-size="9" text-anchor="end">'+axisFmt(gv)+"</text>";}
+  for(var g=0;g<=3;g++){var gv=mn+(mx-mn)*g/3,gy=y(gv);s+='<line x1="'+pL+'" y1="'+gy+'" x2="'+(W-pR)+'" y2="'+gy+'" stroke="#1e2a4a" stroke-dasharray="3 3"/><text x="'+(pL-5)+'" y="'+(gy+3)+'" fill="#5c7aaa" font-size="9" text-anchor="end">'+(o.money&&priv()?"":axisFmt(gv))+"</text>";}
   if(o.ref!=null){var ry=y(o.ref);s+='<line x1="'+pL+'" y1="'+ry+'" x2="'+(W-pR)+'" y2="'+ry+'" stroke="#ff9800" stroke-opacity=".6" stroke-dasharray="4 4"/><text x="'+(W-pR)+'" y="'+(ry-4)+'" fill="#ff9800" font-size="9" text-anchor="end">'+esc(o.refLabel||"")+"</text>";}
   var d="",st=false;points.forEach(function(p,i){if(p.value==null||isNaN(p.value)){st=false;return;}d+=(st?" L":" M")+x(i).toFixed(1)+" "+y(p.value).toFixed(1);st=true;});
   s+='<path d="'+d+'" fill="none" stroke="'+col+'" stroke-width="2"/>';
@@ -242,7 +256,7 @@ function barChart(points,o){
   var iW=W-pL-pR,iH=H-pT-pB,n=points.length,bw=Math.max(3,Math.min(40,iW/n*0.62));
   function cx(i){return pL+iW*(i+.5)/n;} function y(v){return pT+iH*(1-(v-mn)/(mx-mn));}
   var s='<svg viewBox="0 0 '+W+" "+H+'" width="100%" role="img">';
-  for(var g=0;g<=3;g++){var gv=mn+(mx-mn)*g/3,gy=y(gv);s+='<line x1="'+pL+'" y1="'+gy+'" x2="'+(W-pR)+'" y2="'+gy+'" stroke="#1e2a4a" stroke-dasharray="3 3"/><text x="'+(pL-5)+'" y="'+(gy+3)+'" fill="#5c7aaa" font-size="9" text-anchor="end">'+axisFmt(gv)+"</text>";}
+  for(var g=0;g<=3;g++){var gv=mn+(mx-mn)*g/3,gy=y(gv);s+='<line x1="'+pL+'" y1="'+gy+'" x2="'+(W-pR)+'" y2="'+gy+'" stroke="#1e2a4a" stroke-dasharray="3 3"/><text x="'+(pL-5)+'" y="'+(gy+3)+'" fill="#5c7aaa" font-size="9" text-anchor="end">'+(o.money&&priv()?"":axisFmt(gv))+"</text>";}
   var every=Math.ceil(n/8),y0=y(0);
   points.forEach(function(p,i){var v=p.value||0,top=Math.min(y(v),y0),h=Math.abs(y(v)-y0);
     s+='<rect x="'+(cx(i)-bw/2)+'" y="'+top+'" width="'+bw+'" height="'+Math.max(0,h)+'" rx="3" fill="'+(p.color||o.color||"var(--accent2)")+'"><title>'+esc(p.label+": "+(o.fmt?o.fmt(v):num(v,2)))+"</title></rect>";
@@ -267,6 +281,7 @@ function autoPull(areas,onChange){
 window.Cockpit={
   esc:esc,num:num,eur:eur,int:int,parseNum:parseNum,today:today,
   getConfig:getConfig,setConfig:setConfig,configured:configured,testConnection:testConnection,
+  priv:priv,setPriv:setPriv,togglePriv:togglePriv,eurRaw:eurRaw,maskText:maskText,eyeButton:eyeButton,
   getLocal:getLocal,save:save,registerMerge:registerMerge,versions:versions,versionAt:versionAt,getBackup:getBackup,pull:pull,push:push,autoPull:autoPull,
   onStatus:onStatus,paintStatus:paintStatus,topbar:topbar,
   lineChart:lineChart,barChart:barChart,downloadText:downloadText,readFile:readFile
