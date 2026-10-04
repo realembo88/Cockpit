@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0e1a">
+<title>Cockpit · Ferienwohnung</title>
+<link rel="manifest" href="../manifest.webmanifest">
+<link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/style.css">
+<style>
+.hero2{border-radius:16px;padding:16px;margin-bottom:14px;border:1px solid #2dd4bf55;background:linear-gradient(135deg,#2dd4bf26,var(--panel) 70%);}
+.hero2 .lab{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;}
+.hero2 .big{font-size:28px;font-weight:800;color:#fff;margin:4px 0;font-variant-numeric:tabular-nums;}
+.filt{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px;}
+.yr{display:flex;align-items:center;background:var(--panel);border:1px solid var(--border);border-radius:10px;}
+.yr button{background:none;border:none;color:var(--muted);font-size:19px;padding:4px 12px;cursor:pointer;}
+.yr b{color:#fff;min-width:44px;text-align:center;}
+.pill{border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:20px;padding:6px 12px;font-size:12px;cursor:pointer;}
+.pill.on{background:var(--accent);border-color:var(--accent);color:#06221f;font-weight:700;}
+.bk{display:flex;justify-content:space-between;gap:10px;padding:11px 2px;border-top:1px solid #152038;}
+.bk:first-child{border-top:none;}
+.bk .t{color:#fff;font-size:13px;}
+.bk .m{color:var(--muted);font-size:11px;margin-top:2px;}
+.bk .a{text-align:right;white-space:nowrap;font-weight:700;}
+.ch{display:inline-block;font-size:10px;padding:1px 7px;border-radius:9px;margin-left:6px;vertical-align:middle;}
+.bar{display:flex;align-items:center;gap:10px;margin:7px 0;font-size:12px;}
+.bar .l{flex:0 0 36%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.bar .t{flex:1;height:10px;background:var(--field);border-radius:6px;overflow:hidden;}
+.bar .t i{display:block;height:100%;border-radius:6px;}
+.bar .v{flex:0 0 auto;min-width:86px;text-align:right;font-variant-numeric:tabular-nums;}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;}
+.cal .h{font-size:10px;color:var(--muted);text-align:center;padding:2px 0;}
+.cal .d{aspect-ratio:1/1;border-radius:6px;background:var(--field);font-size:11px;display:flex;align-items:flex-start;justify-content:flex-end;padding:3px 4px;color:var(--muted);}
+.cal .d.occ{color:#06221f;font-weight:700;}
+.cal .d.today{outline:2px solid #fff;}
+.note{font-size:11px;color:var(--muted);line-height:1.6;}
+.banner{border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12px;background:#1a1000;border:1px solid #ff980088;color:#ffb74d;line-height:1.5;}
+input[type=file]{display:none;}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div id="top"></div>
+<nav class="tabs" id="tabs"></nav>
+<div class="content" id="main"></div>
+</div>
+<script src="../assets/cockpit.js"></script>
+<script>
+(function(){
+"use strict";
+var C=window.Cockpit,AREA="ferienwohnung",KEY_LS="cockpit:fewo:apikey",API="https://login.smoobu.com/api";
+var CH_COL={airbnb:"#ff5a5f",booking:"#3b82f6",direkt:"#2dd4bf",vrbo:"#a78bfa",other:"#94a3b8"};
+var MON=["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"],DAY=86400000;
+
+function blank(){return {apartments:{},bookings:{},lastSync:null};}
+function norm(d){d=d&&typeof d==="object"?d:blank();if(!d.apartments)d.apartments={};if(!d.bookings)d.bookings={};return d;}
+/* Zwei Stände vereinen: Buchungen nach ID, jeweils die zuletzt aktualisierte */
+function merge(l,r,lU,rU){l=norm(JSON.parse(JSON.stringify(l)));r=norm(JSON.parse(JSON.stringify(r)));
+  var out=blank();out.apartments=Object.assign({},r.apartments,l.apartments);
+  var ids={};Object.keys(r.bookings).concat(Object.keys(l.bookings)).forEach(function(i){ids[i]=1;});
+  Object.keys(ids).forEach(function(i){var a=l.bookings[i],b=r.bookings[i];out.bookings[i]=!a?b:!b?a:((a.upd||0)>=(b.upd||0)?a:b);});
+  out.lastSync=Math.max(l.lastSync||0,r.lastSync||0)||null;out._summary=summaryFor(out);return out;}
+C.registerMerge(AREA,merge);
+
+var data=norm(C.getLocal(AREA,blank));
+var thisYear=new Date().getFullYear();
+var st={tab:"uebersicht",year:thisYear,apt:"alle",flash:null,loading:false,err:null,calM:new Date().toISOString().slice(0,7),key:(function(){try{return localStorage.getItem(KEY_LS)||"";}catch(e){return "";}})()};
+
+function persist(){data._summary=summaryFor(data);C.save(AREA,data);}
+function flash(t,warn){st.flash={t:t,warn:!!warn};render();clearTimeout(flash.tm);flash.tm=setTimeout(function(){st.flash=null;render();},warn?5000:2600);}
+
+/* ---------- Hilfen ---------- */
+function chKey(name){var n=String(name||"").toLowerCase();if(n.indexOf("airbnb")>-1)return "airbnb";if(n.indexOf("booking")>-1)return "booking";if(n.indexOf("vrbo")>-1||n.indexOf("homeaway")>-1||n.indexOf("fewo")>-1)return "vrbo";
+  if(!n||n.indexOf("direkt")>-1||n.indexOf("direct")>-1||n.indexOf("homepage")>-1||n.indexOf("website")>-1||n.indexOf("smoobu")>-1||n.indexOf("manual")>-1||n.indexOf("blocked")>-1)return "direkt";return "other";}
+function chCol(name){return CH_COL[chKey(name)];}
+/* Datenschutz: vom Gast nur Vorname + Initiale */
+function shortName(n){n=String(n||"").trim().replace(/\s+/g," ");if(!n)return "";var p=n.split(" ");return p.length>1?p[0]+" "+p[p.length-1].charAt(0)+".":p[0];}
+function dIso(s){return String(s||"").slice(0,10);}
+function nightsOf(b){return Math.max(0,Math.round((new Date(b.dep)-new Date(b.arr))/DAY));}
+function active(){return Object.keys(data.bookings).map(function(k){return data.bookings[k];}).filter(function(b){return !b.cancelled&&!b.blocked&&(st.apt==="alle"||String(b.apt)===String(st.apt));});}
+/* Belegte Nächte und Umsatz anteilig auf Kalendermonate verteilen */
+function yearStats(year,list){
+  var m=MON.map(function(){return {n:0,rev:0};}),tot={n:0,rev:0,cnt:0,guests:0,stays:[]},ch={};
+  list.forEach(function(b){var N=nightsOf(b);if(!N)return;var per=(b.price||0)/N,inYear=0;
+    for(var t=new Date(b.arr+"T12:00:00").getTime(),i=0;i<N;i++,t+=DAY){var d=new Date(t);if(d.getFullYear()!==year)continue;m[d.getMonth()].n++;m[d.getMonth()].rev+=per;inYear++;}
+    if(!inYear)return;tot.n+=inYear;tot.rev+=per*inYear;tot.cnt++;tot.guests+=(b.adults||0)+(b.children||0);tot.stays.push(N);
+    var c=b.channel||"Direkt";ch[c]=ch[c]||{n:0,rev:0,cnt:0};ch[c].n+=inYear;ch[c].rev+=per*inYear;ch[c].cnt++;});
+  var apts=st.apt==="alle"?Math.max(1,Object.keys(data.apartments).length):1;
+  var days=((year%4===0&&year%100!==0)||year%400===0?366:365)*apts;
+  tot.occ=tot.n/days*100;tot.adr=tot.n?tot.rev/tot.n:null;tot.avgStay=tot.stays.length?tot.stays.reduce(function(a,b){return a+b;},0)/tot.stays.length:null;
+  return {m:m,tot:tot,ch:ch};
+}
+function summaryFor(d){
+  var list=Object.keys(d.bookings).map(function(k){return d.bookings[k];}).filter(function(b){return !b.cancelled&&!b.blocked;});
+  if(!list.length)return {k:"—",s:"Noch keine Buchungen"};
+  var y=new Date().getFullYear(),saveApt=st&&st.apt;if(st)st.apt="alle";var s=yearStats(y,list);if(st)st.apt=saveApt;
+  var today=C.today(),next=list.filter(function(b){return b.arr>=today;}).sort(function(a,b){return a.arr.localeCompare(b.arr);})[0];
+  return {k:C.eurRaw(s.tot.rev,0),s:"Auslastung "+y+" "+C.num(s.tot.occ,0)+" %"+(next?" · nächste Anreise "+new Date(next.arr).toLocaleDateString("de-DE",{day:"numeric",month:"short"}):"")};
+}
+
+/* ---------- Smoobu-API ---------- */
+function api(path){
+  return fetch(API+path,{headers:{"Api-Key":st.key,"Accept":"application/json"},cache:"no-store"}).then(function(r){
+    if(r.status===401||r.status===403)throw new Error("Smoobu lehnt den API-Schlüssel ab (401). Bitte Schlüssel prüfen.");
+    if(!r.ok)throw new Error("Smoobu antwortet mit Fehler "+r.status+".");return r.json();});
+}
+function mapBooking(o){
+  var arr=dIso(o.arrival),dep=dIso(o.departure);if(!arr||!dep)return null;
+  var ch=(o.channel&&o.channel.name)||"Direkt",apt=o.apartment||{};
+  return {id:String(o.id),apt:String(apt.id||""),arr:arr,dep:dep,price:Number(o.price)||0,channel:ch,
+    guest:shortName(o["guest-name"]||((o.firstname||"")+" "+(o.lastname||""))),adults:Number(o.adults)||0,children:Number(o.children)||0,
+    cancelled:String(o.type||"").toLowerCase().indexOf("cancel")>-1,blocked:!!o["is-blocked-booking"],
+    commission:o["commission-included"]!=null?Number(o["commission-included"])||0:null,created:dIso(o["created-at"]),upd:Date.now()};
+}
+function sync(){
+  if(!st.key){st.tab="einstellungen";flash("⚠ Bitte zuerst den Smoobu-API-Schlüssel eintragen",true);return;}
+  st.loading=true;st.err=null;render();
+  var from=(thisYear-2)+"-01-01",to=(thisYear+1)+"-12-31",all=[];
+  function page(p){return api("/reservations?from="+from+"&to="+to+"&showCancellation=true&pageSize=100&page="+p).then(function(j){
+    (j.bookings||[]).forEach(function(o){var b=mapBooking(o);if(b)all.push(b);});
+    if(j.page_count&&p<j.page_count&&p<30)return page(p+1);});}
+  api("/apartments").then(function(j){(j.apartments||[]).forEach(function(a){data.apartments[String(a.id)]=a.name;});return page(1);})
+  .then(function(){
+    var n=0;all.forEach(function(b){var old=data.bookings[b.id];if(!old||JSON.stringify(Object.assign({},old,{upd:0}))!==JSON.stringify(Object.assign({},b,{upd:0}))){data.bookings[b.id]=b;n++;}});
+    data.lastSync=Date.now();persist();st.loading=false;flash("✓ Smoobu abgeglichen: "+all.length+" Buchungen, "+n+" neu oder geändert");
+  }).catch(function(e){
+    st.loading=false;
+    /* Netzwerk- bzw. CORS-Fehler: Smoobu erlaubt keine Abfrage direkt aus dem Browser */
+    st.err=(e&&e.message&&e.message.indexOf("Smoobu")===0)?e.message:"browser";render();
+  });
+}
+
+/* ---------- Import aus Smoobu-Export (Fallback) ---------- */
+function parseCsv(text){
+  text=text.replace(/^\ufeff/,"");var first=text.split(/\r?\n/)[0]||"",delim=(first.split(";").length>first.split(",").length)?";":",";
+  var rows=[],row=[],f="",q=false;for(var i=0;i<text.length;i++){var c=text[i];
+    if(q){if(c==='"'){if(text[i+1]==='"'){f+='"';i++;}else q=false;}else f+=c;}else if(c==='"')q=true;else if(c===delim){row.push(f);f="";}
+    else if(c==="\n"||c==="\r"){if(c==="\r"&&text[i+1]==="\n")i++;row.push(f);rows.push(row);row=[];f="";}else f+=c;}
+  if(f!==""||row.length){row.push(f);rows.push(row);}return rows;
+}
+function toIso(v){v=String(v||"").trim();var m=/^(\d{1,2})\.(\d{1,2})\.(\d{2,4})/.exec(v);if(m){var y=m[3].length===2?"20"+m[3]:m[3];return y+"-"+("0"+m[2]).slice(-2)+"-"+("0"+m[1]).slice(-2);}m=/^(\d{4})-(\d{2})-(\d{2})/.exec(v);return m?m[0]:null;}
+function num(v){var s=String(v||"").replace(/[€\s]/g,"");if(s.indexOf(",")>-1&&s.indexOf(".")>-1)s=s.replace(/\./g,"").replace(",",".");else s=s.replace(",",".");var n=parseFloat(s);return isNaN(n)?0:n;}
+function importFile(text,fname){
+  var rows=parseCsv(text).filter(function(r){return r.some(function(x){return String(x).trim();});});if(rows.length<2)return 0;
+  var h=rows[0].map(function(x){return String(x).trim().toLowerCase();});
+  function col(){for(var a=0;a<arguments.length;a++)for(var i=0;i<h.length;i++)if(h[i].indexOf(arguments[a])>-1)return i;return -1;}
+  var cA=col("ankunft","anreise","arrival","check-in"),cD=col("abreise","departure","check-out"),cP=col("preis","price","gesamt","betrag"),
+      cC=col("portal","kanal","channel","quelle"),cG=col("gast","guest","name"),cId=col("buchungs","reservierungs","id","nummer"),
+      cAd=col("erwachsene","adults"),cKi=col("kinder","children"),cApt=col("apartment","unterkunft","objekt","wohnung"),cSt=col("status","typ","type");
+  if(cA<0||cD<0)throw new Error("Spalten für Anreise/Abreise nicht gefunden");
+  var n=0;rows.slice(1).forEach(function(r){var arr=toIso(r[cA]),dep=toIso(r[cD]);if(!arr||!dep)return;
+    var aptName=cApt>-1?String(r[cApt]).trim():"Ferienwohnung",aptId="csv-"+aptName.toLowerCase().replace(/[^a-z0-9]+/g,"-");data.apartments[aptId]=data.apartments[aptId]||aptName;
+    var id=cId>-1&&String(r[cId]).trim()?String(r[cId]).trim():"csv-"+arr+"-"+dep+"-"+aptId;
+    var b={id:id,apt:aptId,arr:arr,dep:dep,price:cP>-1?num(r[cP]):0,channel:cC>-1?String(r[cC]).trim()||"Direkt":"Direkt",guest:cG>-1?shortName(r[cG]):"",
+      adults:cAd>-1?num(r[cAd]):0,children:cKi>-1?num(r[cKi]):0,cancelled:cSt>-1&&/storn|cancel/i.test(r[cSt]),blocked:cSt>-1&&/block|sperr/i.test(r[cSt]),commission:null,upd:Date.now()};
+    data.bookings[id]=b;n++;});
+  data.lastSync=Date.now();persist();return n;
+}
+
+/* ---------- Ansicht ---------- */
+function render(){
+  document.getElementById("top").innerHTML=C.topbar({title:"Ferienwohnung",icon:"🏡",sub:"Buchungen · Auslastung · Umsatz",accent:"#2dd4bf",accent2:"#14b8a6"});C.paintStatus();
+  var tabs=[["uebersicht","📊 Übersicht"],["kalender","🗓 Kalender"],["buchungen","📋 Buchungen"],["einstellungen","⚙️ Smoobu"]];
+  document.getElementById("tabs").innerHTML=tabs.map(function(t){return '<button class="tab'+(st.tab===t[0]?" on":"")+'" onclick="FW.tab(\''+t[0]+'\')">'+t[1]+"</button>";}).join("");
+  var h="";if(st.flash)h+='<div class="flash'+(st.flash.warn?" warn":"")+'">'+C.esc(st.flash.t)+"</div>";
+  if(st.err&&st.tab!=="einstellungen")h+=errBanner();
+  if(!Object.keys(data.bookings).length&&st.tab!=="einstellungen")h+='<div class="empty"><div class="big">🏡</div>Noch keine Buchungen.<br><span class="small">Verbinde Smoobu unter <b>⚙️ Smoobu</b>.</span><br><button class="btn" style="margin-top:14px" onclick="FW.tab(\'einstellungen\')">Zur Einrichtung</button></div>';
+  else h+=({uebersicht:vDash,kalender:vCal,buchungen:vList,einstellungen:vSet}[st.tab])();
+  document.getElementById("main").innerHTML=h;
+}
+function errBanner(){
+  if(st.err==="browser")return '<div class="banner">⚠ <b>Smoobu erlaubt keine Abfrage direkt aus dem Browser.</b> Das ist eine Sicherheitseinstellung von Smoobu, kein Fehler in deinem Schlüssel. Zwei Wege:<br>• <b>Export:</b> In Smoobu die Buchungsliste als CSV exportieren und unter ⚙️ Smoobu importieren.<br>• <b>Automatisch:</b> später über den Raspberry Pi, der die Abfrage übernimmt.</div>';
+  return '<div class="banner">⚠ '+C.esc(st.err)+"</div>";
+}
+function filterBar(){
+  var apts=Object.keys(data.apartments);
+  return '<div class="filt"><div class="yr"><button onclick="FW.yr(-1)">‹</button><b>'+st.year+'</b><button onclick="FW.yr(1)">›</button></div>'+
+    (apts.length>1?'<button class="pill'+(st.apt==="alle"?" on":"")+'" onclick="FW.apt(\'alle\')">Alle</button>'+apts.map(function(a){return '<button class="pill'+(String(st.apt)===a?" on":"")+'" onclick="FW.apt(\''+a+'\')">'+C.esc(data.apartments[a])+"</button>";}).join(""):"")+
+    '<span style="flex:1"></span>'+(st.key?'<button class="pill" onclick="FW.sync()"'+(st.loading?" disabled":"")+'>'+(st.loading?"Lädt …":"↻ Smoobu")+"</button>":"")+"</div>";
+}
+function vDash(){
+  var list=active(),S=yearStats(st.year,list),t=S.tot,today=C.today();
+  var h=filterBar();
+  h+='<div class="hero2"><div class="lab">Umsatz '+st.year+'</div><div class="big">'+C.eur(t.rev,0)+'</div><div class="small"><span class="muted">'+t.cnt+" Buchungen · "+C.int(t.n)+" Nächte</span> · <b style=\"color:#5eead4\">Auslastung "+C.num(t.occ,1)+" %</b></div>"+
+    (data.lastSync?'<div class="small muted" style="margin-top:6px">Stand '+new Date(data.lastSync).toLocaleString("de-DE",{day:"numeric",month:"numeric",hour:"2-digit",minute:"2-digit"})+"</div>":"")+"</div>";
+  h+='<div class="grid2" style="margin-bottom:14px">'+
+    kpi("🌙","Ø Preis pro Nacht",t.adr!=null?C.eur(t.adr):"–")+kpi("🛏","Ø Aufenthalt",t.avgStay!=null?C.num(t.avgStay,1)+" Nächte":"–")+
+    kpi("👥","Gäste",C.int(t.guests))+kpi("📅","Ø Umsatz pro Monat",C.eur(t.rev/12,0))+"</div>";
+  /* Nächste Anreisen */
+  var next=list.filter(function(b){return b.dep>=today;}).sort(function(a,b){return a.arr.localeCompare(b.arr);}).slice(0,5);
+  h+='<div class="panel"><h3>Nächste Anreisen</h3>'+(next.length?next.map(bkRow).join(""):'<div class="note">Keine anstehenden Buchungen.</div>')+"</div>";
+  h+='<div class="panel"><h3>Belegte Nächte pro Monat</h3>'+C.barChart(MON.map(function(m,i){return {label:m,value:S.m[i].n};}),{color:"#2dd4bf",fmt:function(v){return C.int(v)+" Nächte";}})+"</div>";
+  h+='<div class="panel"><h3>Umsatz pro Monat</h3>'+C.barChart(MON.map(function(m,i){return {label:m,value:S.m[i].rev};}),{color:"#14b8a6",money:true,fmt:function(v){return C.eur(v,0);}})+"</div>";
+  var chs=Object.keys(S.ch).sort(function(a,b){return S.ch[b].rev-S.ch[a].rev;}),mx=chs.length?S.ch[chs[0]].rev||1:1;
+  h+='<div class="panel"><h3>Nach Buchungskanal</h3>'+(chs.length?chs.map(function(c){var x=S.ch[c];return '<div class="bar"><span class="l">'+C.esc(c)+'</span><span class="t"><i style="width:'+(x.rev/mx*100).toFixed(1)+'%;background:'+chCol(c)+'"></i></span><span class="v">'+C.eur(x.rev,0)+' <span class="small muted">· '+x.cnt+"×</span></span></div>";}).join("")+
+    '<div class="note" style="margin-top:6px">Umsatz laut Smoobu-Preis, Provisionen der Portale sind darin meist noch enthalten.</div>':'<div class="note">Keine Buchungen im Jahr.</div>')+"</div>";
+  return h;
+}
+function kpi(i,l,v){return '<div class="kpi"><div class="ico">'+i+'</div><div class="val">'+v+'</div><div class="lab">'+l+"</div></div>";}
+function bkRow(b){var N=nightsOf(b),g=(b.adults||0)+(b.children||0);
+  return '<div class="bk"><div><div class="t">'+new Date(b.arr).toLocaleDateString("de-DE",{weekday:"short",day:"numeric",month:"short"})+" → "+new Date(b.dep).toLocaleDateString("de-DE",{day:"numeric",month:"short"})+'<span class="ch" style="background:'+chCol(b.channel)+'33;color:'+chCol(b.channel)+'">'+C.esc(b.channel)+'</span></div>'+
+    '<div class="m">'+N+" Nächte"+(g?" · "+g+" Gäste":"")+(b.guest?" · "+C.esc(b.guest):"")+(Object.keys(data.apartments).length>1&&data.apartments[b.apt]?" · "+C.esc(data.apartments[b.apt]):"")+(b.cancelled?' · <span style="color:#ff8a80">storniert</span>':"")+'</div></div><div class="a">'+C.eur(b.price)+'<div class="m">'+(N?C.eur(b.price/N)+" / Nacht":"")+"</div></div></div>";}
+function vCal(){
+  var y=+st.calM.slice(0,4),m=+st.calM.slice(5,7)-1,dim=new Date(y,m+1,0).getDate(),first=(new Date(y,m,1).getDay()+6)%7,today=C.today();
+  var occ={};active().forEach(function(b){for(var t=new Date(b.arr+"T12:00:00").getTime(),e=new Date(b.dep+"T12:00:00").getTime();t<e;t+=DAY){occ[new Date(t).toISOString().slice(0,10)]=b;}});
+  var h='<div class="filt"><div class="yr"><button onclick="FW.cm(-1)">‹</button><b style="min-width:120px">'+new Date(y,m,1).toLocaleDateString("de-DE",{month:"long",year:"numeric"})+'</b><button onclick="FW.cm(1)">›</button></div></div>';
+  var cnt=0;h+='<div class="panel"><div class="cal">'+["Mo","Di","Mi","Do","Fr","Sa","So"].map(function(d){return '<div class="h">'+d+"</div>";}).join("");
+  for(var i=0;i<first;i++)h+="<div></div>";
+  for(var d=1;d<=dim;d++){var ds=y+"-"+("0"+(m+1)).slice(-2)+"-"+("0"+d).slice(-2),b=occ[ds];if(b)cnt++;
+    h+='<div class="d'+(b?" occ":"")+(ds===today?" today":"")+'" style="'+(b?"background:"+chCol(b.channel):"")+'" title="'+(b?C.esc(b.channel+(b.guest?" · "+b.guest:"")):"frei")+'">'+d+"</div>";}
+  h+='</div><div class="note" style="margin-top:10px">'+cnt+" von "+dim+" Nächten belegt ("+C.num(cnt/dim*100,0)+" %). Farben: "+["Airbnb","Booking.com","Direkt"].map(function(c){return '<span style="color:'+chCol(c)+'">■</span> '+c;}).join(" · ")+"</div></div>";
+  var inM=active().filter(function(b){return b.arr.slice(0,7)===st.calM||b.dep.slice(0,7)===st.calM;}).sort(function(a,b){return a.arr.localeCompare(b.arr);});
+  h+='<div class="panel"><h3>Buchungen im Monat</h3>'+(inM.length?inM.map(bkRow).join(""):'<div class="note">Keine.</div>')+"</div>";
+  return h;
+}
+function vList(){
+  var all=Object.keys(data.bookings).map(function(k){return data.bookings[k];}).filter(function(b){return !b.blocked&&(b.arr.slice(0,4)===String(st.year)||b.dep.slice(0,4)===String(st.year))&&(st.apt==="alle"||String(b.apt)===String(st.apt));}).sort(function(a,b){return b.arr.localeCompare(a.arr);});
+  return filterBar()+'<div class="small muted" style="margin-bottom:8px">'+all.length+" Buchungen "+st.year+" (inkl. Stornierungen)</div>"+'<div class="panel" style="padding:4px 14px">'+(all.length?all.map(bkRow).join(""):'<div class="note" style="padding:12px 0">Keine.</div>')+"</div>";
+}
+function vSet(){
+  return '<div class="panel"><h3>⚙️ Smoobu verbinden</h3>'+(st.err?errBanner():"")+
+    '<div class="note" style="margin-bottom:12px">Den API-Schlüssel findest du in Smoobu unter <b>Einstellungen → Profil → API-Key</b> (bzw. Einstellungen → Erweitert → API-Schlüssel). Er wird <b>nur auf diesem Gerät</b> gespeichert, nicht im Repo und nicht im öffentlichen Code.</div>'+
+    '<div class="field"><label>Smoobu API-Schlüssel</label><input id="fwKey" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" value="'+C.esc(st.key)+'"></div>'+
+    '<div class="row2"><button class="btn" onclick="FW.saveKey()">Speichern &amp; abrufen</button><button class="btn ghost" style="flex:0 0 auto" onclick="FW.delKey()">Entfernen</button></div></div>'+
+    '<div class="panel"><h3>⬆ Alternativ: Export-Datei importieren</h3><div class="note" style="margin-bottom:10px">Falls die direkte Verbindung nicht klappt: In Smoobu die Buchungsliste als <b>CSV</b> exportieren und hier wählen. Bereits vorhandene Buchungen werden aktualisiert, nicht verdoppelt.</div>'+
+    '<label class="btn" style="display:inline-block;cursor:pointer">📁 CSV wählen<input type="file" accept=".csv,text/csv" onchange="FW.imp(this)"></label></div>'+
+    '<div class="panel"><h3>🔒 Datenschutz</h3><div class="note">Von den Gästen werden nur Vorname und Nachnamen-Initiale sowie die Personenzahl gespeichert – keine E-Mail, Telefonnummer oder Adresse. Die Buchungen liegen in deinem privaten Daten-Repo.</div></div>';
+}
+window.FW={
+  tab:function(t){st.tab=t;render();window.scrollTo(0,0);},
+  yr:function(d){st.year+=d;render();},
+  apt:function(a){st.apt=a;render();},
+  cm:function(d){var y=+st.calM.slice(0,4),m=+st.calM.slice(5,7)-1+d,dt=new Date(y,m,1);st.calM=dt.getFullYear()+"-"+("0"+(dt.getMonth()+1)).slice(-2);render();},
+  sync:sync,
+  saveKey:function(){st.key=document.getElementById("fwKey").value.trim();try{localStorage.setItem(KEY_LS,st.key);}catch(e){}st.tab="uebersicht";sync();},
+  delKey:function(){st.key="";try{localStorage.removeItem(KEY_LS);}catch(e){}flash("Schlüssel entfernt");},
+  imp:function(inp){var f=inp.files&&inp.files[0];inp.value="";if(!f)return;C.readFile(f).then(function(t){try{var n=importFile(t,f.name);st.err=null;st.tab="uebersicht";flash("✓ "+n+" Buchungen übernommen");}catch(e){flash("⚠ "+e.message+" – schick mir die Kopfzeile der Datei, dann passe ich den Import an",true);}});}
+};
+window.addEventListener("cockpit:priv",render);
+render();
+C.autoPull([AREA],function(a,d){data=norm(d);render();});
+})();
+</script>
+</body>
+</html>
