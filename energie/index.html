@@ -590,7 +590,7 @@ const sm=a=>{const v=a.filter(x=>x!==null);return v.length?v.reduce((a,b)=>a+b,0
 const fN=(n,d=2)=>n===null?'–':n.toLocaleString('de-DE',{minimumFractionDigits:d,maximumFractionDigits:d});
 const fK=n=>n===null?'–':fN(n,0)+'\u202fkWh';
 const fM=n=>n===null?'–':fN(n,3)+'\u202fm\u00b3';
-const fE=n=>n===null?'–':(n<0?'\u2212\u202f':'')+Math.abs(n).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})+'\u202f\u20ac';
+const fE=n=>n===null?'–':Cockpit.priv()?'•••\u202f\u20ac':(n<0?'\u2212\u202f':'')+Math.abs(n).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})+'\u202f\u20ac';
 const fP=n=>n===null?'–':fN(n,1)+'\u202f%';
 function fromLabel(from){if(!from)return '–';const[y,m]=from.split('-');return MO[parseInt(m,10)-1]+' '+y;}
 
@@ -1095,6 +1095,7 @@ Cockpit.registerMerge('energie',mergeEnergie);
 if(typeof Chart!=='undefined'){Chart.defaults.color='#5c7aaa';Chart.defaults.borderColor='rgba(255,255,255,.06)';Chart.defaults.font.family="'DM Sans','Segoe UI',system-ui,sans-serif";}
 S.tab='uebersicht';
 loadState();rApp();
+window.addEventListener('cockpit:priv',()=>rApp());
 Cockpit.autoPull(['energie'],function(a,d){if(d){applyData(d);rApp();}});
 
 </script>
