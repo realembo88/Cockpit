@@ -105,13 +105,14 @@ function value(d,id,pr){var p=eurPerOz(id,pr);return p==null?null:grams(d,id)/TR
 function totals(d,pr){var v=0,c=0,ok=false;METALS.forEach(function(m){var g=grams(d,m.id);var x=value(d,m.id,pr);if(x!=null){v+=x;ok=true;}else if(g)ok=ok;c+=cost(d,m.id);});return {v:ok?v:null,c:c};}
 function giftValue(){var v=0,ok=false;METALS.forEach(function(m){var p=eurPerOz(m.id);if(p==null)return;items(null,m.id).forEach(function(x){if(!(+x.einkauf)){v+=x.gramm/TROY*p;ok=true;}});});return ok?v:null;}
 function amt(g){if(C.priv())return "••• "+(st.unit==="oz"?"oz":"g");return st.unit==="oz"?C.num(g/TROY,3)+" oz":(g>=1000?C.num(g/1000,3)+" kg":C.num(g,2)+" g");}
-function signEur(x,d){return (x>=0?"+":"−")+C.eur(Math.abs(x),d);}
+function signEur(x,d){return (C.priv()?"":(x>=0?"+":"−"))+C.eur(Math.abs(x),d);}
+function signEurRaw(x,d){return (x>=0?"+":"−")+C.eurRaw(Math.abs(x),d);}
 function summaryFor(d){
   var t=totals(d,st.prices);
   if(!METALS.some(function(m){return items(d,m.id).length;}))return {k:"—",s:"Noch kein Bestand"};
   if(t.v==null)return {k:"—",s:"Kurse noch nicht geladen"};
   var pl=t.v-t.c;
-  return {k:C.eur(t.v,0),s:"Einkauf "+C.eur(t.c,0)+" · "+signEur(pl,0)};
+  return {k:C.eurRaw(t.v,0),s:"Einkauf "+C.eurRaw(t.c,0)+" · "+signEurRaw(pl,0)};
 }
 function histDates(){return Object.keys(data.history).sort();}
 function dayChange(id){var ds=histDates();if(ds.length<2)return null;var a=data.history[ds[ds.length-2]],b=data.history[ds[ds.length-1]];
@@ -314,6 +315,7 @@ window.E={
   imp:function(inp){var f=inp.files&&inp.files[0];if(!f)return;C.readFile(f).then(function(t){try{importObj(JSON.parse(t));}catch(e){flash("⚠ Datei ist kein gültiges JSON",true);}});inp.value="";}
 };
 
+if(data._summary&&/•••/.test(JSON.stringify(data._summary)))persist();
 window.addEventListener('cockpit:priv',render);
 render();
 C.autoPull([AREA],function(a,d){data=norm(d);render();});
