@@ -40,7 +40,7 @@ function render(){
     '5. Generieren, kopieren und oben einfügen<br><br>'+
     '<span class="muted">🔒 Der Token wird nur lokal auf diesem Gerät gespeichert, nie im öffentlichen Code. Auf jedem weiteren Gerät einmal hier eintragen.</span></div></div>';
   h+='<div class="panel"><h3>ℹ Info</h3><div class="small muted" style="line-height:1.7">Status: <span id="stat"></span><br>Gespeicherte Bereiche auf diesem Gerät: '+
-    ["energie","auto","edelmetall","finanzen","ferienwohnung"].filter(function(a){return C.getLocal(a,null)!=null;}).join(", ")+'</div></div>';
+    ["energie","auto","edelmetall","finanzen","ferienwohnung","training"].filter(function(a){return C.getLocal(a,null)!=null;}).join(", ")+'</div></div>';
   document.getElementById("main").innerHTML=h;
   var st=document.getElementById("stat");if(st){var el=document.getElementById("cp-sync");st.textContent=el?el.textContent:"";}
 }
@@ -55,7 +55,7 @@ window.CP={
     C.testConnection().then(function(r){
       if(!r.ok){msg={t:"⚠ "+r.msg,warn:true};render();return;}
       msg=r.warn?{t:"⚠ "+r.warn,warn:true}:{t:"✓ Verbunden – alle Bereiche synchronisieren jetzt automatisch."};
-      ["energie","auto","edelmetall","finanzen","ferienwohnung"].forEach(function(a){C.pull(a);});
+      ["energie","auto","edelmetall","finanzen","ferienwohnung","training"].forEach(function(a){C.pull(a);});
       render();
     }).catch(function(e){msg={t:"⚠ "+e.message,warn:true};render();});
   },
