@@ -13,8 +13,9 @@ function num(n,d){d=(d==null?1:d);if(n==null||isNaN(n))return "–";return Numbe
 function eurRaw(n,d){if(n==null||isNaN(n))return "–";return Number(n).toLocaleString("de-DE",{minimumFractionDigits:d==null?2:d,maximumFractionDigits:d==null?2:d})+" €";}
 /* ---------- Diskretionsmodus: Geldbeträge ausblenden (Standard), pro Gerät gemerkt ---------- */
 var PRIV_KEY="cockpit:privacy",MASK="•••";
-function priv(){try{var v=localStorage.getItem(PRIV_KEY);return v===null?true:v==="1";}catch(e){return true;}}
-function setPriv(b){try{localStorage.setItem(PRIV_KEY,b?"1":"0");}catch(e){}
+/* gilt nur für die laufende Sitzung – bei jedem Start ist der Modus wieder aktiv */
+function priv(){try{var v=sessionStorage.getItem(PRIV_KEY);return v===null?true:v==="1";}catch(e){return true;}}
+function setPriv(b){try{sessionStorage.setItem(PRIV_KEY,b?"1":"0");localStorage.removeItem(PRIV_KEY);}catch(e){}
   document.documentElement.classList.toggle("priv",!!b);
   var el=document.getElementById("cp-eye");if(el){el.textContent=b?"🙈":"👁";el.title=b?"Beträge anzeigen":"Beträge ausblenden";}
   window.dispatchEvent(new CustomEvent("cockpit:priv",{detail:!!b}));}
@@ -25,6 +26,58 @@ function eur(n,d){if(n==null||isNaN(n))return "–";return priv()?MASK+"\u00a0�
 function maskText(t){if(!priv()||t==null)return t;return String(t).replace(/[+−\-]?\d[\d.,]*(\s|\u202f|\u00a0)?€/g,MASK+"\u00a0€");}
 function eyeButton(){var p=priv();return '<button id="cp-eye" class="eye" onclick="Cockpit.togglePriv()" title="'+(p?"Beträge anzeigen":"Beträge ausblenden")+'" aria-label="Beträge ein- oder ausblenden">'+(p?"🙈":"👁")+'</button>';}
 try{document.documentElement.classList.toggle("priv",priv());}catch(e){}
+
+/* ---------- Gerätesperre: Entsperren mit PIN / Fingerabdruck / Gesicht des Geräts (WebAuthn) ----------
+   Eine Zugangssperre für die Oberfläche: pro Gerät wird ein Schlüssel im Sicherheitsspeicher des Geräts angelegt;
+   beim Start muss das Gerät die Person bestätigen (userVerification "required"). */
+var LOCK_KEY="cockpit:lock",UNL_KEY="cockpit:unlocked",HID_KEY="cockpit:hiddenAt",RELOCK_MS=5*60000;
+function lockCfg(){try{return JSON.parse(localStorage.getItem(LOCK_KEY))||null;}catch(e){return null;}}
+function lockSupported(){return !!(window.PublicKeyCredential&&navigator.credentials&&window.isSecureContext);}
+function rnd(n){var a=new Uint8Array(n);crypto.getRandomValues(a);return a;}
+function b64u(buf){var s="",b=new Uint8Array(buf);for(var i=0;i<b.length;i++)s+=String.fromCharCode(b[i]);return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");}
+function unb64u(s){s=s.replace(/-/g,"+").replace(/_/g,"/");while(s.length%4)s+="=";var b=atob(s),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a;}
+function isUnlocked(){try{return sessionStorage.getItem(UNL_KEY)==="1";}catch(e){return false;}}
+function lockEnable(){
+  if(!lockSupported())return Promise.reject(new Error("Dieser Browser unterstützt die Gerätesperre nicht."));
+  return PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().then(function(ok){
+    if(!ok)throw new Error("Auf diesem Gerät ist keine Displaysperre (PIN, Fingerabdruck oder Gesicht) für den Browser verfügbar.");
+    return navigator.credentials.create({publicKey:{rp:{name:"Cockpit"},user:{id:rnd(16),name:"cockpit",displayName:"Cockpit"},challenge:rnd(32),
+      pubKeyCredParams:[{type:"public-key",alg:-7},{type:"public-key",alg:-257}],timeout:60000,attestation:"none",
+      authenticatorSelection:{authenticatorAttachment:"platform",userVerification:"required",residentKey:"discouraged"}}});
+  }).then(function(cred){localStorage.setItem(LOCK_KEY,JSON.stringify({id:b64u(cred.rawId),created:Date.now()}));sessionStorage.setItem(UNL_KEY,"1");return true;});
+}
+function lockDisable(){try{localStorage.removeItem(LOCK_KEY);}catch(e){}}
+function unlock(){
+  var c=lockCfg();if(!c)return Promise.resolve(true);
+  return navigator.credentials.get({publicKey:{challenge:rnd(32),timeout:60000,userVerification:"required",allowCredentials:[{type:"public-key",id:unb64u(c.id)}]}})
+    .then(function(a){if(!a)throw new Error("abgebrochen");sessionStorage.setItem(UNL_KEY,"1");hideLock();return true;});
+}
+function showLock(){
+  document.documentElement.classList.add("locked");
+  var ov=document.getElementById("cp-lock");
+  if(!ov){ov=document.createElement("div");ov.id="cp-lock";(document.body||document.documentElement).appendChild(ov);}
+  ov.innerHTML='<div class="lk"><div class="lk-ic">🔒</div><h2>Cockpit gesperrt</h2><p>Bestätige mit PIN, Fingerabdruck oder Gesicht deines Geräts.</p>'+
+    '<button class="btn" id="cp-unlock">Entsperren</button><div class="lk-err" id="cp-lock-err"></div>'+
+    '<p class="lk-help">Gerät neu oder Entsperren klappt dauerhaft nicht? Website-Daten des Cockpits im Browser löschen und die Sync neu einrichten.</p></div>';
+  document.getElementById("cp-unlock").onclick=tryUnlock;
+}
+function hideLock(){document.documentElement.classList.remove("locked");var ov=document.getElementById("cp-lock");if(ov)ov.remove();}
+function tryUnlock(){var e=document.getElementById("cp-lock-err");if(e)e.textContent="";
+  unlock().catch(function(err){if(e)e.textContent=(err&&err.name==="NotAllowedError")?"Abgebrochen oder nicht bestätigt – bitte erneut versuchen.":"Entsperren nicht möglich: "+(err&&err.message||err);});}
+function guard(){
+  if(!lockCfg()||isUnlocked())return;
+  showLock();
+  /* direkt die Abfrage starten; manche Browser verlangen dafür einen Tipp – dann bleibt der Knopf */
+  setTimeout(function(){if(document.visibilityState==="visible")tryUnlock();},300);
+}
+/* nach längerer Zeit im Hintergrund erneut sperren */
+document.addEventListener("visibilitychange",function(){
+  if(!lockCfg())return;
+  try{if(document.hidden){sessionStorage.setItem(HID_KEY,String(Date.now()));return;}
+    var h=+sessionStorage.getItem(HID_KEY)||0;if(h&&Date.now()-h>RELOCK_MS){sessionStorage.removeItem(UNL_KEY);guard();}}catch(e){}
+});
+if(lockCfg()&&!isUnlocked())document.documentElement.classList.add("locked");
+if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",guard);else guard();
 function int(n){return (n==null||isNaN(n))?"–":Math.round(n).toLocaleString("de-DE");}
 function parseNum(v){if(v==null)return NaN;if(typeof v==="number")return v;var s=String(v).trim().replace(/\s/g,"");if(s.indexOf(",")>-1&&s.indexOf(".")>-1)s=s.replace(/\./g,"").replace(",",".");else s=s.replace(",",".");return parseFloat(s);}
 function today(){return new Date().toISOString().slice(0,10);}
@@ -281,6 +334,7 @@ function autoPull(areas,onChange){
 window.Cockpit={
   esc:esc,num:num,eur:eur,int:int,parseNum:parseNum,today:today,
   getConfig:getConfig,setConfig:setConfig,configured:configured,testConnection:testConnection,
+  lockCfg:lockCfg,lockSupported:lockSupported,lockEnable:lockEnable,lockDisable:lockDisable,
   priv:priv,setPriv:setPriv,togglePriv:togglePriv,eurRaw:eurRaw,maskText:maskText,eyeButton:eyeButton,
   getLocal:getLocal,save:save,registerMerge:registerMerge,versions:versions,versionAt:versionAt,getBackup:getBackup,pull:pull,push:push,autoPull:autoPull,
   onStatus:onStatus,paintStatus:paintStatus,topbar:topbar,

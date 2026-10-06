@@ -93,3 +93,14 @@ svg text{font-family:inherit;}
 /* Diskretionsmodus-Schalter */
 .eye{background:transparent;border:1px solid var(--border);border-radius:20px;width:34px;height:30px;font-size:15px;cursor:pointer;line-height:1;padding:0;}
 .eye:active{transform:scale(.95);}
+
+/* Gerätesperre */
+html.locked .wrap{visibility:hidden;}
+#cp-lock{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 30%,#13213f,var(--bg) 70%);padding:24px;}
+#cp-lock .lk{max-width:340px;text-align:center;}
+#cp-lock .lk-ic{font-size:54px;margin-bottom:8px;}
+#cp-lock h2{color:#fff;margin:0 0 8px;font-size:22px;}
+#cp-lock p{color:var(--muted);font-size:14px;line-height:1.5;margin:0 0 18px;}
+#cp-lock .btn{min-width:200px;font-size:16px;padding:14px 20px;}
+#cp-lock .lk-err{color:#ff8a80;font-size:13px;min-height:20px;margin-top:12px;}
+#cp-lock .lk-help{font-size:11px;margin-top:22px;}
