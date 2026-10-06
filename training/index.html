@@ -82,9 +82,15 @@ function parseDur(v){v=String(v||"").trim().replace(",",":").replace(".",":");if
   if(p.length===1)return p[0]*60;if(p.length===2)return p[0]*60+p[1];return p[0]*3600+p[1]*60+p[2];}
 function pace(s){return s.dist>0&&s.dur>0?s.dur/s.dist:null;}
 function fmtPace(sec){return sec==null?"–":fmtDur(sec)+" /km";}
+/* Halteübungen werden in Sekunden gezählt */
+var TIMED=/plank|unterarmstütz|seitstütz|hold|halten|wall ?sit|wandsitz|dead ?hang|hängen|l-sit/i;
+function isTimed(name){return TIMED.test(String(name||""));}
+function unitOf(e){return e.unit||(isTimed(e.name)?"s":"r");}
+function fmtSec(v){v=Math.round(v||0);return v>=60?Math.floor(v/60)+":"+("0"+v%60).slice(-2)+" min":v+" s";}
+function parseSec(v){v=String(v||"").trim();if(!v)return null;if(v.indexOf(":")>-1){var p=v.split(":").map(Number);if(p.some(isNaN))return null;return p[0]*60+p[1];}var n=C.parseNum(v);return isNaN(n)?null:n;}
 function e1rm(w,r){return w>0&&r>0?w*(1+r/30):0;}      /* geschätztes 1-Wiederholungs-Maximum (Epley) */
-function volume(s){return (s.exercises||[]).reduce(function(a,e){return a+e.sets.reduce(function(b,x){return b+(x.w||0)*(x.r||0);},0);},0);}
-function setsTxt(e){return e.sets.map(function(x){return x.w?x.r+"×"+C.num(x.w,x.w%1?1:0)+" kg":x.r+" Wdh.";}).join(", ");}
+function volume(s){return (s.exercises||[]).reduce(function(a,e){if(unitOf(e)==="s")return a;return a+e.sets.reduce(function(b,x){return b+(x.w||0)*(x.r||0);},0);},0);}
+function setsTxt(e){var t=unitOf(e)==="s";return e.sets.map(function(x){var kg=x.w?C.num(x.w,x.w%1?1:0)+" kg":"";return t?fmtSec(x.r)+(kg?" + "+kg:""):(kg?x.r+"×"+kg:x.r+" Wdh.");}).join(", ");}
 function weekStart(d){var x=new Date(d+"T12:00:00");var wd=(x.getDay()+6)%7;return new Date(x.getTime()-wd*DAY).toISOString().slice(0,10);}
 function summaryFor(d){
   var l=Object.keys(d.sessions).map(function(k){return d.sessions[k];});if(!l.length)return {k:"—",s:"Noch kein Training"};
@@ -142,7 +148,7 @@ function vDash(){
 function newForm(tpl){
   var names=tpl&&tpls()[tpl]?tpls()[tpl].slice():[""];
   return {date:C.today(),tpl:tpl||"",note:"",exercises:names.map(function(n){var last=lastOf(n,C.today());
-    return {name:n,sets:last?last.e.sets.map(function(x){return {r:"",w:""};}):[{r:"",w:""},{r:"",w:""},{r:"",w:""}]};})};
+    return {name:n,unit:last?unitOf(last.e):(isTimed(n)?"s":"r"),sets:last?last.e.sets.map(function(x){return {r:"",w:""};}):[{r:"",w:""},{r:"",w:""},{r:"",w:""}]};})};
 }
 function vKraft(){
   if(!st.form){var wd=new Date().getDay();st.form=newForm(PLAN[wd]||"");}
@@ -153,14 +159,15 @@ function vKraft(){
   f.exercises.forEach(function(e,i){var last=lastOf(e.name,f.date);
     h+='<div class="ex"><div class="hd"><input list="exList" placeholder="Übung" value="'+C.esc(e.name)+'" onchange="T.en('+i+',this.value)"><button class="x" onclick="T.rmEx('+i+')" aria-label="Übung entfernen">✕</button></div>';
     if(last)h+='<div class="last">Letztes Mal ('+new Date(last.date).toLocaleDateString("de-DE",{day:"numeric",month:"numeric"})+'): '+setsTxt(last.e)+"</div>";
-    h+='<div class="set"><span>Satz</span><span>Wdh.</span><span>kg</span><span></span></div>';
+    var tm=unitOf(e)==="s";
+    h+='<div class="set"><span>Satz</span><span>'+(tm?"Sek.":"Wdh.")+'</span><span>'+(tm?"+ kg":"kg")+'</span><span></span></div>';
     e.sets.forEach(function(x,j){var ph=last&&last.e.sets[j]?last.e.sets[j]:null;
-      h+='<div class="set"><span>'+(j+1)+'</span><input inputmode="numeric" placeholder="'+(ph?ph.r:"")+'" value="'+C.esc(x.r)+'" oninput="T.sv('+i+","+j+',\'r\',this.value)"><input inputmode="decimal" placeholder="'+(ph?(ph.w?String(ph.w).replace(".",","):"0"):"")+'" value="'+C.esc(x.w)+'" oninput="T.sv('+i+","+j+',\'w\',this.value)"><button class="x" onclick="T.rmSet('+i+","+j+')" aria-label="Satz entfernen">✕</button></div>';});
-    h+='<button class="mini" onclick="T.addSet('+i+')">＋ Satz</button>'+(last?' <button class="mini" onclick="T.copyLast('+i+')">Werte vom letzten Mal</button>':"")+"</div>";});
+      h+='<div class="set"><span>'+(j+1)+'</span><input inputmode="'+(tm?"text":"numeric")+'" placeholder="'+(ph?(tm&&ph.r>=60?Math.floor(ph.r/60)+":"+("0"+ph.r%60).slice(-2):ph.r):(tm?"z. B. 60":""))+'" value="'+C.esc(x.r)+'" oninput="T.sv('+i+","+j+',\'r\',this.value)"><input inputmode="decimal" placeholder="'+(ph?(ph.w?String(ph.w).replace(".",","):"0"):"")+'" value="'+C.esc(x.w)+'" oninput="T.sv('+i+","+j+',\'w\',this.value)"><button class="x" onclick="T.rmSet('+i+","+j+')" aria-label="Satz entfernen">✕</button></div>';});
+    h+='<button class="mini" onclick="T.addSet('+i+')">＋ Satz</button> <button class="mini" onclick="T.unit('+i+')" title="Zählweise wechseln">'+(tm?"⏱ Sek. → Wdh.":"🔁 Wdh. → Sek.")+'</button> '+(last?' <button class="mini" onclick="T.copyLast('+i+')">Werte vom letzten Mal</button>':"")+"</div>";});
   h+='<button class="btn ghost full" style="margin-bottom:14px" onclick="T.addEx()">＋ Übung</button>';
   h+='<div class="field"><label>Notiz (optional)</label><input value="'+C.esc(f.note)+'" placeholder="z. B. gut geschlafen, Schulter zwickt" oninput="st_note(this.value)"></div>';
   h+='<div class="row2"><button class="btn grad" onclick="T.saveK()">Training speichern</button>'+(st.editId?'<button class="btn ghost" style="flex:0 0 auto" onclick="T.cancel()">Abbrechen</button>':"")+'</div>';
-  h+='<div class="note" style="margin-top:10px">Leere Felder zeigen grau deine Werte vom letzten Mal. Leere Sätze werden nicht gespeichert. Gewicht leer oder 0 = ohne Zusatzgewicht.</div></div>';
+  h+='<div class="note" style="margin-top:10px">Leere Felder zeigen grau deine Werte vom letzten Mal. Leere Sätze werden nicht gespeichert. Gewicht leer oder 0 = ohne Zusatzgewicht. Zeitübungen als Sekunden („60“) oder Minuten:Sekunden („1:30“).</div></div>';
   return h;
 }
 window.st_note=function(v){st.form.note=v;};
@@ -198,8 +205,9 @@ function vProg(){
   var h='<div class="panel"><h3>Übung auswählen</h3><select class="inl" onchange="T.exSel(this.value)"><option value="">– Übung wählen –</option><option value="__run"'+(st.exSel==="__run"?" selected":"")+'>🏃 Laufen</option>'+exs.map(function(n){return '<option'+(st.exSel===n?" selected":"")+">"+C.esc(n)+"</option>";}).join("")+"</select></div>";
   if(!st.exSel){
     /* Bestwerte aller Übungen */
-    var pr=exs.map(function(n){var best=null;list().forEach(function(s){(s.exercises||[]).forEach(function(e){if(e.name!==n)return;e.sets.forEach(function(x){if(!best||x.w>best.w||(x.w===best.w&&x.r>best.r))best={w:x.w,r:x.r,d:s.date};});});});return {n:n,b:best};}).filter(function(x){return x.b;});
-    return h+(pr.length?'<div class="panel"><h3>🏆 Bestwerte</h3>'+pr.map(function(x){return '<div class="pr"><span>'+C.esc(x.n)+'</span><span><b>'+(x.b.w?C.num(x.b.w,x.b.w%1?1:0)+" kg × "+x.b.r:x.b.r+" Wdh.")+'</b> <span class="small muted">'+new Date(x.b.d).toLocaleDateString("de-DE",{day:"numeric",month:"numeric",year:"2-digit"})+"</span></span></div>";}).join("")+"</div>":"");
+    var pr=exs.map(function(n){var best=null,tm=false;list().forEach(function(s){(s.exercises||[]).forEach(function(e){if(e.name!==n)return;var et=unitOf(e)==="s";if(et)tm=true;e.sets.forEach(function(x){
+      if(et){if(!best||x.r>best.r)best={w:x.w,r:x.r,d:s.date};}else if(!best||x.w>best.w||(x.w===best.w&&x.r>best.r))best={w:x.w,r:x.r,d:s.date};});});});return {n:n,b:best,tm:tm};}).filter(function(x){return x.b;});
+    return h+(pr.length?'<div class="panel"><h3>🏆 Bestwerte</h3>'+pr.map(function(x){return '<div class="pr"><span>'+C.esc(x.n)+'</span><span><b>'+(x.tm?fmtSec(x.b.r)+(x.b.w?" + "+C.num(x.b.w,x.b.w%1?1:0)+" kg":""):(x.b.w?C.num(x.b.w,x.b.w%1?1:0)+" kg × "+x.b.r:x.b.r+" Wdh."))+'</b> <span class="small muted">'+new Date(x.b.d).toLocaleDateString("de-DE",{day:"numeric",month:"numeric",year:"2-digit"})+"</span></span></div>";}).join("")+"</div>":"");
   }
   if(st.exSel==="__run"){var runs=list().filter(function(s){return s.type==="lauf"&&pace(s);}).reverse();
     if(!runs.length)return h+'<div class="empty">Noch keine Läufe.</div>';
@@ -213,8 +221,9 @@ function vProg(){
     pts.push({d:s.date,mx:mx,r1:r1,vol:vol,e:e});});});
   if(!pts.length)return h+'<div class="empty">Noch keine Daten zu dieser Übung.</div>';
   var lbl=function(p){return p.d.slice(8,10)+"."+p.d.slice(5,7)+".";};
-  var body=pts.every(function(p){return !p.mx;});
-  if(body)h+='<div class="panel"><h3>Wiederholungen (beste Serie)</h3>'+C.lineChart(pts.map(function(p){return {label:lbl(p),value:Math.max.apply(null,p.e.sets.map(function(x){return x.r||0;}))};}),{color:"#f43f5e",fmt:function(v){return C.int(v)+" Wdh.";}})+"</div>";
+  var timed=pts.some(function(p){return unitOf(p.e)==="s";}),body=pts.every(function(p){return !p.mx;});
+  if(timed)h+='<div class="panel"><h3>Längste Haltezeit pro Training</h3>'+C.lineChart(pts.map(function(p){return {label:lbl(p),value:Math.max.apply(null,p.e.sets.map(function(x){return x.r||0;}))};}),{color:"#f43f5e",fmt:fmtSec})+'</div><div class="panel"><h3>Gesamte Haltezeit pro Training</h3>'+C.barChart(pts.map(function(p){return {label:lbl(p),value:p.e.sets.reduce(function(a,x){return a+(x.r||0);},0)};}),{color:"#fb7185",fmt:fmtSec})+"</div>";
+  else if(body)h+='<div class="panel"><h3>Wiederholungen (beste Serie)</h3>'+C.lineChart(pts.map(function(p){return {label:lbl(p),value:Math.max.apply(null,p.e.sets.map(function(x){return x.r||0;}))};}),{color:"#f43f5e",fmt:function(v){return C.int(v)+" Wdh.";}})+"</div>";
   else{h+='<div class="panel"><h3>Maximalgewicht pro Training (kg)</h3>'+C.lineChart(pts.map(function(p){return {label:lbl(p),value:p.mx};}),{color:"#f43f5e",fmt:function(v){return C.num(v,1)+" kg";}})+"</div>";
     h+='<div class="panel"><h3>Geschätztes 1-Wdh.-Maximum (kg)</h3>'+C.lineChart(pts.map(function(p){return {label:lbl(p),value:p.r1};}),{color:"#fb7185",fmt:function(v){return C.num(v,1)+" kg";}})+'<div class="note">Rechnerisch aus Gewicht und Wiederholungen (Epley-Formel). Gut geeignet, um Fortschritt über verschiedene Wiederholungszahlen vergleichbar zu machen.</div></div>';}
   h+='<div class="panel"><h3>Einheiten</h3>'+pts.slice().reverse().map(function(p){return '<div class="pr"><span>'+new Date(p.d).toLocaleDateString("de-DE",{day:"numeric",month:"numeric",year:"2-digit"})+'</span><span style="text-align:right">'+setsTxt(p.e)+"</span></div>";}).join("")+"</div>";
@@ -222,19 +231,20 @@ function vProg(){
 }
 
 /* ---------- Aktionen ---------- */
-function cleanSets(e){return e.sets.map(function(x){return {r:pn(x.r),w:pn(x.w)};}).filter(function(x){return x.r>0;}).map(function(x){return {r:x.r,w:x.w||0};});}
+function cleanSets(e){var tm=unitOf(e)==="s";return e.sets.map(function(x){return {r:tm?parseSec(x.r):pn(x.r),w:pn(x.w)};}).filter(function(x){return x.r>0;}).map(function(x){return {r:x.r,w:x.w||0};});}
 window.T={
   tab:function(t){if(t!=="kraft"&&t!=="lauf"&&st.editId){st.editId=null;st.form=null;st.run=null;}st.tab=t;render();window.scrollTo(0,0);},
   fd:function(v){st.form.date=v;render();},
   tpl:function(t){var keep=st.form.date;st.form=newForm(t);st.form.date=keep;render();},
-  en:function(i,v){st.form.exercises[i].name=v.trim();render();},
+  en:function(i,v){var e=st.form.exercises[i];e.name=v.trim();var l=lastOf(e.name,st.form.date);e.unit=l?unitOf(l.e):(isTimed(e.name)?"s":"r");render();},
   sv:function(i,j,k,v){st.form.exercises[i].sets[j][k]=v;},
   addSet:function(i){var s=st.form.exercises[i].sets,l=s[s.length-1]||{r:"",w:""};s.push({r:l.r,w:l.w});render();},
   rmSet:function(i,j){st.form.exercises[i].sets.splice(j,1);render();},
+  unit:function(i){var e=st.form.exercises[i];e.unit=unitOf(e)==="s"?"r":"s";render();},
   addEx:function(){st.form.exercises.push({name:"",sets:[{r:"",w:""},{r:"",w:""},{r:"",w:""}]});render();},
   rmEx:function(i){st.form.exercises.splice(i,1);render();},
-  copyLast:function(i){var e=st.form.exercises[i],l=lastOf(e.name,st.form.date);if(!l)return;e.sets=l.e.sets.map(function(x){return {r:String(x.r),w:String(x.w).replace(".",",")};});render();},
-  saveK:function(){var f=st.form,ex=f.exercises.filter(function(e){return e.name;}).map(function(e){return {name:e.name,sets:cleanSets(e)};}).filter(function(e){return e.sets.length;});
+  copyLast:function(i){var e=st.form.exercises[i],l=lastOf(e.name,st.form.date);if(!l)return;e.unit=unitOf(l.e);e.sets=l.e.sets.map(function(x){return {r:String(x.r),w:x.w?String(x.w).replace(".",","):""};});render();},
+  saveK:function(){var f=st.form,ex=f.exercises.filter(function(e){return e.name;}).map(function(e){var o={name:e.name,sets:cleanSets(e)};if(unitOf(e)==="s")o.unit="s";return o;}).filter(function(e){return e.sets.length;});
     if(!ex.length){flash("⚠ Bitte mindestens eine Übung mit einem Satz (Wiederholungen) eintragen",true);return;}
     var id=st.editId||uid();data.sessions[id]={id:id,type:"kraft",date:f.date||C.today(),tpl:f.tpl||(st.editId&&data.sessions[id]?data.sessions[id].tpl:""),exercises:ex,note:(f.note||"").trim(),upd:Date.now()};
     persist();var was=!!st.editId;st.editId=null;st.form=null;st.tab="uebersicht";flash(was?"✓ Training aktualisiert":"✓ Training gespeichert · "+C.int(volume(data.sessions[id]))+" kg Volumen");},
@@ -245,7 +255,7 @@ window.T={
   toggle:function(id){st.open[id]=!st.open[id];render();},
   edit:function(id){var s=data.sessions[id];if(!s)return;st.editId=id;
     if(s.type==="lauf"){st.run={date:s.date,dist:String(s.dist).replace(".",","),dur:fmtDur(s.dur),hr:s.hr?String(s.hr):"",note:s.note||""};st.tab="lauf";}
-    else{st.form={date:s.date,tpl:s.tpl||"",note:s.note||"",exercises:s.exercises.map(function(e){return {name:e.name,sets:e.sets.map(function(x){return {r:String(x.r),w:String(x.w).replace(".",",")};})};})};st.tab="kraft";}
+    else{st.form={date:s.date,tpl:s.tpl||"",note:s.note||"",exercises:s.exercises.map(function(e){return {name:e.name,unit:unitOf(e),sets:e.sets.map(function(x){return {r:String(x.r),w:String(x.w).replace(".",",")};})};})};st.tab="kraft";}
     render();window.scrollTo(0,0);},
   cancel:function(){st.editId=null;st.form=null;st.run=null;st.tab="verlauf";render();},
   del:function(id){if(!confirm("Einheit löschen?"))return;delete data.sessions[id];if(data.deleted.indexOf(id)<0)data.deleted.push(id);persist();render();},
