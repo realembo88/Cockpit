@@ -32,6 +32,11 @@ function render(){
     '<div class="field"><label>Access-Token (Fine-grained)</label><input id="f_token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="github_pat_…" value="'+C.esc(c.token)+'"></div>'+
     '<div class="row2"><button class="btn" style="background:#00bcd4" onclick="CP.saveCfg()">🔌 Speichern &amp; testen</button><button class="btn ghost" style="flex:0 0 auto" onclick="CP.logout()">Token entfernen</button></div>'+
     '</div>';
+  var lk=C.lockCfg();
+  h+='<div class="panel"><h3>🔒 Gerätesperre</h3><div class="small muted" style="margin-bottom:12px;line-height:1.6">Beim Start fragt das Cockpit nach der Displaysperre dieses Geräts (PIN, Fingerabdruck oder Gesicht; am PC Windows Hello). Nach mehr als 5 Minuten im Hintergrund wird erneut gesperrt. Gilt nur für dieses Gerät – auf jedem Gerät einmal aktivieren.</div>'+
+    (lk?'<div style="color:#69f0ae;margin-bottom:10px">✓ Aktiv seit '+new Date(lk.created).toLocaleDateString("de-DE")+'</div><button class="btn ghost" onclick="CP.lockOff()">Gerätesperre ausschalten</button>'
+       :(C.lockSupported()?'<button class="btn" onclick="CP.lockOn()">Gerätesperre einschalten</button>':'<div class="small" style="color:#ffb74d">Dieser Browser unterstützt die Gerätesperre leider nicht.</div>'))+
+    '<div class="small muted" style="margin-top:12px;line-height:1.6">Hinweis: Eine Zugangssperre für die Oberfläche, keine Verschlüsselung. Deine Daten im privaten Repo sind zusätzlich durch den Token geschützt. Der Diskretionsmodus ist bei jedem Start automatisch wieder aktiv.</div></div>';
   h+='<div class="panel"><h3>🔑 So erstellst du den Token</h3><div class="small" style="line-height:1.7">'+
     '1. Am besten im Browser: <b>github.com → Profilbild → Settings → Developer settings → Personal access tokens → Fine-grained tokens</b><br>'+
     '2. <b>Generate new token</b>, Name z. B. „Cockpit", Ablauf nach Wunsch (max. 1 Jahr)<br>'+
@@ -59,6 +64,8 @@ window.CP={
       render();
     }).catch(function(e){msg={t:"⚠ "+e.message,warn:true};render();});
   },
+  lockOn:function(){msg={t:"Bitte am Gerät bestätigen …"};render();C.lockEnable().then(function(){msg={t:"✓ Gerätesperre aktiv. Beim nächsten Start wird nach PIN oder Fingerabdruck gefragt."};render();},function(e){msg={t:"⚠ "+(e&&e.name==="NotAllowedError"?"Abgebrochen oder nicht bestätigt.":(e&&e.message||e)),warn:true};render();});},
+  lockOff:function(){if(!confirm("Gerätesperre auf diesem Gerät ausschalten?"))return;C.lockDisable();msg={t:"Gerätesperre ausgeschaltet."};render();},
   logout:function(){C.setConfig({token:""});msg={t:"Token entfernt. Daten bleiben lokal erhalten."};render();C.paintStatus();}
 };
 C.onStatus(function(){var st=document.getElementById("stat");var el=document.getElementById("cp-sync");if(st&&el)st.textContent=el.textContent;});
