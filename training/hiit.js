@@ -148,48 +148,58 @@ var SND={
   side:function(){tone(990,0.1,0,0.45,"square");tone(990,0.1,0.18,0.45,"square");vib([80,60,80]);},
   done:function(){tone(660,0.25,0,0.5);tone(880,0.25,0.22,0.5);tone(1320,0.6,0.44,0.55);vib([200,100,200,100,400]);}
 };
+/* Sprache: nur „Achtung“ zu Beginn jedes Vorlaufs – sonst ausschließlich Signaltöne */
 var voiceOn=true;
-function say(t){if(!voiceOn||!window.speechSynthesis)return;try{var u=new SpeechSynthesisUtterance(t);u.lang="de-DE";u.rate=1.05;speechSynthesis.cancel();speechSynthesis.speak(u);}catch(e){}}
+function say(t,force){if((!voiceOn&&!force)||!window.speechSynthesis)return;
+  try{var v=(speechSynthesis.getVoices()||[]).filter(function(x){return x.lang&&x.lang.replace("_","-").indexOf("de")===0;})[0];
+    var u=new SpeechSynthesisUtterance(t);u.lang="de-DE";if(v)u.voice=v;u.rate=1;speechSynthesis.cancel();speechSynthesis.speak(u);}catch(e){}}
 
-/* ---------- Ablaufplan & Timer ---------- */
+/* ---------- Ablaufplan & Timer ----------
+   Jeder Durchgang: Vorlauf → Belastung/Pause … → Ende. Zwischen den Durchgängen hält der Timer an
+   und wartet auf „Weiter“ (keine eingebaute Satzpause). */
 function segments(cfg,list){var s=[],n=list.length,R=cfg.rounds||3,at=0;
   function add(k,d,i,r){if(d>0){s.push({k:k,d:d,i:i,r:r,at:at});at+=d;}}
-  add("prep",cfg.prep||0,0,1);
-  for(var r=1;r<=R;r++)for(var i=0;i<n;i++){add("work",cfg.work||40,i,r);
-    if(i<n-1)add("rest",cfg.rest||0,i+1,r);else if(r<R)add("rr",cfg.rr||cfg.rest||0,0,r+1);}
+  for(var r=1;r<=R;r++){add("prep",cfg.prep||0,0,r);
+    for(var i=0;i<n;i++){add("work",cfg.work||40,i,r);if(i<n-1)add("rest",cfg.rest||0,i+1,r);}}
   return s;}
 function totalSecs(cfg,n){var l=[];for(var i=0;i<n;i++)l.push("");var s=segments(cfg,l);return s.length?s[s.length-1].at+s[s.length-1].d:0;}
 
 function Timer(cfg,list,onTick,onEnd){
-  var segs=segments(cfg,list),total=segs.length?segs[segs.length-1].at+segs[segs.length-1].d:0,cues=[];
+  var segs=segments(cfg,list),total=segs.length?segs[segs.length-1].at+segs[segs.length-1].d:0,cues=[],holds=[];
   segs.forEach(function(g,ix){var end=g.at+g.d,nx=segs[ix+1];
     [3,2,1].forEach(function(x){if(g.d-x>=0.5)cues.push({t:end-x,f:"tick"});});
+    if(g.k==="prep")cues.push({t:g.at+0.25,f:"say",x:"Achtung"});
     if(g.k==="work"){cues.push({t:g.at,f:"go"});cues.push({t:end,f:nx?"stop":"done"});
       if(find(list[g.i]).s&&g.d>=16)cues.push({t:g.at+g.d/2,f:"side"});}
-    else{var nm=list[g.i];cues.push({t:g.at+0.6,f:"say",x:g.k==="prep"?"Gleich geht's los mit "+nm:g.k==="rr"?"Pause. Runde "+g.r+" beginnt mit "+nm:"Als Nächstes: "+nm});}});
+    if(nx&&nx.r>g.r)holds.push({t:end,r:nx.r,done:false});});
   cues.sort(function(a,b){return a.t-b.t;});
-  var t0=0,running=false,pausedEl=0,lastEl=-1,iv=null,ended=false;
+  var t0=0,running=false,pausedEl=0,lastEl=-1,iv=null,ended=false,waiting=null;
   function el(){return running?(Date.now()-t0)/1000:pausedEl;}
   function idxAt(e){for(var i=segs.length-1;i>=0;i--)if(e>=segs[i].at)return i;return 0;}
   function state(){var e=Math.min(el(),total),i=idxAt(e),g=segs[i];
-    return {el:e,total:total,idx:i,seg:g,next:segs[i+1]||null,remaining:Math.max(0,g.at+g.d-e),running:running,
+    return {el:e,total:total,idx:i,seg:g,next:segs[i+1]||null,remaining:Math.max(0,g.at+g.d-e),running:running,waiting:waiting,
       doneWork:segs.filter(function(s){return s.k==="work"&&e>=s.at+s.d-0.05;}).length,workTotal:segs.filter(function(s){return s.k==="work";}).length,
       workSecs:segs.filter(function(s){return s.k==="work";}).reduce(function(a,s){return a+Math.max(0,Math.min(s.d,e-s.at));},0)};}
-  function fire(from,to){cues.forEach(function(c){if(c.t>from&&c.t<=to&&to-c.t<1.5){if(c.f==="say")say(c.x);else if(c.f==="side"){SND.side();say("Seite wechseln");}else SND[c.f]();}});}
-  function tick(){if(ended)return;var e=el();if(running){fire(lastEl,e);lastEl=e;}
+  function fire(from,to){cues.forEach(function(c){if(c.t>from&&c.t<=to&&to-c.t<1.5){if(c.f==="say")say(c.x);else SND[c.f]();}});}
+  function tick(){if(ended)return;var e=el();
+    if(running){var h=holds.filter(function(x){return !x.done&&e>=x.t;})[0];
+      if(h){h.done=true;fire(lastEl,h.t);lastEl=h.t;pausedEl=h.t;running=false;clearInterval(iv);waiting={round:h.r};onTick&&onTick(state());return;}
+      fire(lastEl,e);lastEl=e;}
     if(e>=total){ended=true;pausedEl=total;running=false;clearInterval(iv);onTick&&onTick(state());onEnd&&onEnd(state());return;}
     onTick&&onTick(state());}
-  function jump(e){e=Math.max(0,Math.min(total-0.01,e));lastEl=e;if(running)t0=Date.now()-e*1000;else pausedEl=e;tick();}
+  function jump(e){e=Math.max(0,Math.min(total-0.01,e));lastEl=e;
+    holds.forEach(function(h){h.done=e>h.t+0.001?true:e<h.t?false:h.done;});
+    if(running)t0=Date.now()-e*1000;else pausedEl=e;tick();}
   var api={
     segs:segs,total:total,
-    start:function(){if(ended)return;SND.unlock();if(!running){running=true;t0=Date.now()-pausedEl*1000;if(lastEl<0){lastEl=-0.01;}}
+    start:function(){if(ended)return;SND.unlock();waiting=null;if(!running){running=true;t0=Date.now()-pausedEl*1000;if(lastEl<0){lastEl=-0.01;}}
       clearInterval(iv);iv=setInterval(tick,100);tick();},
     pause:function(){if(!running)return;pausedEl=el();running=false;clearInterval(iv);tick();},
     toggle:function(){running?api.pause():api.start();},
-    skip:function(){var s=state(),n=s.next;if(n)jump(n.at);else jump(total-0.05);},
-    back:function(){var s=state();jump(s.el-s.seg.at>2||s.idx===0?s.seg.at:segs[s.idx-1].at);},
+    skip:function(){if(waiting){api.start();return;}var s=state(),n=s.next;if(n)jump(n.at);else jump(total-0.05);},
+    back:function(){var s=state();waiting=null;jump(s.el-s.seg.at>2||s.idx===0?s.seg.at:segs[s.idx-1].at);},
     stop:function(){pausedEl=el();ended=true;running=false;clearInterval(iv);try{speechSynthesis.cancel();}catch(e){}return state();},
-    state:state,isRunning:function(){return running;},tick:tick
+    state:state,isRunning:function(){return running;},isWaiting:function(){return !!waiting;},tick:tick
   };
   return api;
 }
