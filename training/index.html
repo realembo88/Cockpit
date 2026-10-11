@@ -125,11 +125,13 @@ var PLAN={2:"Pull",4:"HIIT",5:"Beine",0:"Push"};   /* Di, Do, Fr, So */
 var H=window.HIIT,FOCUS={};if(H)H.FOCI.forEach(function(f){FOCUS[f[0]]=f[1];});
 var MODE={eigen:"Eigengewicht",bank:"Bank",stationen:"Stationen"};
 
-function blank(){return {sessions:{},deleted:[],templates:null};}
-function norm(d){d=d&&typeof d==="object"?d:blank();if(!d.sessions)d.sessions={};if(!Array.isArray(d.deleted))d.deleted=[];return d;}
+function blank(){return {sessions:{},weights:{},deleted:[],templates:null};}
+function norm(d){d=d&&typeof d==="object"?d:blank();if(!d.sessions)d.sessions={};if(!d.weights)d.weights={};if(!Array.isArray(d.deleted))d.deleted=[];return d;}
 function merge(l,r,lU,rU){l=norm(JSON.parse(JSON.stringify(l)));r=norm(JSON.parse(JSON.stringify(r)));
   var del={};l.deleted.concat(r.deleted).forEach(function(i){del[i]=1;});
   var out={sessions:{},deleted:Object.keys(del),templates:(lU>=rU?l:r).templates||l.templates||r.templates||null};
+  out.weights={};Object.keys(Object.assign({},r.weights,l.weights)).forEach(function(i){if(del[i])return;var a=l.weights[i],b=r.weights[i];out.weights[i]=!a?b:!b?a:((a.upd||0)>=(b.upd||0)?a:b);});
+  var bd=[l.body,r.body].filter(Boolean).sort(function(a,b){return (b.t||0)-(a.t||0);})[0];if(bd)out.body=bd;
   var hc=[l.hiitCfg,r.hiitCfg].filter(Boolean).sort(function(a,b){return (b.t||0)-(a.t||0);})[0];if(hc)out.hiitCfg=hc;
   Object.keys(Object.assign({},r.sessions,l.sessions)).forEach(function(i){if(del[i])return;var a=l.sessions[i],b=r.sessions[i];out.sessions[i]=!a?b:!b?a:((a.upd||0)>=(b.upd||0)?a:b);});
   out._summary=summaryFor(out);return out;}
@@ -173,12 +175,12 @@ function allExercises(){var s={};Object.keys(tpls()).forEach(function(t){tpls()[
 
 /* ---------- Rahmen ---------- */
 function render(){
-  document.getElementById("top").innerHTML=C.topbar({title:"Training",icon:"🏋️",sub:"Kraft · HIIT · Laufen",accent:"#f43f5e",accent2:"#fb7185"});C.paintStatus();
-  var tabs=[["uebersicht","📊 Übersicht"],["kraft","＋ Kraft"],["hiit","⚡ HIIT"],["lauf","＋ Lauf"],["verlauf","📋 Verlauf"],["fortschritt","📈 Fortschritt"]];
+  document.getElementById("top").innerHTML=C.topbar({title:"Training",icon:"🏋️",sub:"Kraft · HIIT · Laufen · Körper",accent:"#f43f5e",accent2:"#fb7185"});C.paintStatus();
+  var tabs=[["uebersicht","📊 Übersicht"],["kraft","＋ Kraft"],["hiit","⚡ HIIT"],["lauf","＋ Lauf"],["koerper","⚖️ Körper"],["verlauf","📋 Verlauf"],["fortschritt","📈 Fortschritt"]];
   document.getElementById("tabs").innerHTML=tabs.map(function(t){return '<button class="tab'+(st.tab===t[0]?" on":"")+'" onclick="T.tab(\''+t[0]+'\')">'+t[1]+"</button>";}).join("");
   document.getElementById("exList").innerHTML=allExercises().map(function(n){return '<option value="'+C.esc(n)+'">';}).join("");
   var h="";if(st.flash)h+='<div class="flash'+(st.flash.warn?" warn":"")+'">'+C.esc(st.flash.t)+"</div>";
-  h+=({uebersicht:vDash,kraft:vKraft,hiit:vHiit,lauf:vLauf,verlauf:vList,fortschritt:vProg}[st.tab])();
+  h+=({uebersicht:vDash,kraft:vKraft,hiit:vHiit,lauf:vLauf,koerper:vBody,verlauf:vList,fortschritt:vProg}[st.tab])();
   document.getElementById("main").innerHTML=h;
 }
 function kpi(i,l,v){return '<div class="kpi"><div class="ico">'+i+'</div><div class="val">'+v+'</div><div class="lab">'+l+"</div></div>";}
@@ -396,6 +398,59 @@ function sheet(html){var el=$("hrSheet");if(html==null){el.hidden=true;el.innerH
 function hfinish(s){if(!hrun||hrun.saved)return;hrun.saved=hsave(s,false);wake(false);var full=s.doneWork>=s.workTotal;
   sheet('<h2>'+(full?"🎉 Geschafft!":"Training gespeichert")+'</h2><div class="small" style="color:#cbd5e1">'+s.doneWork+" von "+s.workTotal+" Intervallen · "+fmtDur(s.workSecs)+" Belastung · "+fmtDur(s.el)+' gesamt</div><input placeholder="Notiz (optional), z. B. Gruppe, Gefühl" oninput="T.hNote(this.value)"><button class="btn amb" onclick="T.hClose()">Fertig</button>');}
 
+/* ---------- Körper (Waage) ---------- */
+function wlist(){return Object.keys(data.weights||{}).map(function(k){return data.weights[k];}).sort(function(a,b){return a.date.localeCompare(b.date);});}
+function bodyH(){return (data.body&&data.body.height)||0;}
+function avg7(l,i){var d=l[i].date,from=new Date(new Date(d+"T12:00:00").getTime()-6*DAY).toISOString().slice(0,10),xs=l.filter(function(x){return x.date>=from&&x.date<=d&&x.w;});return xs.reduce(function(a,x){return a+x.w;},0)/(xs.length||1);}
+function bmiCat(b){return b<18.5?"Untergewicht":b<25?"Normalgewicht":b<30?"Übergewicht":"Adipositas";}
+function fmtKg(v,d){return v==null?"–":C.num(v,d==null?1:d)+" kg";}
+function vBody(){
+  var l=wlist(),last=l[l.length-1],h=bodyH(),f=st.wf||(st.wf={date:C.today(),w:"",fat:"",mus:"",visc:"",water:""}),out="";
+  var ex=(data.weights||{})["w"+f.date];
+  out+='<div class="panel"><h3 style="color:#a78bfa">⚖️ Messung eintragen</h3>';
+  out+='<div class="field"><label>Datum</label><input type="date" value="'+f.date+'" onchange="T.wd(this.value)"></div>';
+  if(ex)out+='<div class="note" style="margin:-6px 0 10px;color:#fbbf24">✓ Für diesen Tag ist schon eine Messung gespeichert – eine neue Eingabe ersetzt sie.</div>';
+  function fld(k,label,ph,mode){return '<div class="field"><label>'+label+'</label><input inputmode="'+(mode||"decimal")+'" value="'+C.esc(f[k])+'" placeholder="'+(ph!=null?String(ph).replace(".",","):"")+'" oninput="T.wv(\''+k+'\',this.value)"></div>';}
+  out+='<div class="row2">'+fld("w","Gewicht (kg)",last&&last.w)+fld("fat","Körperfett (%)",last&&last.fat)+'</div>';
+  out+='<div class="row2">'+fld("mus","Skelettmuskulatur (%)",last&&last.mus)+fld("visc","Viszerales Fett (Stufe)",last&&last.visc)+'</div>';
+  out+='<div class="row2">'+fld("water","Körperwasser (%) · optional",last&&last.water)+'<div></div></div>';
+  out+='<button class="btn full" style="background:#8b5cf6" onclick="T.wSave()">Messung speichern</button>';
+  out+='<div class="note" style="margin-top:8px">Grau = letzte Messung. Nur das Gewicht ist Pflicht. Am besten immer gleich messen: morgens, nach dem Toilettengang, vor dem Frühstück.</div></div>';
+  if(!h)out+='<div class="panel"><h3 style="color:#a78bfa">Körpergröße</h3><div class="row2"><div class="field"><label>Größe (cm) – für den BMI</label><input id="bh" inputmode="numeric" placeholder="z. B. 180"></div><button class="btn" style="background:#8b5cf6;align-self:end;margin-bottom:12px" onclick="T.wH(document.getElementById(\'bh\').value)">Speichern</button></div></div>';
+  if(!l.length)return out+'<div class="empty"><div class="big">⚖️</div>Noch keine Messung.</div>';
+  /* Kennzahlen */
+  var cut=new Date(new Date(last.date+"T12:00:00").getTime()-30*DAY).toISOString().slice(0,10),ref=l.filter(function(x){return x.date<=cut;}).pop()||l[0];
+  var d30=last.w-ref.w,a7=avg7(l,l.length-1),bmi=h?last.w/Math.pow(h/100,2):null;
+  var fm=last.fat?last.w*last.fat/100:null,ffm=fm!=null?last.w-fm:null;
+  var refFm=ref.fat?ref.w*ref.fat/100:null;
+  function dl(v,unit,good){if(v==null||isNaN(v)||ref===last)return "";var c=Math.abs(v)<0.05?"#94a3b8":(v<0)===good?"#34d399":"#f87171";return ' <span class="small" style="color:'+c+'">'+(v>0?"+":"")+C.num(v,1)+unit+"</span>";}
+  out+='<div class="small muted" style="margin:0 0 8px">Letzte Messung '+new Date(last.date+"T12:00:00").toLocaleDateString("de-DE",{weekday:"short",day:"numeric",month:"numeric"})+(ref!==last?" · Veränderung seit "+new Date(ref.date+"T12:00:00").toLocaleDateString("de-DE",{day:"numeric",month:"numeric"}):"")+"</div>";
+  out+='<div class="grid2" style="margin-bottom:14px">'+kpi("⚖️","Gewicht",fmtKg(last.w)+dl(d30," kg",true))+kpi("📉","Ø 7 Tage",fmtKg(a7))+
+    kpi("📐","BMI",bmi?C.num(bmi,1)+' <span class="small muted">'+bmiCat(bmi)+"</span>":"–")+kpi("🔥","Körperfett",last.fat?C.num(last.fat,1)+" % · "+fmtKg(fm)+(refFm!=null?dl(fm-refFm," kg",true):""):"–")+
+    kpi("💪","Skelettmuskulatur",last.mus?C.num(last.mus,1)+" %"+(ref.mus?dl(last.mus-ref.mus," %",false):""):"–")+kpi("🧱","Fettfreie Masse",ffm!=null?fmtKg(ffm):"–")+
+    kpi("🫀","Viszerales Fett",last.visc?C.num(last.visc,last.visc%1?1:0)+' <span class="small muted">'+(last.visc<10?"normal":last.visc<15?"erhöht":"hoch")+"</span>":"–")+kpi("💧","Körperwasser",last.water?C.num(last.water,1)+" %":"–")+"</div>";
+  /* Verläufe */
+  var lb=function(x){return x.date.slice(8,10)+"."+x.date.slice(5,7)+".";},rng=st.wr||90,from=rng?new Date(Date.now()-rng*DAY).toISOString().slice(0,10):"0000";
+  var idx=[];l.forEach(function(x,i){if(x.date>=from)idx.push(i);});
+  out+='<div class="chips" style="margin-bottom:10px">'+[[30,"30 Tage"],[90,"90 Tage"],[365,"1 Jahr"],[0,"Alles"]].map(function(r){return '<button class="chip'+(rng===r[0]?" on":"")+'" style="'+(rng===r[0]?"background:#8b5cf6;border-color:#8b5cf6":"")+'" onclick="T.wr('+r[0]+')">'+r[1]+"</button>";}).join("")+"</div>";
+  function ch(title,col,fn,fmt){var pts=idx.map(function(i){return {label:lb(l[i]),value:fn(l[i],i)};}).filter(function(p){return p.value!=null&&!isNaN(p.value);});
+    return pts.length?'<div class="panel"><h3 style="color:'+col+'">'+title+"</h3>"+C.lineChart(pts,{color:col,fmt:fmt})+"</div>":"";}
+  var kg=function(v){return C.num(v,1)+" kg";},pc=function(v){return C.num(v,1)+" %";};
+  out+=ch("Gewicht · 7-Tage-Schnitt","#a78bfa",function(x,i){return avg7(l,i);},kg);
+  out+=ch("Fettmasse (kg)","#f87171",function(x){return x.fat?x.w*x.fat/100:null;},kg);
+  out+=ch("Fettfreie Masse (kg)","#34d399",function(x){return x.fat?x.w*(1-x.fat/100):null;},kg);
+  out+=ch("Skelettmuskulatur (%)","#f43f5e",function(x){return x.mus||null;},pc);
+  out+=ch("Viszerales Fett (Stufe)","#f59e0b",function(x){return x.visc||null;},function(v){return C.num(v,1);});
+  out+=ch("Körperwasser (%)","#38bdf8",function(x){return x.water||null;},pc);
+  /* Liste */
+  out+='<div class="panel"><h3 style="color:#a78bfa">Messungen</h3>'+l.slice().reverse().slice(0,st.wAll?9999:15).map(function(x){
+    var p=[fmtKg(x.w)];if(x.fat)p.push(C.num(x.fat,1)+" % Fett");if(x.mus)p.push(C.num(x.mus,1)+" % Muskel");if(x.visc)p.push("visz. "+C.num(x.visc,x.visc%1?1:0));if(x.water)p.push(C.num(x.water,1)+" % Wasser");
+    return '<div class="pr" style="gap:10px;align-items:flex-start"><span style="white-space:nowrap;flex:0 0 auto">'+new Date(x.date+"T12:00:00").toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit",year:"2-digit"})+'</span><span style="text-align:right">'+p.join(" · ")+' <button class="x" onclick="T.wEdit(\''+x.id+'\')" aria-label="Bearbeiten">✎</button><button class="x" onclick="T.wDel(\''+x.id+'\')" aria-label="Löschen">✕</button></span></div>';}).join("")+
+    (l.length>15&&!st.wAll?'<button class="mini" style="margin-top:8px" onclick="T.wAll()">Alle '+l.length+" anzeigen</button>":"")+"</div>";
+  if(h)out+='<div class="note" style="text-align:center">Körpergröße '+h+' cm · <a href="#" style="color:#a78bfa" onclick="T.wH(prompt(\'Körpergröße in cm\',\''+h+'\'));return false">ändern</a></div>';
+  return out;
+}
+
 /* ---------- Aktionen ---------- */
 function cleanSets(e){var tm=unitOf(e)==="s";return e.sets.map(function(x){return {r:tm?parseSec(x.r):pn(x.r),w:pn(x.w)};}).filter(function(x){return x.r>0;}).map(function(x){return {r:x.r,w:x.w||0};});}
 window.T={
@@ -462,6 +517,20 @@ Object.assign(window.T,{
   hClose:function(){if(hrun&&hrun.saved&&data.sessions[hrun.saved]){data.sessions[hrun.saved].note=(data.sessions[hrun.saved].note||"").trim();data.sessions[hrun.saved].upd=Date.now();persist();}
     wake(false);hrun=null;sheet(null);$("hrun").hidden=true;document.body.style.overflow="";st.tab="uebersicht";flash("✓ HIIT gespeichert");window.scrollTo(0,0);},
   hManual:function(){var d=draft();if(!d.list.length)return;hsave(null,true);st.tab="uebersicht";flash("✓ HIIT eingetragen");window.scrollTo(0,0);}
+});
+Object.assign(window.T,{
+  wd:function(v){st.wf.date=v||C.today();var e=(data.weights||{})["w"+st.wf.date];if(e)["w","fat","mus","visc","water"].forEach(function(k){st.wf[k]=e[k]!=null?String(e[k]).replace(".",","):"";});render();},
+  wv:function(k,v){st.wf[k]=v;},
+  wr:function(r){st.wr=r;render();},
+  wAll:function(){st.wAll=true;render();},
+  wH:function(v){var n=pn(v);if(!(n>=100&&n<=250)){if(v!=null)flash("⚠ Bitte die Größe in cm eingeben, z. B. 180",true);return;}data.body={height:Math.round(n),t:Date.now()};persist();render();},
+  wSave:function(){var f=st.wf,w=pn(f.w);if(!(w>20&&w<400)){flash("⚠ Bitte ein Gewicht eintragen",true);return;}
+    var o={id:"w"+f.date,date:f.date,w:Math.round(w*10)/10,upd:Date.now()};
+    [["fat",1,80],["mus",1,90],["visc",1,60],["water",1,90]].forEach(function(k){var v=pn(f[k[0]]);if(v>=k[1]&&v<=k[2])o[k[0]]=Math.round(v*10)/10;});
+    if(!data.weights)data.weights={};data.weights[o.id]=o;data.deleted=data.deleted.filter(function(i){return i!==o.id;});
+    persist();st.wf=null;flash("✓ Messung gespeichert · "+fmtKg(o.w));},
+  wEdit:function(id){var e=data.weights[id];if(!e)return;st.wf={date:e.date};["w","fat","mus","visc","water"].forEach(function(k){st.wf[k]=e[k]!=null?String(e[k]).replace(".",","):"";});render();window.scrollTo(0,0);},
+  wDel:function(id){if(!confirm("Messung löschen?"))return;delete data.weights[id];if(data.deleted.indexOf(id)<0)data.deleted.push(id);persist();render();}
 });
 render();
 C.autoPull([AREA],function(a,d){data=norm(d);render();});
