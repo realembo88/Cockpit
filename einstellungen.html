@@ -20,7 +20,9 @@
 "use strict";
 var C=window.Cockpit;
 document.getElementById("top").innerHTML=C.topbar({title:"Einstellungen",icon:"⚙",sub:"Sync & Daten",accent:"#00bcd4",base:""});
-var msg=null;
+var msg=null,rsv=null;
+var AREAS=["energie","auto","edelmetall","finanzen","ferienwohnung","training"];
+var NAMES={energie:"Energie",auto:"Auto",edelmetall:"Edelmetalle",finanzen:"Finanzen",ferienwohnung:"Ferienwohnung",training:"Training"};
 
 function render(){
   var c=C.getConfig();
@@ -44,6 +46,16 @@ function render(){
     '4. <b>Permissions → Repository permissions → Contents: Read and write</b><br>'+
     '5. Generieren, kopieren und oben einfügen<br><br>'+
     '<span class="muted">🔒 Der Token wird nur lokal auf diesem Gerät gespeichert, nie im öffentlichen Code. Auf jedem weiteren Gerät einmal hier eintragen.</span></div></div>';
+  /* Sicherung */
+  var have=AREAS.filter(function(a){return C.getLocal(a,null)!=null;}),lb=C.lastBackup();
+  h+='<div class="panel"><h3>💾 Sicherung aller Bereiche</h3><div class="small muted" style="margin-bottom:12px;line-height:1.6">Eine Datei mit allen Bereichen ('+have.map(function(a){return NAMES[a];}).join(", ")+'). Zugangsdaten (GitHub-Token, Smoobu-Schlüssel) sind <b>nicht</b> enthalten. Die Datei enthält aber deine Finanzdaten – bitte sicher ablegen, nicht öffentlich teilen.<br>Letzte Sicherung: <b>'+(lb?new Date(lb).toLocaleDateString("de-DE"):"noch nie")+'</b></div>'+
+    '<div class="row2">'+(C.canShareFiles()?'<button class="btn" style="background:#00bcd4" onclick="CP.bk(true)">📤 Teilen …</button>':'')+'<button class="btn'+(C.canShareFiles()?' ghost':'')+'" style="'+(C.canShareFiles()?'':'background:#00bcd4')+'" onclick="CP.bk(false)">💾 Als Datei speichern</button></div>'+
+    '<label class="btn ghost full" style="display:block;text-align:center;margin-top:10px;cursor:pointer">📂 Sicherung einlesen<input type="file" accept=".json,application/json" style="display:none" onchange="CP.rs(this)"></label>';
+  if(rsv){h+='<div style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px"><div class="small" style="margin-bottom:8px">Sicherung vom <b>'+(rsv.created?new Date(rsv.created).toLocaleString("de-DE"):"unbekannt")+'</b> – welche Bereiche übernehmen?</div>'+
+    Object.keys(rsv.areas).map(function(a){return '<label style="display:flex;gap:10px;align-items:center;padding:6px 0"><input type="checkbox" class="rsa" value="'+a+'" checked> '+C.esc(NAMES[a]||a)+' <span class="small muted">· Stand '+(rsv.areas[a].updatedAt?new Date(rsv.areas[a].updatedAt).toLocaleDateString("de-DE"):"?")+'</span></label>';}).join("")+
+    '<div class="small" style="color:#ffb74d;margin:8px 0;line-height:1.5">Die gewählten Bereiche werden durch den Stand der Datei <b>ersetzt</b> und an deine Geräte gesendet. Der bisherige Stand bleibt in der GitHub-Versionsgeschichte erhalten.</div>'+
+    '<div class="row2"><button class="btn" style="background:#ff9800" onclick="CP.rsGo()">Übernehmen</button><button class="btn ghost" style="flex:0 0 auto" onclick="CP.rsCancel()">Abbrechen</button></div></div>';}
+  h+='</div>';
   h+='<div class="panel"><h3>ℹ Info</h3><div class="small muted" style="line-height:1.7">Status: <span id="stat"></span><br>Gespeicherte Bereiche auf diesem Gerät: '+
     ["energie","auto","edelmetall","finanzen","ferienwohnung","training"].filter(function(a){return C.getLocal(a,null)!=null;}).join(", ")+'</div></div>';
   document.getElementById("main").innerHTML=h;
@@ -66,6 +78,15 @@ window.CP={
   },
   lockOn:function(){msg={t:"Bitte am Gerät bestätigen …"};render();C.lockEnable().then(function(){msg={t:"✓ Gerätesperre aktiv. Beim nächsten Start wird nach PIN oder Fingerabdruck gefragt."};render();},function(e){msg={t:"⚠ "+(e&&e.name==="NotAllowedError"?"Abgebrochen oder nicht bestätigt.":(e&&e.message||e)),warn:true};render();});},
   lockOff:function(){if(!confirm("Gerätesperre auf diesem Gerät ausschalten?"))return;C.lockDisable();msg={t:"Gerätesperre ausgeschaltet."};render();},
+  bk:function(share){C.saveBackup(C.makeBackup(AREAS,"cockpit"),"cockpit",share).then(function(ok){msg=ok?{t:"✓ Sicherung erstellt"}:{t:"⚠ Sicherung konnte nicht gespeichert werden",warn:true};render();},function(e){if(e&&e.name==="AbortError")return;msg={t:"⚠ "+(e&&e.message||"Teilen nicht möglich"),warn:true};render();});},
+  rs:function(inp){var f=inp.files&&inp.files[0];inp.value="";if(!f)return;C.readFile(f).then(function(t){rsv=C.parseBackup(t);
+      Object.keys(rsv.areas).forEach(function(a){if(AREAS.indexOf(a)<0)delete rsv.areas[a];});
+      if(!Object.keys(rsv.areas).length){rsv=null;msg={t:"⚠ Die Datei enthält keine Cockpit-Bereiche",warn:true};}render();})
+    .catch(function(e){msg={t:"⚠ "+(e.message||"Datei konnte nicht gelesen werden"),warn:true};render();});},
+  rsCancel:function(){rsv=null;render();},
+  rsGo:function(){var sel=[].slice.call(document.querySelectorAll(".rsa:checked")).map(function(x){return x.value;});if(!sel.length)return;
+    if(!confirm(sel.map(function(a){return NAMES[a];}).join(", ")+" durch die Sicherung ersetzen?"))return;
+    sel.forEach(function(a){C.restoreArea(a,rsv.areas[a],"replace");});rsv=null;msg={t:"✓ Wiederhergestellt: "+sel.map(function(a){return NAMES[a];}).join(", ")};render();},
   logout:function(){C.setConfig({token:""});msg={t:"Token entfernt. Daten bleiben lokal erhalten."};render();C.paintStatus();}
 };
 C.onStatus(function(){var st=document.getElementById("stat");var el=document.getElementById("cp-sync");if(st&&el)st.textContent=el.textContent;});
