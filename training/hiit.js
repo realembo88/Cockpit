@@ -55,7 +55,11 @@ var RAW=[
 ["Seilspringen","c","","Springseil"],["Treppensteigen","cb","","Treppe"]
 ];
 var CAT=RAW.map(function(r){var f=r[2]||"";return {n:r[0],g:r[1],m:r[1][0],s:f.indexOf("s")>-1,x:f.indexOf("x")>-1,gear:r[3]||null};});
-var BY={};CAT.forEach(function(e){BY[e.n.toLowerCase()]=e;});
+var BASE=CAT.slice(),BY={};CAT.forEach(function(e){BY[e.n.toLowerCase()]=e;});
+/* Eigene Übungen ergänzen den Katalog: [{n, g (Gruppe), s, x, gear}] */
+function setCustom(list){CAT=BASE.slice();BY={};BASE.forEach(function(e){BY[e.n.toLowerCase()]=e;});
+  (list||[]).forEach(function(c){if(!c||!c.n||BY[c.n.toLowerCase()])return;var e={n:c.n,g:c.g||"k",m:(c.g||"k")[0],s:!!c.s,x:!!c.x,gear:c.gear||null,own:true};CAT.push(e);BY[e.n.toLowerCase()]=e;});
+  if(window.HIIT)window.HIIT.CAT=CAT;}
 var GEARS=["Bank","Medizinball","Gymnastikball","Kettlebell","Springseil","Treppe"];
 var GEAR_ICON={Bank:"🪑",Medizinball:"🏐",Gymnastikball:"🔵",Kettlebell:"🏋️",Springseil:"➰",Treppe:"🪜"};
 var GROUPS={c:"Cardio",b:"Beine & Po",k:"Core",a:"Arme & Oberkörper",r:"Rücken"};
@@ -206,5 +210,5 @@ function Timer(cfg,list,onTick,onEnd){
 
 window.HIIT={CAT:CAT,GEARS:GEARS,GEAR_ICON:GEAR_ICON,GROUPS:GROUPS,GCOL:GCOL,FOCI:FOCI,MODES:MODES,
   find:find,build:build,swap:swap,slotPool:slotPool,segments:segments,totalSecs:totalSecs,Timer:Timer,SND:SND,say:say,
-  setVoice:function(v){voiceOn=!!v;}};
+  setVoice:function(v){voiceOn=!!v;},setCustom:setCustom};
 })();
