@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0e1a">
+<title>Training</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Training">
+<link rel="apple-touch-icon" href="../assets/icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/style.css">
+<style>
+.wk{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-bottom:6px;}
+.wk div{border-radius:10px;background:var(--field);padding:7px 2px;text-align:center;font-size:11px;color:var(--muted);min-height:54px;}
+.wk div b{display:block;color:#fff;font-size:12px;margin-bottom:3px;}
+.wk div.done{background:#f43f5e2e;border:1px solid #f43f5e88;color:#fecdd3;}
+.wk div.run{background:#38bdf82e;border:1px solid #38bdf888;color:#bae6fd;}
+.wk div.hiit{background:#f59e0b2e;border:1px solid #f59e0b88;color:#fde68a;}
+.wk div.plan{border:1px dashed #f43f5e66;}
+.wk div.today{outline:2px solid #fff;}
+.ex{border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px;background:var(--panel2);}
+.ex .hd{display:flex;gap:8px;align-items:center;margin-bottom:6px;}
+.ex .hd input{flex:1;background:var(--field);border:1px solid var(--border);border-radius:8px;padding:9px 10px;color:#fff;font-size:14px;font-weight:600;}
+.ex .last{font-size:11px;color:#fda4af;margin:0 0 8px;}
+.set{display:grid;grid-template-columns:34px 1fr 1fr 30px;gap:6px;align-items:center;margin-bottom:6px;}
+.set span{font-size:11px;color:var(--muted);text-align:center;}
+.set input{width:100%;background:var(--field);border:1px solid var(--border);border-radius:8px;padding:9px 8px;color:#fff;font-size:15px;text-align:center;}
+.set input:focus,.ex .hd input:focus{outline:none;border-color:var(--accent);}
+.x{background:none;border:none;color:#3a4a6a;font-size:16px;cursor:pointer;}
+.mini{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;}
+.chip{border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:20px;padding:7px 13px;font-size:13px;cursor:pointer;}
+.chip.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700;}
+.ses{border-top:1px solid #152038;padding:11px 2px;}
+.ses:first-child{border-top:none;}
+.ses .t{display:flex;justify-content:space-between;gap:8px;cursor:pointer;}
+.ses .t b{color:#fff;}
+.ses .d{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.6;}
+.pr{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #152038;font-size:13px;}
+.pr:last-child{border-bottom:none;}
+.note{font-size:11px;color:var(--muted);line-height:1.6;}
+.hx{display:flex;align-items:center;gap:7px;padding:8px 0;border-bottom:1px solid #152038;}
+.hx:last-child{border-bottom:none;}
+.hx .no{width:20px;color:var(--muted);font-size:12px;text-align:right;flex:0 0 auto;}
+.hx .dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;}
+.hx .nm{flex:1;min-width:0;display:flex;flex-direction:column;}
+.hx select{width:100%;background:transparent;border:none;color:#fff;font-size:14px;font-weight:600;padding:3px 0;-webkit-appearance:none;appearance:none;text-overflow:ellipsis;cursor:pointer;}
+.hx select option,.hx select optgroup{background:#0f1729;color:#fff;}
+.hx .tags{display:flex;gap:4px;flex-wrap:wrap;}
+.tag{font-size:10px;color:#fcd34d;border:1px solid #f59e0b55;border-radius:6px;padding:1px 6px;white-space:nowrap;}
+.hx .x{font-size:15px;padding:4px;color:#64748b;}
+.stp{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 0;border-bottom:1px solid #152038;font-size:13px;}
+.stp:last-child{border-bottom:none;}
+.stp .c{display:flex;align-items:center;gap:6px;}
+.stp .c b{min-width:58px;text-align:center;color:#fff;font-size:15px;}
+.stp button{width:36px;height:36px;border-radius:9px;border:1px solid var(--border);background:var(--field);color:#fff;font-size:18px;cursor:pointer;}
+.lbl{font-size:12px;color:var(--muted);margin:2px 0 7px;}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;}
+.chip.amb.on{background:#f59e0b;border-color:#f59e0b;color:#1a1000;}
+.btn.amb{background:linear-gradient(135deg,#f59e0b,#f43f5e);}
+.legend{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-top:8px;}
+.legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;}
+#hrun{position:fixed;inset:0;z-index:60;display:flex;flex-direction:column;align-items:center;justify-content:space-between;gap:8px;padding:calc(14px + env(safe-area-inset-top)) 18px calc(18px + env(safe-area-inset-bottom));background:#0a0e1a;text-align:center;overflow:hidden;}
+#hrun[hidden]{display:none;}
+#hrun.work{background:linear-gradient(180deg,#5b0a20 0%,#0a0e1a 78%);}
+#hrun.rest{background:linear-gradient(180deg,#05503c 0%,#0a0e1a 78%);}
+#hrun.prep,#hrun.rr{background:linear-gradient(180deg,#6b3a07 0%,#0a0e1a 78%);}
+.hr-top{width:100%;max-width:560px;display:flex;justify-content:space-between;align-items:center;font-size:13px;color:#cbd5e1;}
+.hr-top button{background:#ffffff14;border:none;color:#fff;border-radius:10px;width:40px;height:40px;font-size:18px;cursor:pointer;}
+.hr-ph{font-size:15px;letter-spacing:.18em;text-transform:uppercase;font-weight:800;color:#fff;opacity:.9;}
+.hr-ring{position:relative;width:min(62vw,300px);aspect-ratio:1;}
+.hr-ring svg{width:100%;height:100%;transform:rotate(-90deg);}
+.hr-ring circle{fill:none;stroke-width:10;}
+.hr-ring .bg{stroke:#ffffff18;}
+#hrArc{stroke:#fff;stroke-linecap:round;transition:stroke-dashoffset .1s linear;}
+#hrSec{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:min(24vw,118px);font-weight:800;color:#fff;font-variant-numeric:tabular-nums;}
+.hr-ex{font-size:clamp(22px,6.4vw,36px);font-weight:800;color:#fff;line-height:1.15;max-width:560px;}
+.hr-pre{font-size:12px;color:#cbd5e1;letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px;}
+.hr-sub{min-height:22px;font-size:14px;color:#fde68a;font-weight:600;}
+.hr-next{font-size:13px;color:#94a3b8;min-height:18px;}
+.hr-bar{width:100%;max-width:560px;height:6px;border-radius:4px;background:#ffffff14;overflow:hidden;}
+.hr-bar i{display:block;height:100%;background:#fff;width:0;}
+.hr-ctl{display:flex;gap:18px;align-items:center;justify-content:center;}
+.hr-ctl button{width:58px;height:58px;border-radius:50%;border:none;background:#ffffff1c;color:#fff;font-size:22px;cursor:pointer;}
+.hr-ctl button.big{width:82px;height:82px;font-size:32px;background:#fff;color:#0a0e1a;}
+.hr-ctl button.big.wide{width:150px;border-radius:41px;font-size:22px;font-weight:800;}
+#hrSheet{position:absolute;left:0;right:0;bottom:0;background:#0f1729;border-top:1px solid var(--border);border-radius:18px 18px 0 0;padding:20px 18px calc(20px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:10px;align-items:stretch;max-width:560px;margin:0 auto;}
+#hrSheet[hidden]{display:none;}
+#hrSheet h2{margin:0;font-size:20px;color:#fff;}
+#hrSheet input{background:var(--field);border:1px solid var(--border);border-radius:10px;padding:11px;color:#fff;font-size:14px;}
+select.inl{background:var(--field);border:1px solid var(--border);color:#fff;border-radius:10px;padding:10px;font-size:14px;width:100%;}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div id="top"></div>
+<nav class="tabs" id="tabs"></nav>
+<div class="content" id="main"></div>
+<div id="hrun" hidden>
+  <div class="hr-top"><span id="hrPos"></span><button onclick="T.hX()" aria-label="Training beenden">✕</button></div>
+  <div class="hr-ph" id="hrPh"></div>
+  <div class="hr-ring"><svg viewBox="0 0 200 200"><circle class="bg" cx="100" cy="100" r="90"/><circle id="hrArc" cx="100" cy="100" r="90" stroke-dasharray="565.49" stroke-dashoffset="0"/></svg><div id="hrSec"></div></div>
+  <div><div class="hr-pre" id="hrPre"></div><div class="hr-ex" id="hrEx"></div></div>
+  <div class="hr-sub" id="hrSub"></div>
+  <div class="hr-next" id="hrNext"></div>
+  <div class="hr-bar"><i id="hrBar"></i></div>
+  <div class="small" style="color:#94a3b8" id="hrLeft"></div>
+  <div class="hr-ctl"><button onclick="T.hBack()" aria-label="Zurück">⏮</button><button class="big" id="hrPlay" onclick="T.hToggle()" aria-label="Pause">⏸</button><button onclick="T.hSkip()" aria-label="Weiter">⏭</button></div>
+  <div id="hrSheet" hidden></div>
+</div>
+</div>
+<datalist id="exList"></datalist>
+<script>window.COCKPIT_NS="sport";window.COCKPIT_LOCAL_ONLY=true;window.TRAIN_STANDALONE=true;</script>
+<script src="../assets/cockpit.js"></script>
+<script src="../training/hiit.js"></script>
+<script src="../training/app.js"></script>
+</body>
+</html>
