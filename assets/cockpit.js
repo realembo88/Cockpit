@@ -3,9 +3,22 @@
 (function(){
 "use strict";
 
+/* Eigenständige Apps (z. B. sport/) setzen vorab window.COCKPIT_NS + COCKPIT_LOCAL_ONLY:
+   eigener Speicherbereich, kein Sync – alles bleibt auf dem Gerät. */
+var NS = window.COCKPIT_NS || "cockpit";
+var LOCAL_ONLY = !!window.COCKPIT_LOCAL_ONLY;
 var CFG_KEY = "cockpit:config";
-var LOCAL_PREFIX = "cockpit:data:";
-var SHA_PREFIX = "cockpit:sha:";
+var LOCAL_PREFIX = NS+":data:";
+var SHA_PREFIX = NS+":sha:";
+var LASTBK_KEY = NS+":lastBackup";
+
+/* ---------------- Offline: Service Worker ---------------- */
+(function(){try{
+  var me=document.currentScript&&document.currentScript.src;
+  if(!me||!("serviceWorker" in navigator)||!window.isSecureContext)return;
+  var root=me.replace(/assets\/cockpit\.js(\?.*)?$/,"");
+  window.addEventListener("load",function(){navigator.serviceWorker.register(root+"sw.js",{scope:root}).catch(function(){});});
+}catch(e){}})();
 
 /* ---------------- Hilfsfunktionen ---------------- */
 function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
@@ -88,14 +101,16 @@ function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true;}c
 var DEFAULT_CFG = {backend:"github", owner:"realembo88", repo:"cockpit-daten", branch:"main", folder:"", token:""};
 function getConfig(){var c=lsGet(CFG_KEY)||{};var o={};for(var k in DEFAULT_CFG)o[k]=(c[k]!=null?c[k]:DEFAULT_CFG[k]);return o;}
 function setConfig(c){var cur=getConfig();for(var k in c)cur[k]=c[k];lsSet(CFG_KEY,cur);}
-function configured(){var c=getConfig();return !!(c.owner&&c.repo&&c.token);}
+function configured(){if(LOCAL_ONLY)return false;var c=getConfig();return !!(c.owner&&c.repo&&c.token);}
 
 /* ---------------- Status ---------------- */
 var status={state:"idle",msg:""}; var listeners=[];
 function setStatus(state,msg){status={state:state,msg:msg||""};listeners.forEach(function(f){try{f(status);}catch(e){}});paintStatus();}
 function onStatus(f){listeners.push(f);}
 function statusLabel(){
+  if(LOCAL_ONLY)return {cls:"ok",txt:navigator.onLine===false?"Offline · auf dem Gerät":"Auf diesem Gerät"};
   if(!configured())return {cls:"",txt:"Nur lokal"};
+  if(navigator.onLine===false)return {cls:"busy",txt:"Offline · sendet später"};
   switch(status.state){
     case "busy":return {cls:"busy",txt:"Sync…"};
     case "ok":return {cls:"ok",txt:"Synchron"};
@@ -162,8 +177,8 @@ function versionAt(area,sha){return backend().readAt(area+".json",sha);} /* hier
    Remote: <bereich>.json         = {schema, bereich, updatedAt, data} */
 function localRead(area){return lsGet(LOCAL_PREFIX+area);}
 /* Vor jedem Überschreiben durch GitHub: letzte lokale Fassung aufheben (1 Stück pro Bereich) */
-function backup(area,rec){if(rec&&rec.data!=null){try{localStorage.setItem("cockpit:backup:"+area,JSON.stringify({ts:Date.now(),rec:rec}));}catch(e){}}}
-function getBackup(area){return lsGet("cockpit:backup:"+area);}
+function backup(area,rec){if(rec&&rec.data!=null){try{localStorage.setItem(NS+":backup:"+area,JSON.stringify({ts:Date.now(),rec:rec}));}catch(e){}}}
+function getBackup(area){return lsGet(NS+":backup:"+area);}
 function localWrite(area,rec){lsSet(LOCAL_PREFIX+area,rec);}
 function getSha(area){return localStorage.getItem(SHA_PREFIX+area)||null;}
 function setSha(area,sha){try{if(sha)localStorage.setItem(SHA_PREFIX+area,sha);else localStorage.removeItem(SHA_PREFIX+area);}catch(e){}}
@@ -276,7 +291,7 @@ function topbar(o){
   return '<header class="topbar">'+
     (o.home===false?'':'<a class="home" href="'+base+'index.html" aria-label="Zur Startseite">⌂</a>')+
     '<div class="ttl"><b>'+(o.icon?o.icon+" ":"")+esc(o.title)+'</b>'+(o.sub?'<span>'+esc(o.sub)+'</span>':'')+'</div>'+
-    '<div class="right">'+eyeButton()+'<a id="cp-sync" class="sync" href="'+base+'einstellungen.html"><i></i></a></div></header>';
+    '<div class="right">'+(o.eye===false?"":eyeButton())+'<a id="cp-sync" class="sync" href="'+(o.syncHref||base+"einstellungen.html")+'"><i></i></a></div></header>';
 }
 
 /* ---------------- Diagramme (SVG, ohne Bibliothek) ---------------- */
@@ -323,10 +338,36 @@ function downloadText(filename,text,mime){
 }
 function readFile(file,encoding){return new Promise(function(res,rej){var r=new FileReader();r.onload=function(){res(String(r.result));};r.onerror=rej;r.readAsText(file,encoding||"utf-8");});}
 
+/* ---------------- Sicherungsdatei ---------------- */
+/* Format: {schema:"cockpit-backup/1", created, app, areas:{<bereich>:{updatedAt,data}}}
+   Enthält keine Zugangsdaten (Token, API-Schlüssel) – nur die Daten der Bereiche. */
+function makeBackup(areas,app){var out={schema:"cockpit-backup/1",created:new Date().toISOString(),app:app||NS,areas:{}};
+  areas.forEach(function(a){var r=localRead(a);if(r&&r.data!=null)out.areas[a]={updatedAt:r.updatedAt||0,data:r.data};});return out;}
+function parseBackup(text){var o=JSON.parse(text);
+  if(o&&o.schema==="cockpit-backup/1"&&o.areas)return o;
+  if(o&&o.schema==="cockpit/1"&&o.bereich){var x={schema:"cockpit-backup/1",created:null,areas:{}};x.areas[o.bereich]={updatedAt:o.updatedAt||0,data:o.data};return x;}
+  throw new Error("Keine gültige Sicherungsdatei");}
+function backupName(prefix){var d=new Date(),p=function(n){return ("0"+n).slice(-2);};return (prefix||"cockpit")+"-sicherung-"+d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())+".json";}
+function markBackup(){try{localStorage.setItem(LASTBK_KEY,String(Date.now()));}catch(e){}}
+function lastBackup(){try{return +localStorage.getItem(LASTBK_KEY)||0;}catch(e){return 0;}}
+function canShareFiles(){try{return !!(navigator.canShare&&window.File&&navigator.canShare({files:[new File(["{}"],"t.json",{type:"application/json"})]}));}catch(e){return false;}}
+/* Speichern als Download oder – auf dem Handy – über „Teilen“ (Mail, Cloud, Messenger …) */
+function saveBackup(obj,prefix,share){var text=JSON.stringify(obj),name=backupName(prefix);
+  if(share&&canShareFiles()){var f=new File([text],name,{type:"application/json"});
+    return navigator.share({files:[f],title:name}).then(function(){markBackup();return true;});}
+  var ok=downloadText(name,text,"application/json");if(ok)markBackup();return Promise.resolve(ok);}
+/* Bereich aus Sicherung übernehmen: bisherigen Stand vorher aufheben, dann speichern (und ggf. synchronisieren).
+   mode "merge" nutzt die Merge-Funktion des Bereichs (nichts geht verloren), sonst wird ersetzt. */
+function restoreArea(area,rec,mode){var cur=localRead(area),data=rec.data;
+  if(cur&&cur.data!=null){backup(area,cur);if(mode==="merge"&&mergers[area])data=mergers[area](cur.data,rec.data,cur.updatedAt||0,rec.updatedAt||0);}
+  save(area,data);return data;}
+
 /* Beim Zurückkehren in die App automatisch abgleichen */
 function autoPull(areas,onChange){
   function run(){areas.forEach(function(a){pull(a).then(function(r){if(r.changed&&onChange)onChange(a,r.data);});});}
   document.addEventListener("visibilitychange",function(){if(!document.hidden)run();});
+  window.addEventListener("online",function(){paintStatus();run();});
+  window.addEventListener("offline",paintStatus);
   window.addEventListener("cockpit:remote",function(e){if(onChange)onChange(e.detail.area,getLocal(e.detail.area,null));});
   run();
 }
@@ -338,6 +379,7 @@ window.Cockpit={
   priv:priv,setPriv:setPriv,togglePriv:togglePriv,eurRaw:eurRaw,maskText:maskText,eyeButton:eyeButton,
   getLocal:getLocal,save:save,registerMerge:registerMerge,versions:versions,versionAt:versionAt,getBackup:getBackup,pull:pull,push:push,autoPull:autoPull,
   onStatus:onStatus,paintStatus:paintStatus,topbar:topbar,
-  lineChart:lineChart,barChart:barChart,downloadText:downloadText,readFile:readFile
+  lineChart:lineChart,barChart:barChart,downloadText:downloadText,readFile:readFile,
+  localOnly:LOCAL_ONLY,makeBackup:makeBackup,parseBackup:parseBackup,saveBackup:saveBackup,restoreArea:restoreArea,lastBackup:lastBackup,canShareFiles:canShareFiles
 };
 })();
