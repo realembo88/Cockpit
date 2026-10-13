@@ -25,6 +25,7 @@ function merge(l,r,lU,rU){l=norm(JSON.parse(JSON.stringify(l)));r=norm(JSON.pars
   var pl=newer("plan","planT");if(pl)out.plan=pl;if(l.planT||r.planT)out.planT=Math.max(l.planT||0,r.planT||0);
   out.weights={};Object.keys(Object.assign({},r.weights,l.weights)).forEach(function(i){if(del[i])return;var a=l.weights[i],b=r.weights[i];out.weights[i]=!a?b:!b?a:((a.upd||0)>=(b.upd||0)?a:b);});
   var bd=[l.body,r.body].filter(Boolean).sort(function(a,b){return (b.t||0)-(a.t||0);})[0];if(bd)out.body=bd;
+  if(l.pz||r.pz){var a=l.pz||{},b=r.pz||{},o={challenges:{},done:{}};["challenges","done"].forEach(function(k){var x=a[k]||{},y=b[k]||{};Object.keys(Object.assign({},y,x)).forEach(function(i){var p=x[i],q=y[i];o[k][i]=!p?q:!q?p:(((k==="done"?p.t:p.upd)||0)>=((k==="done"?q.t:q.upd)||0)?p:q);});});out.pz=o;}
   var hcu={};[r.hiitCustom||{},l.hiitCustom||{}].forEach(function(m){Object.keys(m).forEach(function(k){if(!hcu[k]||(m[k].t||0)>(hcu[k].t||0))hcu[k]=m[k];});});if(Object.keys(hcu).length)out.hiitCustom=hcu;
   var hc=[l.hiitCfg,r.hiitCfg].filter(Boolean).sort(function(a,b){return (b.t||0)-(a.t||0);})[0];if(hc)out.hiitCfg=hc;
   Object.keys(Object.assign({},r.sessions,l.sessions)).forEach(function(i){if(del[i])return;var a=l.sessions[i],b=r.sessions[i];out.sessions[i]=!a?b:!b?a:((a.upd||0)>=(b.upd||0)?a:b);});
@@ -69,13 +70,13 @@ function allExercises(){var s={};Object.keys(tpls()).forEach(function(t){tpls()[
 
 /* ---------- Rahmen ---------- */
 function render(){syncCustom();
-  document.getElementById("top").innerHTML=C.topbar(SA?{title:"Training",icon:"🏋️",sub:"Counter · Kraft · Körper",accent:"#f43f5e",accent2:"#fb7185",home:false,eye:false,syncHref:"javascript:T.tab('einst')"}:{title:"Training",icon:"🏋️",sub:"Kraft · HIIT · Laufen · Körper",accent:"#f43f5e",accent2:"#fb7185"});C.paintStatus();
-  var tabs=SA?[["counter","🔢 Counter"],["uebersicht","📊 Übersicht"],["kraft","＋ Kraft"],["koerper","⚖️ Körper"],["verlauf","📋 Verlauf"],["fortschritt","📈 Fortschritt"],["einst","⚙️ Einstellungen"]]
+  document.getElementById("top").innerHTML=C.topbar(SA?{title:"Training",icon:"🏋️",sub:"Counter · 1 % · Kraft · Körper",accent:"#f43f5e",accent2:"#fb7185",home:false,eye:false,syncHref:"javascript:T.tab('einst')"}:{title:"Training",icon:"🏋️",sub:"Kraft · HIIT · Laufen · Körper",accent:"#f43f5e",accent2:"#fb7185"});C.paintStatus();
+  var tabs=SA?[["counter","🔢 Counter"],["prozent","📈 1 %"],["uebersicht","📊 Übersicht"],["kraft","＋ Kraft"],["koerper","⚖️ Körper"],["verlauf","📋 Verlauf"],["fortschritt","📈 Fortschritt"],["einst","⚙️ Einstellungen"]]
     :[["uebersicht","📊 Übersicht"],["kraft","＋ Kraft"],["hiit","⚡ HIIT"],["lauf","＋ Lauf"],["koerper","⚖️ Körper"],["verlauf","📋 Verlauf"],["fortschritt","📈 Fortschritt"],["einst","⚙️ Einstellungen"]];
   document.getElementById("tabs").innerHTML=tabs.map(function(t){return '<button class="tab'+(st.tab===t[0]?" on":"")+'" onclick="T.tab(\''+t[0]+'\')">'+t[1]+"</button>";}).join("");
   document.getElementById("exList").innerHTML=allExercises().map(function(n){return '<option value="'+C.esc(n)+'">';}).join("");
   var h="";if(st.flash)h+='<div class="flash'+(st.flash.warn?" warn":"")+'">'+C.esc(st.flash.t)+"</div>";
-  h+=({uebersicht:vDash,kraft:vKraft,hiit:vHiit,lauf:vLauf,koerper:vBody,einst:vEinst,counter:vCounter,verlauf:vList,fortschritt:vProg}[st.tab])();
+  h+=({uebersicht:vDash,kraft:vKraft,hiit:vHiit,lauf:vLauf,koerper:vBody,einst:vEinst,counter:vCounter,prozent:vProzent,verlauf:vList,fortschritt:vProg}[st.tab])();
   document.getElementById("main").innerHTML=h;
 }
 function kpi(i,l,v){return '<div class="kpi"><div class="ico">'+i+'</div><div class="val">'+v+'</div><div class="lab">'+l+"</div></div>";}
@@ -398,7 +399,7 @@ function vEinst(){
   var lb=C.lastBackup(),n=Object.keys(data.sessions).length,nw=Object.keys(data.weights||{}).length;
   h+='<div class="panel"><h3>💾 Sicherung</h3><div class="note" style="margin-bottom:10px">'+
     (C.localOnly?"Deine Daten liegen nur auf diesem Gerät. Sichere sie regelmäßig als Datei – z. B. per Mail an dich selbst oder in deine Cloud.":"Deine Daten werden automatisch mit deinen Geräten abgeglichen. Die Datei ist eine zusätzliche Sicherung. Alle Bereiche zusammen sicherst du unter ⌂ → Einstellungen.")+
-    "<br>Enthält: "+n+" Einheiten · "+nw+" Körpermessungen · Vorlagen & Plan.<br>Letzte Sicherung: <b>"+(lb?new Date(lb).toLocaleDateString("de-DE")+" ("+Math.floor((Date.now()-lb)/DAY)+" Tage)":"noch nie")+"</b></div>";
+    "<br>Enthält: "+n+" Einheiten · "+nw+" Körpermessungen · "+(SA?pzList().length+" Challenges · ":"")+"Vorlagen & Plan.<br>Letzte Sicherung: <b>"+(lb?new Date(lb).toLocaleDateString("de-DE")+" ("+Math.floor((Date.now()-lb)/DAY)+" Tage)":"noch nie")+"</b></div>";
   h+='<div class="row2">'+(C.canShareFiles()?'<button class="btn" style="background:#22c55e" onclick="T.bk(true)">📤 Teilen …</button>':"")+'<button class="btn'+(C.canShareFiles()?" ghost":"")+'" style="'+(C.canShareFiles()?"":"background:#22c55e")+'" onclick="T.bk(false)">💾 Als Datei speichern</button></div>';
   h+='<label class="btn ghost full" style="display:block;text-align:center;margin-top:10px;cursor:pointer">📂 Sicherung einlesen<input type="file" accept=".json,application/json" style="display:none" onchange="T.rs(this)"></label>';
   h+='<div class="note" style="margin-top:8px">Beim Einlesen wird zusammengeführt: Einheiten aus der Datei kommen dazu, nichts Vorhandenes geht verloren.</div></div>';
@@ -441,10 +442,64 @@ function cBeep(){if(!cs.sound)return;try{var A=window.AudioContext||window.webki
   var o=c.createOscillator(),g=c.createGain(),t=c.currentTime;o.type="sine";o.frequency.value=1046;g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.5,t+0.01);g.gain.exponentialRampToValueAtTime(0.0001,t+0.12);o.connect(g);g.connect(c.destination);o.start(t);o.stop(t+0.15);}catch(e){}
   try{if(navigator.vibrate)navigator.vibrate(30);}catch(e){}}
 
+/* ---------- 1 % Challenge (nur eigenständige Version) ---------- */
+/* data.pz = {challenges:{id:{id,name,unit,start,startDate,dec,time,upd,del}}, done:{"id|datum":{v,t}}} */
+var PZ_WD=["Mo","Di","Mi","Do","Fr","Sa","So"],PZ_URL=location.href.split("#")[0].split("?")[0];
+function pz(){if(!data.pz)data.pz={challenges:{},done:{}};if(!data.pz.challenges)data.pz.challenges={};if(!data.pz.done)data.pz.done={};return data.pz;}
+function pzToday(){var d=new Date();return d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2);}
+function pzAdd(s,n){var d=new Date(s+"T12:00:00");d.setDate(d.getDate()+n);return d.getFullYear()+"-"+("0"+(d.getMonth()+1)).slice(-2)+"-"+("0"+d.getDate()).slice(-2);}
+function pzDiff(a,b){return Math.round((new Date(b+"T12:00:00")-new Date(a+"T12:00:00"))/DAY);}
+function pzList(){var m=pz().challenges;return Object.keys(m).map(function(k){return m[k];}).filter(function(c){return !c.del;}).sort(function(a,b){return a.startDate.localeCompare(b.startDate)||a.name.localeCompare(b.name);});}
+function pzRaw(c,d){return c.start*Math.pow(1.01,Math.max(0,pzDiff(c.startDate,d)));}
+function pzTarget(c,d){var f=Math.pow(10,c.dec||0);return Math.round(pzRaw(c,d)*f)/f;}
+function pzFmt(c,v){return C.num(v,c.dec||0);}
+function pzDone(c,d){var x=pz().done[c.id+"|"+d];return !!(x&&x.v);}
+function pzStreak(c){var d=pzToday(),n=0;if(!pzDone(c,d))d=pzAdd(d,-1);while(d>=c.startDate&&pzDone(c,d)){n++;d=pzAdd(d,-1);}return n;}
+function pzBest(c){var b=0,cur=0,d=c.startDate,t=pzToday();while(d<=t){if(pzDone(c,d)){cur++;if(cur>b)b=cur;}else if(d<t)cur=0;d=pzAdd(d,1);}return b;}
+function pzCount(c){var n=0,d=c.startDate,t=pzToday();while(d<=t){if(pzDone(c,d))n++;d=pzAdd(d,1);}return n;}
+function vProzent(){return st.pzEdit?pzEditView():pzListView();}
+function pzListView(){var l=pzList(),t=pzToday(),now=new Date(),hm=("0"+now.getHours()).slice(-2)+":"+("0"+now.getMinutes()).slice(-2),h="";
+  if(!l.length)return '<div class="empty"><div class="big">📈</div>Starte deine erste 1-%-Challenge.<br><span class="small muted">Startwert eingeben – jeden Tag kommt 1 % dazu.</span><br><button class="btn" style="margin-top:14px;background:#22c55e" onclick="T.pzNew()">＋ Challenge anlegen</button></div>';
+  l.forEach(function(c){
+    if(c.startDate>t){h+='<div class="pzc"><div class="nm">'+C.esc(c.name)+'</div><div class="dy">Startet am '+new Date(c.startDate+"T12:00:00").toLocaleDateString("de-DE")+" mit "+pzFmt(c,c.start)+" "+C.esc(c.unit)+'</div><div style="margin-top:10px"><button class="mini" onclick="T.pzEditOpen(\''+c.id+'\')">Bearbeiten</button></div></div>';return;}
+    var dn=pzDone(c,t),day=pzDiff(c.startDate,t)+1,s=pzStreak(c),late=!dn&&c.time&&hm>=c.time;
+    h+='<div class="pzc'+(dn?" ok":late?" open":"")+'"><div class="hd"><div><div class="nm">'+C.esc(c.name)+'</div><div class="dy">Tag '+day+' · Start '+pzFmt(c,c.start)+" "+C.esc(c.unit)+(c.time?" · ⏰ "+c.time:"")+'</div></div><span class="fire">🔥 '+s+"</span></div>";
+    h+='<div class="tg"><div class="v">'+pzFmt(c,pzTarget(c,t))+'</div><div class="u">'+C.esc(c.unit)+' heute</div><div class="x">genau '+C.num(pzRaw(c,t),2)+"</div></div>";
+    if(late)h+='<div class="note" style="color:#fbbf24;text-align:center;margin-bottom:8px">⏰ Es ist nach '+c.time+" – heute noch offen!</div>";
+    h+='<button class="done-btn'+(dn?" is":"")+'" onclick="T.pzTog(\''+c.id+'\',\''+t+'\')">'+(dn?"✓ Heute geschafft":"Geschafft – abhaken")+"</button>";
+    h+='<div class="stats"><div><b>'+s+'</b><span>Serie</span></div><div><b>'+pzBest(c)+'</b><span>Beste Serie</span></div><div><b>'+Math.round(100*pzCount(c)/day)+' %</b><span>Quote ('+pzCount(c)+"/"+day+")</span></div></div>";
+    var wd=(new Date(t+"T12:00:00").getDay()+6)%7,first=pzAdd(t,-(wd+28));
+    h+='<div class="cal">'+PZ_WD.map(function(w){return '<div class="wd">'+w+"</div>";}).join("");
+    for(var i=0;i<35;i++){var d=pzAdd(first,i),fut=d>t,pre=d<c.startDate,ok=pzDone(c,d);
+      h+='<button class="'+(ok?"d":(!fut&&!pre&&d<t)?"m":"")+(d===t?" t":"")+'"'+(fut||pre?" disabled":"")+' onclick="T.pzTog(\''+c.id+'\',\''+d+'\')" title="'+d+'">'+(+d.slice(8))+"</button>";}
+    h+='</div><div class="note" style="margin-top:6px">Vergessen abzuhaken? Tag im Kalender antippen.</div>';
+    h+='<div class="prev"><span>Morgen <b>'+pzFmt(c,pzTarget(c,pzAdd(t,1)))+'</b></span><span>+30 T <b>'+pzFmt(c,pzTarget(c,pzAdd(t,30)))+'</b></span><span>+100 T <b>'+pzFmt(c,pzTarget(c,pzAdd(t,100)))+'</b></span><span>+1 Jahr <b>'+pzFmt(c,pzTarget(c,pzAdd(t,365)))+"</b></span></div>";
+    h+='<div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap"><button class="mini" onclick="T.pzEditOpen(\''+c.id+'\')">Bearbeiten</button><button class="mini" onclick="T.pzIcs(\''+c.id+'\')">📅 Erinnerung in Kalender</button></div></div>';});
+  h+='<button class="btn ghost full" onclick="T.pzNew()">＋ Weitere Challenge</button>';
+  h+='<div class="note" style="margin-top:12px">Das Ziel wächst jeden Kalendertag um 1 % – auch an Tagen, an denen du nicht abhakst. Die Serie zählt die Tage am Stück; heute bleibt bis Mitternacht Zeit.</div>';
+  return h;}
+function pzEditView(){var e=st.pzEdit;
+  return '<div class="panel"><h3 style="color:#22c55e">'+(e.id?"Challenge bearbeiten":"Neue Challenge")+'</h3>'+
+    '<div class="field"><label>Name</label><input value="'+C.esc(e.name)+'" placeholder="z. B. Liegestütze" oninput="T.pzV(\'name\',this.value)"></div>'+
+    '<div class="row2"><div class="field"><label>Startwert</label><input inputmode="decimal" value="'+C.esc(e.start)+'" placeholder="z. B. 10" oninput="T.pzV(\'start\',this.value)"></div>'+
+    '<div class="field"><label>Einheit</label><input value="'+C.esc(e.unit)+'" placeholder="Wdh., Sek., Min., km …" oninput="T.pzV(\'unit\',this.value)"></div></div>'+
+    '<div class="row2"><div class="field"><label>Startdatum (Tag 1)</label><input type="date" value="'+e.startDate+'" onchange="T.pzV(\'startDate\',this.value)"></div>'+
+    '<div class="field"><label>Erinnerung um</label><input type="time" value="'+C.esc(e.time||"")+'" onchange="T.pzV(\'time\',this.value)"></div></div>'+
+    '<div class="small muted" style="margin-bottom:6px">Anzeige</div><div style="display:flex;gap:6px;margin-bottom:14px"><button class="chip'+(!e.dec?" on":"")+'" onclick="T.pzV(\'dec\',0,1)">ganze Zahlen</button><button class="chip'+(e.dec===1?" on":"")+'" onclick="T.pzV(\'dec\',1,1)">1 Nachkommastelle</button></div>'+
+    '<div class="row2"><button class="btn" style="background:#22c55e" onclick="T.pzSave()">Speichern</button><button class="btn ghost" style="flex:0 0 auto" onclick="T.pzCancel()">Abbrechen</button></div>'+
+    (e.id?'<button class="mini" style="margin-top:14px;color:#ff8a80" onclick="T.pzDel()">Challenge löschen</button>':"")+
+    '<div class="note" style="margin-top:12px">Ganze Zahlen: kaufmännisch gerundet – bei 10 steht ab Tag 6 die 11 da. Die tägliche Erinnerung kommt als Termin in den Handy-Kalender (nach dem Speichern „📅 Erinnerung in Kalender“).</div></div>';}
+function pzIcs(c){var t=(c.time||"18:00").replace(":",""),d=(c.startDate>pzToday()?c.startDate:pzToday()).replace(/-/g,""),now=new Date().toISOString().replace(/[-:]/g,"").replace(/\.\d+/,"");
+  var esc=function(s){return String(s).replace(/[\;,]/g,function(m){return "\\"+m;});};
+  return ["BEGIN:VCALENDAR","VERSION:2.0","PRODID:-//Training//1 Prozent//DE","CALSCALE:GREGORIAN","BEGIN:VEVENT","UID:"+c.id+"@training-prozent","DTSTAMP:"+now,
+    "DTSTART:"+d+"T"+t+"00","DURATION:PT10M","RRULE:FREQ=DAILY","SUMMARY:"+esc("📈 1 % Challenge: "+c.name),
+    "DESCRIPTION:"+esc("Heutiges Ziel in der App ansehen und abhaken: "+PZ_URL),"URL:"+PZ_URL,
+    "BEGIN:VALARM","ACTION:DISPLAY","TRIGGER:PT0M","DESCRIPTION:"+esc("1 % Challenge: "+c.name),"END:VALARM","END:VEVENT","END:VCALENDAR"].join("\r\n")+"\r\n";}
+
 /* ---------- Aktionen ---------- */
 function cleanSets(e){var tm=unitOf(e)==="s";return e.sets.map(function(x){return {r:tm?parseSec(x.r):pn(x.r),w:pn(x.w)};}).filter(function(x){return x.r>0;}).map(function(x){return {r:x.r,w:x.w||0};});}
 window.T={
-  tab:function(t){if(t!=="kraft"&&t!=="lauf"&&st.editId){st.editId=null;st.form=null;st.run=null;}if(t!=="einst")st.te=null;st.tab=t;render();window.scrollTo(0,0);},
+  tab:function(t){if(t!=="kraft"&&t!=="lauf"&&st.editId){st.editId=null;st.form=null;st.run=null;}if(t!=="einst")st.te=null;if(t!=="prozent")st.pzEdit=null;st.tab=t;render();window.scrollTo(0,0);},
   fd:function(v){st.form.date=v;render();},
   tpl:function(t){var keep=st.form.date;st.form=newForm(t);st.form.date=keep;render();},
   en:function(i,v){var e=st.form.exercises[i];e.name=v.trim();var l=lastOf(e.name,st.form.date);e.unit=l?unitOf(l.e):(isTimed(e.name)?"s":"r");render();},
@@ -566,6 +621,20 @@ Object.assign(window.T,{
     cs={taps:[],acc:0,t0:null,label:cs.label,sound:cs.sound};cSave();cTimer();cWake(false);flash("✓ Gespeichert · "+data.sessions[id].count+" in "+fmtClock(dur));}
 });
 cTimer();
+Object.assign(window.T,{
+  pzNew:function(){st.pzEdit={name:"",start:"",unit:"Wdh.",startDate:pzToday(),time:"18:00",dec:0};render();window.scrollTo(0,0);},
+  pzEditOpen:function(id){var c=pz().challenges[id];st.pzEdit={id:id,name:c.name,start:String(c.start).replace(".",","),unit:c.unit,startDate:c.startDate,time:c.time||"",dec:c.dec||0};render();window.scrollTo(0,0);},
+  pzV:function(k,v,re){st.pzEdit[k]=v;if(re)render();},
+  pzCancel:function(){st.pzEdit=null;render();},
+  pzSave:function(){var e=st.pzEdit,s=C.parseNum(e.start);if(!e.name.trim()){flash("⚠ Bitte einen Namen eingeben",true);return;}if(!(s>0)){flash("⚠ Bitte einen Startwert eingeben",true);return;}
+    var id=e.id||("c"+Date.now().toString(36)+Math.random().toString(36).slice(2,5));pz().challenges[id]={id:id,name:e.name.trim(),start:s,unit:(e.unit||"").trim(),startDate:e.startDate||pzToday(),time:e.time||"",dec:e.dec||0,upd:Date.now()};
+    persist();st.pzEdit=null;flash("✓ Gespeichert"+(e.id?"":" – mit „📅 Erinnerung in Kalender“ kommt die tägliche Erinnerung"));},
+  pzDel:function(){var id=st.pzEdit.id,c=pz().challenges[id];if(!confirm("Challenge „"+c.name+"“ löschen?"))return;pz().challenges[id]=Object.assign({},c,{del:true,upd:Date.now()});persist();st.pzEdit=null;render();},
+  pzTog:function(id,d){var c=pz().challenges[id],v=!pzDone(c,d);pz().done[id+"|"+d]={v:v,t:Date.now()};persist();
+    if(v&&d===pzToday()){try{if(navigator.vibrate)navigator.vibrate([40,40,80]);}catch(x){}var s=pzStreak(c);flash("🔥 Geschafft! Serie: "+s+(s===1?" Tag":" Tage")+" · morgen "+pzFmt(c,pzTarget(c,pzAdd(d,1)))+" "+c.unit);}else render();},
+  pzIcs:function(id){var c=pz().challenges[id];C.downloadText("1-prozent-"+c.name.toLowerCase().replace(/[^a-z0-9äöü]+/g,"-")+".ics",pzIcs(c),"text/calendar");flash("📅 Kalenderdatei geladen – öffnen und „Hinzufügen“ wählen");}
+});
+setInterval(function(){if(st.tab==="prozent"&&!st.pzEdit&&!document.hidden)render();},60000);
 render();
 C.autoPull([AREA],function(a,d){data=norm(d);render();});
 })();
