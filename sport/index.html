@@ -102,6 +102,32 @@
 .ctab td{padding:8px 6px;border-top:1px solid #152038;text-align:right;color:#fff;font-variant-numeric:tabular-nums;}
 .ctab td:first-child{text-align:left;color:var(--muted);}
 input.cl{flex:1;min-width:0;background:var(--field);border:1px solid var(--border);border-radius:10px;padding:10px;color:#fff;font-size:14px;}
+.pzc{border:1px solid var(--border);border-radius:18px;padding:16px;margin-bottom:14px;background:var(--panel);}
+.pzc.open{border-color:#f59e0b88;}
+.pzc.ok{border-color:#22c55e88;}
+.pzc .hd{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;}
+.pzc .nm{font-size:17px;font-weight:800;color:#fff;}
+.pzc .dy{font-size:12px;color:var(--muted);margin-top:2px;}
+.pzc .tg{text-align:center;margin:14px 0 10px;}
+.pzc .tg .v{font-size:min(20vw,84px);font-weight:800;line-height:1;color:#fff;font-variant-numeric:tabular-nums;}
+.pzc .tg .u{font-size:15px;color:var(--muted);margin-top:4px;}
+.pzc .tg .x{font-size:11px;color:#5c7aaa;margin-top:2px;}
+.done-btn{width:100%;border:none;border-radius:14px;padding:16px;font-size:17px;font-weight:800;cursor:pointer;background:linear-gradient(135deg,#22c55e,#16a34a);color:#fff;}
+.done-btn.is{background:#22c55e22;border:1px solid #22c55e;color:#86efac;}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0 6px;}
+.stats div{background:var(--field);border-radius:12px;padding:10px 6px;text-align:center;}
+.stats b{display:block;font-size:20px;color:#fff;}
+.stats span{font-size:11px;color:var(--muted);}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:10px;}
+.cal .wd{font-size:10px;color:var(--muted);text-align:center;}
+.cal button{aspect-ratio:1;border:none;border-radius:7px;background:var(--field);color:#64748b;font-size:10px;cursor:pointer;padding:0;}
+.cal button.d{background:#22c55e;color:#052e16;font-weight:700;}
+.cal button.m{background:#ef444433;color:#fca5a5;}
+.cal button.t{outline:2px solid #fff;}
+.cal button:disabled{opacity:.25;cursor:default;}
+.prev{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:12px;gap:6px;flex-wrap:wrap;}
+.prev b{color:#e2e8f0;}
+.fire{font-size:13px;color:#fbbf24;font-weight:700;white-space:nowrap;}
 select.inl{background:var(--field);border:1px solid var(--border);color:#fff;border-radius:10px;padding:10px;font-size:14px;width:100%;}
 </style>
 </head>
