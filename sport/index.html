@@ -89,6 +89,19 @@
 #hrSheet[hidden]{display:none;}
 #hrSheet h2{margin:0;font-size:20px;color:#fff;}
 #hrSheet input{background:var(--field);border:1px solid var(--border);border-radius:10px;padding:11px;color:#fff;font-size:14px;}
+.ctap{user-select:none;-webkit-user-select:none;touch-action:manipulation;-webkit-tap-highlight-color:transparent;cursor:pointer;border-radius:22px;border:2px dashed #f43f5e66;background:radial-gradient(circle at 50% 40%,#f43f5e22,#0f1729 70%);min-height:52vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;}
+.ctap.run{border-style:solid;border-color:#f43f5e;}
+.ctap:active{background:radial-gradient(circle at 50% 40%,#f43f5e44,#0f1729 70%);}
+.ctap .cn{font-size:min(34vw,170px);font-weight:800;color:#fff;line-height:1;font-variant-numeric:tabular-nums;}
+.ctap .cn.pop{animation:pop .18s ease-out;}
+@keyframes pop{0%{transform:scale(1.12);}100%{transform:scale(1);}}
+.ctap .cc{font-size:30px;font-weight:700;color:#fda4af;font-variant-numeric:tabular-nums;}
+.ctap .ch{font-size:13px;color:var(--muted);}
+.ctab{width:100%;border-collapse:collapse;font-size:14px;}
+.ctab th{font-size:11px;color:var(--muted);font-weight:500;text-align:right;padding:4px 6px;}
+.ctab td{padding:8px 6px;border-top:1px solid #152038;text-align:right;color:#fff;font-variant-numeric:tabular-nums;}
+.ctab td:first-child{text-align:left;color:var(--muted);}
+input.cl{flex:1;min-width:0;background:var(--field);border:1px solid var(--border);border-radius:10px;padding:10px;color:#fff;font-size:14px;}
 select.inl{background:var(--field);border:1px solid var(--border);color:#fff;border-radius:10px;padding:10px;font-size:14px;width:100%;}
 </style>
 </head>
