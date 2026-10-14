@@ -117,6 +117,7 @@ function norm(d){d=d&&typeof d==="object"?d:blank();if(!d.konten)d.konten={};if(
 function rules(){return data.rules||F.DEFAULT_RULES;}
 function clone(x){return JSON.parse(JSON.stringify(x));}
 
+function byT(a,b){a=a||{};b=b||{};var o={};Object.keys(Object.assign({},a,b)).forEach(function(k){var x=a[k],y=b[k];o[k]=!x?y:!y?x:((x.t||0)>=(y.t||0)?x:y);});return o;}
 /* Zwei Stände vereinen: Buchungen beider Geräte, gelöschte bleiben gelöscht */
 function merge(l,r,lU,rU){
   l=norm(clone(l));r=norm(clone(r));var newer=lU>=rU?l:r,del={},by={},order=[];
@@ -128,7 +129,7 @@ function merge(l,r,lU,rU){
     by[t.id]=o;});
   var imp={};r.imports.concat(l.imports).forEach(function(i){imp[i.ts+"|"+i.file]=i;});
   var out={konten:Object.assign({},lU>=rU?r.konten:l.konten,newer.konten),rules:newer.rules,pmap:Object.assign({},lU>=rU?r.pmap:l.pmap,newer.pmap),tmap:Object.assign({},lU>=rU?r.tmap:l.tmap,newer.tmap),
-    eur:newer.eur||(lU>=rU?r.eur:l.eur),tx:order.map(function(id){return by[id];}),deleted:Object.keys(del),imports:Object.keys(imp).map(function(k){return imp[k];}).sort(function(a,b){return a.ts-b.ts;}).slice(-50)};
+    eur:newer.eur||(lU>=rU?r.eur:l.eur),tx:order.map(function(id){return by[id];}),deleted:Object.keys(del),fix:byT(l.fix,r.fix),fixMan:byT(l.fixMan,r.fixMan),imports:Object.keys(imp).map(function(k){return imp[k];}).sort(function(a,b){return a.ts-b.ts;}).slice(-50)};
   out._summary=summaryFor(out);return out;
 }
 C.registerMerge(AREA,merge);
@@ -157,12 +158,12 @@ function render(){
   F.setPartnerMap(data.pmap,data.tmap);
   document.getElementById("top").innerHTML=C.topbar({title:"Finanzen",icon:"💶",sub:"ING · N26 · Privat & Geschäft",accent:"#e040fb",accent2:"#7c4dff"});
   C.paintStatus();
-  var tabs=[["uebersicht","📊 Übersicht"],["monate","🗓 Monate"],["tage","📅 Tage"],["buchungen","📋 Buchungen"],["import","⬆ Import"],["regeln","⚙️ Regeln & Konten"]];
+  var tabs=[["uebersicht","📊 Übersicht"],["monate","🗓 Monate"],["tage","📅 Tage"],["fix","🔁 Fixkosten"],["buchungen","📋 Buchungen"],["import","⬆ Import"],["regeln","⚙️ Regeln & Konten"]];
   document.getElementById("tabs").innerHTML=tabs.map(function(t){return '<button class="tab'+(st.tab===t[0]?" on":"")+'" onclick="F2.tab(\''+t[0]+'\')">'+t[1]+"</button>";}).join("");
   var h="";
   if(st.flash)h+='<div class="flash'+(st.flash.warn?" warn":"")+'">'+C.esc(st.flash.t)+"</div>";
   if(!data.tx.length&&st.tab!=="import"&&st.tab!=="regeln")h+='<div class="empty"><div class="big">💶</div>Noch keine Buchungen.<br><span class="small">Lade deine CSV-Exporte von ING und N26 hoch.</span><br><button class="btn" style="margin-top:14px" onclick="F2.tab(\'import\')">Zum Import</button></div>';
-  else h+=({uebersicht:vDash,monate:vMatrix,tage:vDays,buchungen:vTx,import:vImport,regeln:vRules}[st.tab])();
+  else h+=({uebersicht:vDash,monate:vMatrix,tage:vDays,fix:vFix,buchungen:vTx,import:vImport,regeln:vRules}[st.tab])();
   document.getElementById("main").innerHTML=h;
 }
 function filterBar(withBer){
@@ -601,6 +602,72 @@ function applyDedupe(res){
   persist();
 }
 function ensureRules(){if(!data.rules)data.rules=clone(F.DEFAULT_RULES);}
+/* ---------- Fixkosten ---------- */
+function fixAll(){
+  var R=rules(),ref=data.tx.reduce(function(m,t){return t.d>m?t.d:m;},"0000"),fx=data.fix||{};
+  var det=F.recurring(data.tx,R,{ref:ref}).map(function(x){var o=fx[x.key]||{};x.src="auto";x.status=o.s||"neu";if(o.name)x.name=o.name;x.grp=o.grp||x.cat;
+    var k=data.konten[x.konto];x.ber=k?k.bereich:"privat";return x;});
+  var man=Object.keys(data.fixMan||{}).map(function(i){return data.fixMan[i];}).filter(function(m){return m&&!m.del;}).map(function(m){
+    var nx=m.next||"";if(nx){var today=new Date().toISOString().slice(0,10);while(nx<today)nx=F.addMonths(nx,m.rh);}
+    return {key:m.id,src:"man",name:m.name,grp:m.grp||"Sonstige Fixkosten",rh:m.rh,rhName:(F.RHY.filter(function(r){return r.m===m.rh;})[0]||{name:m.rh+"-monatlich"}).name,amount:m.amount,monthly:Math.round(m.amount/m.rh*100)/100,
+      next:nx,last:null,active:true,status:"ok",ber:m.ber||"privat",pays:[]};});
+  return {ref:ref,list:det.concat(man)};
+}
+function fixGroups(){var s={};rules().forEach(function(r){if(!r.neutral)s[r.name]=1;});s["Sonstige Fixkosten"]=1;return Object.keys(s);}
+function vFix(){
+  var A=fixAll(),ber=st.ber,inB=function(x){return ber==="alle"||x.ber===ber;};
+  var mine=A.list.filter(function(x){return x.status==="ok"&&x.active&&inB(x);}),sugg=A.list.filter(function(x){return x.status==="neu"&&x.active&&inB(x);});
+  var ended=A.list.filter(function(x){return x.status==="ok"&&!x.active&&inB(x);}),ign=A.list.filter(function(x){return x.status==="no"&&inB(x);});
+  var mon=mine.reduce(function(a,x){return a+x.monthly;},0);
+  /* Ø Einnahmen der letzten 12 Monate (ohne Umbuchungen) */
+  var R=rules(),from=F.addMonths(A.ref,-12),inc=0,ms={},kf=kontenFilter(ber);
+  data.tx.forEach(function(t){if(t.d<=from||t.d>A.ref||(kf&&!kf[t.k]))return;ms[t.d.slice(0,7)]=1;if(t.b>0&&!F.isNeutral(F.category(t,R),R))inc+=t.b;});
+  var nm=Math.max(1,Math.min(12,Object.keys(ms).length)),avgInc=inc/nm;
+  var h='<div class="filt">'+[["alle","Alle"],["privat","Privat"],["geschaeft","Geschäft"]].map(function(b){return '<button class="pill'+(st.ber===b[0]?" on":"")+'" onclick="F2.ber(\''+b[0]+'\')">'+b[1]+"</button>";}).join("")+"</div>";
+  h+='<div class="grid2" style="margin-bottom:14px">'+kpi("🔁","Fixkosten pro Monat",C.eur(mon,0))+kpi("📆","Fixkosten pro Jahr",C.eur(mon*12,0))+
+    kpi("📊","Anteil an Ø Einnahmen",avgInc>0?Math.round(100*mon/avgInc)+" %":"–")+kpi("🧾","Verträge",mine.length+(sugg.length?' <span class="small muted">· '+sugg.length+" Vorschläge</span>":""))+"</div>";
+  /* Demnächst fällig */
+  var today=new Date().toISOString().slice(0,10),in30=F.addMonths(today,1);
+  var due=mine.filter(function(x){return x.next&&x.next<=in30;}).sort(function(a,b){return a.next.localeCompare(b.next);});
+  if(due.length)h+='<div class="panel"><h3>⏰ Demnächst fällig (30 Tage)</h3>'+due.map(function(x){var od=x.next<today;
+    return '<div class="tx"><div><div class="p">'+C.esc(x.name)+'</div><div class="z">'+(od?'<span style="color:#ffb74d">erwartet am '+dt(x.next)+" – noch nicht gebucht</span>":dt(x.next))+'</div></div><div class="a neg">'+C.eur(x.amount)+"</div></div>";}).join("")+"</div>";
+  /* Vorschläge */
+  if(sugg.length)h+='<div class="panel" style="border-color:#e040fb66"><h3>✨ Erkannte regelmäßige Abbuchungen ('+sugg.length+')</h3><div class="note" style="margin-bottom:6px">Aus deinen Buchungen erkannt. ✓ = gehört zu den Fixkosten, ✕ = nicht.</div>'+
+    sugg.map(function(x){return '<div class="tx"><div style="min-width:0"><div class="p">'+C.esc(x.name)+'</div><div class="z">'+x.rhName+" · "+x.n+" Zahlungen seit "+dt(x.first)+" · "+C.esc(x.cat)+(x.variable?" · schwankend":"")+'</div></div><div style="text-align:right"><div class="a neg">'+C.eur(x.amount)+'</div><div style="margin-top:6px;white-space:nowrap"><button class="pill" style="border-color:#69f0ae;color:#69f0ae" onclick="F2.fxSet(\''+x.key+'\',\'ok\')">✓</button> <button class="pill" onclick="F2.fxSet(\''+x.key+'\',\'no\')">✕</button></div></div></div>';}).join("")+
+    '<button class="btn ghost full" style="margin-top:10px" onclick="F2.fxAll()">Alle '+sugg.length+" übernehmen</button></div>";
+  /* Liste nach Gruppe */
+  var by={};mine.forEach(function(x){(by[x.grp]=by[x.grp]||[]).push(x);});
+  var gs=Object.keys(by).sort(function(a,b){return by[b].reduce(function(s,x){return s+x.monthly;},0)-by[a].reduce(function(s,x){return s+x.monthly;},0);});
+  if(gs.length){h+='<div class="panel"><h3>Nach Bereich (pro Monat)</h3>'+gs.map(function(g){var v=by[g].reduce(function(s,x){return s+x.monthly;},0);
+      return '<div class="bar"><span class="l">'+C.esc(g)+'</span><span class="t"><i style="width:'+Math.max(2,100*v/mon)+'%"></i></span><span class="v">'+C.eur(v,0)+"</span></div>";}).join("")+"</div>";
+    gs.forEach(function(g){var v=by[g].reduce(function(s,x){return s+x.monthly;},0);
+      h+='<div class="panel"><h3>'+C.esc(g)+' <span class="small muted">· '+C.eur(v,0)+" / Monat</span></h3>"+by[g].sort(function(a,b){return b.monthly-a.monthly;}).map(fxRow).join("")+"</div>";});}
+  else if(!sugg.length)h+='<div class="empty"><div class="big">🔁</div>Noch keine Fixkosten.<br><span class="small">Sobald mehrere Monate Buchungen importiert sind, werden regelmäßige Abbuchungen automatisch erkannt.</span></div>';
+  /* Manuell */
+  h+=st.fxNew?fxForm():'<button class="btn ghost full" style="margin-bottom:14px" onclick="F2.fxNew()">＋ Fixkosten manuell hinzufügen</button>';
+  if(ended.length)h+='<div class="panel"><h3 style="color:var(--muted)">Beendet / zuletzt nicht mehr gebucht ('+ended.length+")</h3>"+ended.map(fxRow).join("")+"</div>";
+  if(ign.length)h+='<details class="panel"><summary class="small muted" style="cursor:pointer">Ignoriert ('+ign.length+')</summary>'+ign.map(function(x){return '<div class="tx"><div><div class="p">'+C.esc(x.name)+'</div><div class="z">'+x.rhName+" · "+C.eur(x.amount)+'</div></div><button class="pill" onclick="F2.fxSet(\''+x.key+'\',\'neu\')">wiederherstellen</button></div>';}).join("")+"</details>";
+  h+='<div class="note">Erkannt werden Abbuchungen an denselben Empfänger in festem Rhythmus (monatlich bis jährlich). Monatsanteil = Betrag ÷ Monate des Rhythmus. Stand der Buchungen: '+(A.ref>"0000"?dt(A.ref):"–")+". Umbuchungen zwischen eigenen Konten zählen nicht.</div>";
+  return h;
+}
+function dt(d){return d?new Date(d+"T12:00:00").toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit",year:"2-digit"}):"–";}
+function fxRow(x){var open=st.fxOpen===x.key,today=new Date().toISOString().slice(0,10),od=x.src==="auto"&&x.active&&x.overdue;
+  var h='<div class="tx" style="cursor:pointer" onclick="F2.fxOpen(\''+x.key+'\')"><div style="min-width:0"><div class="p">'+C.esc(x.name)+(x.src==="man"?' <span class="small muted">· manuell</span>':"")+'</div><div class="z">'+x.rhName+(x.rh>1?" · "+C.eur(x.monthly)+" / Monat":"")+(x.next?" · nächste "+dt(x.next):"")+(x.variable?" · schwankend":"")+"</div>"+
+    (x.change&&x.change.d>=F.addMonths(today,-12)?'<div class="z" style="color:'+(x.change.to>x.change.from?"#ff8a80":"#69f0ae")+'">'+(x.change.to>x.change.from?"↑ teurer":"↓ günstiger")+" seit "+dt(x.change.d)+": "+C.eur(x.change.from)+" → "+C.eur(x.change.to)+"</div>":"")+
+    (od?'<div class="z" style="color:#ffb74d">⚠ erwartete Zahlung am '+dt(x.next)+" fehlt</div>":"")+'</div><div class="a neg">'+C.eur(x.amount)+"</div></div>";
+  if(open){h+='<div style="padding:4px 2px 12px;border-bottom:1px solid #152038">';
+    if(x.pays&&x.pays.length)h+='<div class="small muted" style="margin-bottom:6px">Letzte Zahlungen: '+x.pays.slice().reverse().slice(0,8).map(function(p){return dt(p.d)+" "+C.eur(p.b);}).join(" · ")+"</div>";
+    h+='<div class="row2"><div class="field"><label>Name</label><input id="fxN" value="'+C.esc(x.name)+'"></div><div class="field"><label>Bereich</label><select id="fxG" class="inl" style="width:100%;padding:10px">'+fixGroups().concat(fixGroups().indexOf(x.grp)<0?[x.grp]:[]).map(function(g){return "<option"+(g===x.grp?" selected":"")+">"+C.esc(g)+"</option>";}).join("")+"</select></div></div>";
+    h+='<div style="display:flex;gap:6px;flex-wrap:wrap"><button class="pill on" onclick="F2.fxSave(\''+x.key+'\',\''+x.src+'\')">Speichern</button>'+(x.src==="auto"?'<button class="pill" onclick="F2.fxSet(\''+x.key+'\',\'no\')">Keine Fixkosten</button>':'<button class="pill" style="color:#ff8a80" onclick="F2.fxDel(\''+x.key+'\')">Löschen</button>')+"</div></div>";}
+  return h;}
+function fxForm(){var f=st.fxNew;
+  return '<div class="panel"><h3>Fixkosten manuell hinzufügen</h3><div class="note" style="margin-bottom:10px">Für Verträge, die nicht über ein importiertes Konto laufen.</div>'+
+    '<div class="field"><label>Name</label><input id="mN" placeholder="z. B. Haftpflichtversicherung" value="'+C.esc(f.name)+'"></div>'+
+    '<div class="row2"><div class="field"><label>Betrag (€)</label><input id="mA" inputmode="decimal" value="'+C.esc(f.amount)+'"></div><div class="field"><label>Rhythmus</label><select id="mR" class="inl" style="width:100%;padding:10px">'+F.RHY.map(function(r){return '<option value="'+r.m+'"'+(+f.rh===r.m?" selected":"")+">"+r.name+"</option>";}).join("")+"</select></div></div>"+
+    '<div class="row2"><div class="field"><label>Bereich</label><select id="mG" class="inl" style="width:100%;padding:10px">'+fixGroups().map(function(g){return "<option"+(g===f.grp?" selected":"")+">"+C.esc(g)+"</option>";}).join("")+'</select></div><div class="field"><label>Nächste Fälligkeit (optional)</label><input id="mD" type="date" value="'+C.esc(f.next)+'"></div></div>'+
+    '<div style="display:flex;gap:6px;margin-bottom:12px">'+[["privat","Privat"],["geschaeft","Geschäft"]].map(function(b){return '<button class="pill'+(f.ber===b[0]?" on":"")+'" onclick="F2.fxBer(\''+b[0]+'\')">'+b[1]+"</button>";}).join("")+"</div>"+
+    '<div class="row2"><button class="btn" onclick="F2.fxAdd()">Hinzufügen</button><button class="btn ghost" style="flex:0 0 auto" onclick="F2.fxCancel()">Abbrechen</button></div></div>';}
+
 window.F2={
   tab:function(t){st.tab=t;st.edit=null;render();window.scrollTo(0,0);},
   yr:function(d){st.year+=d;st.limit=80;render();},
@@ -702,6 +769,25 @@ window.F2={
   kdel:function(k){var n=data.tx.filter(function(t){return t.k===k;}).length;if(!confirm("Alle "+n+" Buchungen von „"+data.konten[k].name+"“ löschen?"))return;
     data.tx.forEach(function(t){if(t.k===k)data.deleted.push(t.id);});data.tx=data.tx.filter(function(t){return t.k!==k;});delete data.konten[k];persist();render();flash("✓ Gelöscht");}
 };
+Object.assign(window.F2,{
+  fxSet:function(key,s){if(!data.fix)data.fix={};data.fix[key]=Object.assign({},data.fix[key]||{},{s:s,t:Date.now()});st.fxOpen=null;persist();render();},
+  fxAll:function(){var A=fixAll();if(!data.fix)data.fix={};A.list.forEach(function(x){if(x.src==="auto"&&x.status==="neu"&&x.active&&(st.ber==="alle"||x.ber===st.ber))data.fix[x.key]=Object.assign({},data.fix[x.key]||{},{s:"ok",t:Date.now()});});persist();flash("✓ Übernommen");},
+  fxOpen:function(key){st.fxOpen=st.fxOpen===key?null:key;render();},
+  fxSave:function(key,src){var n=document.getElementById("fxN").value.trim(),g=document.getElementById("fxG").value;
+    if(src==="man"){var m=data.fixMan[key];data.fixMan[key]=Object.assign({},m,{name:n||m.name,grp:g,t:Date.now()});}
+    else{if(!data.fix)data.fix={};data.fix[key]=Object.assign({},data.fix[key]||{},{name:n,grp:g,t:Date.now()});}
+    st.fxOpen=null;persist();flash("✓ Gespeichert");},
+  fxDel:function(key){if(!confirm("Diese Fixkosten löschen?"))return;data.fixMan[key]=Object.assign({},data.fixMan[key],{del:true,t:Date.now()});st.fxOpen=null;persist();render();},
+  fxNew:function(){st.fxNew={name:"",amount:"",rh:1,grp:"Versicherungen",next:"",ber:st.ber==="geschaeft"?"geschaeft":"privat"};render();},
+  fxBer:function(b){var f=st.fxNew;f.name=document.getElementById("mN").value;f.amount=document.getElementById("mA").value;f.rh=+document.getElementById("mR").value;f.grp=document.getElementById("mG").value;f.next=document.getElementById("mD").value;f.ber=b;render();},
+  fxCancel:function(){st.fxNew=null;render();},
+  fxAdd:function(){var n=document.getElementById("mN").value.trim(),a=C.parseNum(document.getElementById("mA").value);
+    if(!n||!(a>0)){flash("⚠ Bitte Name und Betrag eintragen",true);return;}
+    if(!data.fixMan)data.fixMan={};var id="m"+Date.now().toString(36);
+    data.fixMan[id]={id:id,name:n,amount:Math.round(a*100)/100,rh:+document.getElementById("mR").value,grp:document.getElementById("mG").value,next:document.getElementById("mD").value||"",ber:st.fxNew.ber,t:Date.now()};
+    st.fxNew=null;persist();flash("✓ Hinzugefügt");}
+});
+
 
 /* alte, versehentlich maskiert gespeicherte Kachel-Zusammenfassung erneuern */
 if(data._summary&&/•••/.test(JSON.stringify(data._summary)))persist();

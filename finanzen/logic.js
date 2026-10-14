@@ -154,6 +154,57 @@ function assignIds(block,konto){
   return block.txs;
 }
 
+
+/* ---------- Fixkosten: wiederkehrende Abbuchungen erkennen ----------
+   Gruppiert Ausgaben nach Empfänger, prüft den Rhythmus (monatlich … jährlich) und
+   liefert je Vertrag Betrag, Monatsanteil, letzte/nächste Fälligkeit und Preisänderungen. */
+var RHY=[{m:1,lo:24,hi:38,name:"monatlich"},{m:2,lo:54,hi:68,name:"alle 2 Monate"},{m:3,lo:80,hi:100,name:"vierteljährlich"},{m:6,lo:170,hi:195,name:"halbjährlich"},{m:12,lo:345,hi:385,name:"jährlich"}];
+function dDiff(a,b){return Math.round((new Date(b+"T12:00:00")-new Date(a+"T12:00:00"))/864e5);}
+function addMonths(d,m){var x=new Date(d+"T12:00:00"),day=x.getDate();x.setDate(1);x.setMonth(x.getMonth()+m);var last=new Date(x.getFullYear(),x.getMonth()+1,0).getDate();x.setDate(Math.min(day,last));
+  return x.getFullYear()+"-"+("0"+(x.getMonth()+1)).slice(-2)+"-"+("0"+x.getDate()).slice(-2);}
+function median(a){var s=a.slice().sort(function(x,y){return x-y;}),n=s.length;return n?(n%2?s[(n-1)/2]:(s[n/2-1]+s[n/2])/2):0;}
+function evalSeries(list,ref){
+  list=list.slice().sort(function(a,b){return a.d.localeCompare(b.d);});
+  /* mehrere Abbuchungen am selben Tag zusammenfassen */
+  var byDay=[];list.forEach(function(t){var l=byDay[byDay.length-1];if(l&&l.d===t.d){l.b+=t.b;l.ids.push(t.id);}else byDay.push({d:t.d,b:t.b,ids:[t.id],k:t.k});});
+  if(byDay.length<2)return null;
+  var iv=[];for(var i=1;i<byDay.length;i++)iv.push(dDiff(byDay[i-1].d,byDay[i].d));
+  var med=median(iv),rh=null;RHY.forEach(function(r){if(med>=r.lo&&med<=r.hi)rh=r;});
+  if(!rh)return null;
+  if(byDay.length<3&&rh.m<6)return null;                 /* kurze Rhythmen: mindestens 3 Zahlungen */
+  var ok=iv.filter(function(x){return x>=rh.lo-6&&x<=rh.hi+6;}).length;
+  if(ok/iv.length<0.75)return null;
+  var am=byDay.map(function(x){return -x.b;}),mean=am.reduce(function(a,b){return a+b;},0)/am.length;
+  var sd=Math.sqrt(am.reduce(function(a,b){return a+(b-mean)*(b-mean);},0)/am.length),cv=mean?sd/mean:0;
+  var last=byDay[byDay.length-1],prev=byDay[byDay.length-2],variable=cv>0.25;
+  var amt=variable?am.slice(-3).reduce(function(a,b){return a+b;},0)/Math.min(3,am.length):-last.b;
+  var chg=null;if(!variable){for(var j=byDay.length-1;j>0;j--){var a1=-byDay[j].b,a0=-byDay[j-1].b;if(Math.abs(a1-a0)>Math.max(0.5,a0*0.01)){chg={from:a0,to:a1,d:byDay[j].d};break;}}}
+  var next=addMonths(last.d,rh.m),age=dDiff(last.d,ref);
+  return {rh:rh.m,rhName:rh.name,n:byDay.length,amount:Math.round(amt*100)/100,monthly:Math.round(amt/rh.m*100)/100,variable:variable,
+    first:byDay[0].d,last:last.d,next:next,active:age<=rh.m*30.5*1.6+12,overdue:dDiff(next,ref)>10,change:chg,
+    pays:byDay.slice(-12).map(function(x){return {d:x.d,b:-x.b};}),ids:[].concat.apply([],byDay.map(function(x){return x.ids;})),konto:last.k};
+}
+function recurring(txs,rules,opt){
+  opt=opt||{};var ref=opt.ref||txs.reduce(function(m,t){return t.d>m?t.d:m;},"0000"),groups={},out=[];
+  txs.forEach(function(t){if(!(t.b<0))return;var c=category(t,rules);if(isNeutral(c,rules))return;
+    var pk=partnerKey(t.p),key=pk?"p:"+pk:"t:"+partnerKey(t.t)+"|"+partnerKey(t.z).replace(/[0-9]+/g,"#").slice(0,24);
+    (groups[key]=groups[key]||[]).push(t);});
+  Object.keys(groups).forEach(function(key){var g=groups[key];if(g.length<2)return;
+    var r=evalSeries(g,ref),res=[];
+    if(r)res.push({key:key,r:r,g:g});
+    else if(g.length>=3){
+      /* gleicher Empfänger, mehrere Verträge (z. B. Versicherer): nach Betrag trennen */
+      var cl=[];g.slice().sort(function(a,b){return a.b-b.b;}).forEach(function(t){var c=cl[cl.length-1];if(c&&Math.abs(t.b-c.m)<=Math.max(1,Math.abs(c.m)*0.12)){c.l.push(t);c.m=(c.m*(c.l.length-1)+t.b)/c.l.length;}else cl.push({m:t.b,l:[t]});});
+      if(cl.length>1)cl.forEach(function(c){var rr=evalSeries(c.l,ref);if(rr)res.push({key:key+"|"+Math.round(-c.m),r:rr,g:c.l});});
+    }
+    /* schwankende Beträge bei typischen Alltagsausgaben sind keine Fixkosten */
+    res=res.filter(function(x){return !(x.r.variable&&/lebensmittel|restaurant|caf|bargeld|shopping|drogerie|tank|einkauf|supermarkt/i.test(category(x.g[0],rules)));});
+    res.forEach(function(x){var lt=x.g.slice().sort(function(a,b){return b.d.localeCompare(a.d);})[0];
+      out.push(Object.assign({key:x.key,name:lt.p||lt.t||"Unbekannt",cat:category(lt,rules),z:lt.z},x.r));});
+  });
+  return out.sort(function(a,b){return b.monthly-a.monthly;});
+}
+
 /* ---------- Auswertung ---------- */
 function isNeutral(cat,rules){for(var i=0;i<rules.length;i++)if(rules[i].name===cat)return !!rules[i].neutral;return false;}
 function report(txs,rules,opt){
@@ -169,5 +220,5 @@ function report(txs,rules,opt){
 function sum(a){return a.reduce(function(s,v){return s+v;},0);}
 
 return {MON:MON,UNKAT:UNKAT,DEFAULT_RULES:DEFAULT_RULES,kwRe:kwRe,matchRule:matchRule,category:category,parseFile:parseFile,parseCSV:parseCSV,
-  decode:decode,assignIds:assignIds,setPartnerMap:setPartnerMap,partnerKey:partnerKey,typeKey:typeKey,report:report,sum:sum,isNeutral:isNeutral,hash:hash};
+  decode:decode,assignIds:assignIds,recurring:recurring,addMonths:addMonths,dDiff:dDiff,RHY:RHY,setPartnerMap:setPartnerMap,partnerKey:partnerKey,typeKey:typeKey,report:report,sum:sum,isNeutral:isNeutral,hash:hash};
 })();
