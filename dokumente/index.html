@@ -204,8 +204,8 @@ function vArchiv(){
 function vEinr(){
   var ok1=st.perm!=="none"&&st.perm!=="unsupported",t=st.test;
   var h='<div class="panel"><h3>Einmalig am PC einrichten</h3>'+
-    '<div class="step"><div class="n">1</div><div class="t">Die beiden Dateien herunterladen und in den Ordner legen, in dem deine <code>ablage.py</code> liegt:<div><a class="dl" href="werkzeug/cockpit_ablage.py" download>⬇ cockpit_ablage.py</a> &nbsp; <a class="dl" href="werkzeug/Cockpit-Ablage-einrichten.ps1" download>⬇ Cockpit-Ablage-einrichten.ps1</a><br>Chrome warnt bei .ps1-Dateien – „Behalten“ wählen.</div></div></div>'+
-    '<div class="step"><div class="n">2</div><div class="t">Rechtsklick auf <code>Cockpit-Ablage-einrichten.ps1</code> → „Mit PowerShell ausführen“.<div>Registriert den Link-Typ <code>cockpit-ablage://</code> nur für deinen Benutzer, prüft Python, den Ablage-Ordner und den API-Schlüssel. Danach Chrome einmal ganz schließen und neu öffnen.</div></div></div>'+
+    '<div class="step"><div class="n">1</div><div class="t">Die beiden Dateien herunterladen und in den Ordner legen, in dem deine <code>ablage.py</code> liegt:<div><a class="dl" href="werkzeug/cockpit_ablage.py" download>⬇ cockpit_ablage.py</a> &nbsp; <a class="dl" href="werkzeug/Cockpit-Ablage-einrichten.bat" download>⬇ Cockpit-Ablage-einrichten.bat</a><br>Chrome warnt bei .bat-Dateien – „Behalten“ wählen.</div></div></div>'+
+    '<div class="step"><div class="n">2</div><div class="t">Doppelklick auf <code>Cockpit-Ablage-einrichten.bat</code>.<div>Richtet den Link-Typ <code>cockpit-ablage://</code> nur für deinen Windows-Benutzer ein, fragt bei Bedarf nach dem Ablage-Ordner und dem API-Schlüssel und macht am Ende einen Selbsttest. Das Fenster bleibt offen, bis du eine Taste drückst. Meldet Windows „Der Computer wurde durch Windows geschützt“: „Weitere Informationen“ → „Trotzdem ausführen“.</div></div></div>'+
     '<div class="step"><div class="n'+(st.perm==="granted"?" ok":"")+'">'+(st.perm==="granted"?"✓":"3")+'</div><div class="t">Ablage-Ordner verbinden – den Ordner wählen, in dem <code>00_Eingang</code> liegt.'+
       (ok1?"<div>Verbunden: <b>"+esc(st.rootName)+"</b>"+(st.perm==="prompt"?' – <a href="#" class="dl" onclick="D2.allow();return false">Zugriff erlauben</a>':"")+"</div>":"")+
       '<div style="margin-top:8px">'+(st.perm==="unsupported"?"Geht nur am PC in Chrome.":'<button class="mini" onclick="D2.pick()">📁 '+(ok1?"Anderen Ordner wählen":"Ordner verbinden")+"</button>")+"</div></div></div>"+
@@ -219,7 +219,7 @@ function vEinr(){
   return h;
 }
 function testResult(){var t=st.test;if(!t)return "";
-  if(t.status==="timeout")return '<div class="note" style="margin-top:8px;color:#fbbf24">Keine Antwort. Prüfen: Hat Chrome nach dem Öffnen gefragt? Lief Schritt 2 ohne Fehler, und wurde Chrome danach neu gestartet? Liegt <code>ablage.py</code> im selben Ordner? Zeigt das Skript (Konsolenfenster) einen anderen Ablage-Ordner als den hier verbundenen, unter Schritt 2 den richtigen Pfad eintragen.</div>';
+  if(t.status==="timeout")return '<div class="note" style="margin-top:8px;color:#fbbf24"><b>Keine Antwort vom PC.</b><br>• Kam <b>keine</b> Rückfrage von Chrome („cockpit-ablage öffnen?“), ist der Link-Typ nicht eingerichtet → Schritt 2 ausführen und auf den Selbsttest achten.<br>• Hat Chrome gefragt und du hast „Öffnen“ gewählt, aber es erschien kein schwarzes Fenster → Schritt 2 noch einmal ausführen; der Selbsttest am Ende zeigt, ob Python startet.<br>• Öffnete sich ein Fenster mit Fehlermeldung → Foto davon schicken. Zeigt es einen anderen Ablage-Ordner als den hier verbundenen („'+esc(st.rootName)+'“), Schritt 2 erneut ausführen und den richtigen Pfad angeben.</div>';
   if(t.status==="fehler")return '<div class="note" style="margin-top:8px;color:#f87171">'+esc(t.meldung||"Fehler")+"</div>";
   var e=t.ergebnis||{};return '<div class="note" style="margin-top:8px;color:#4ade80">✓ '+esc(t.meldung||"Verbindung steht")+'</div><div class="note">Python '+esc(e.python||"?")+" · API-Schlüssel "+(e.api_key?"✓":'<b style="color:#f87171">fehlt</b>')+" · Modell "+esc(e.modell||"?")+" · Eingang "+esc(e.eingang==null?"?":e.eingang)+" PDF(s)</div>";}
 
@@ -243,7 +243,7 @@ window.D2={
       if(!ok)flash("⚠ In „"+h.name+"“ gibt es keinen Ordner 00_Eingang – bitte den Ablage-Hauptordner wählen.",true);else{flash("✓ Ordner verbunden: "+h.name);reload();}});})
     .catch(function(e){if(e&&e.name==="AbortError")return;flash("⚠ "+(e.message||e),true);});},
   forget:function(){if(!confirm("Ordner auf diesem Gerät trennen?"))return;D.forget().then(function(){st.root=null;st.perm="none";st.rootName="";st.pdfs=null;render();});},
-  test:function(){st.test=null;run("test","Verbindungstest",30000).then(function(s){if(s){st.test=s;render();}});},
+  test:function(){st.test=null;run("test","Verbindungstest",90000).then(function(s){if(s){st.test=s;render();}});},
   analyse:function(){run("analyse","Analyse");},
   index:function(){run("index","Archiv aufnehmen");},
   konsole:function(){run("konsole","Klassische Ablage",60*60000);},

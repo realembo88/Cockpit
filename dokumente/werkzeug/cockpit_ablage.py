@@ -3,7 +3,7 @@
 cockpit_ablage.py - Bruecke zwischen dem Cockpit (Browser) und der Dokumenten-Ablage.
 
 Wird ueber den Link-Typ cockpit-ablage:// aus dem Cockpit gestartet.
-Einmalig einrichten mit Cockpit-Ablage-einrichten.ps1 (im selben Ordner wie ablage.py).
+Einmalig einrichten mit Cockpit-Ablage-einrichten.bat (Doppelklick, im selben Ordner wie ablage.py).
 
 Befehle:
   cockpit-ablage://test      Verbindung pruefen
@@ -52,6 +52,30 @@ def warte(sekunden=None):
         print(f"\nDieses Fenster schliesst sich in {sekunden} Sekunden.")
         time.sleep(sekunden)
 
+
+def lade_benutzer_umgebung():
+    """Beim Start aus dem Browser erbt Python die Umgebung von Chrome - neu gesetzte
+    Benutzer-Variablen (ABLAGE_ROOT, ANTHROPIC_API_KEY) fehlen dort bis zum Neustart.
+    Deshalb unter Windows direkt aus der Registrierung nachladen."""
+    if os.name != "nt":
+        return
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as k:
+            for name in ("ABLAGE_ROOT", "ANTHROPIC_API_KEY"):
+                if os.environ.get(name):
+                    continue
+                try:
+                    wert, _ = winreg.QueryValueEx(k, name)
+                    if wert:
+                        os.environ[name] = os.path.expandvars(str(wert))
+                except FileNotFoundError:
+                    pass
+    except OSError:
+        pass
+
+
+lade_benutzer_umgebung()
 
 try:
     import ablage as A  # Regeln, Kategorien, Namenskonvention, Pfade
@@ -484,7 +508,7 @@ def main():
         return
     if not ROOT.exists():
         print(f"\nFEHLER: Ablage-Ordner nicht gefunden: {ROOT}")
-        print("Bitte ABLAGE_ROOT pruefen (Einrichtung erneut ausfuehren).")
+        print("Bitte Cockpit-Ablage-einrichten.bat erneut ausfuehren und den richtigen Ordner angeben.")
         warte()
         return
     start = jetzt()
