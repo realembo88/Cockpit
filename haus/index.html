@@ -180,7 +180,7 @@ function vAbr(){
     '<tr class="sum"><td>Betriebskosten</td><td></td><td></td><td></td><td>'+eur(s.summe)+"</td></tr>"+
     "<tr><td>Strom "+esc(s.unit)+(s.strom?" ("+C.int(s.strom.kwh)+" kWh × "+C.num(r.preis*100,0)+" ct)":" – Zählerstände fehlen")+"</td><td></td><td></td><td></td><td>"+eur(s.stromKosten)+"</td></tr>"+
     '<tr class="sum"><td>Kosten gesamt</td><td></td><td></td><td></td><td>'+eur(s.gesamt)+"</td></tr>"+
-    "<tr><td>abzgl. Vorauszahlungen ("+s.vzMonate+" × "+eur(s.vz||0)+")</td><td></td><td></td><td></td><td>− "+eur(s.vzIst)+"</td></tr>"+
+    "<tr><td>abzgl. Vorauszahlungen ("+(s.vzIst===s.vzSoll?s.vzMonate+" × "+eur(s.vz||0):"tatsächlich gezahlt")+")</td><td></td><td></td><td></td><td>− "+eur(s.vzIst)+"</td></tr>"+
     '<tr class="sum"><td>'+(s.saldo>=0?"Nachzahlung":"Guthaben")+'</td><td></td><td></td><td></td><td class="'+(s.saldo>=0?"up":"dn")+'">'+eur(Math.abs(s.saldo))+"</td></tr></table></div>";
   /* Vorauszahlungen laut Konto */
   var k=s.such?HS.kontoZeitraum(fin(),s.von,s.bis,s.such):null;
