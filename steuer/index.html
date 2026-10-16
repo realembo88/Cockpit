@@ -99,6 +99,7 @@ body.doc-on .wrap{display:none;}
 <script src="../assets/cockpit.js"></script>
 <script src="../finanzen/logic.js"></script>
 <script src="../haus/logic.js"></script>
+<script src="../dokumente/logic.js"></script>
 <script src="logic.js"></script>
 <script>
 (function(){
@@ -166,10 +167,16 @@ function render(){
 function yearBar(extra){return '<div class="filt"><div class="yr"><button onclick="T2.yr(-1)" aria-label="Vorjahr">‹</button><b>'+st.y+'</b><button onclick="T2.yr(1)" aria-label="Folgejahr">›</button></div>'+(extra||"")+"</div>";}
 function kpi(i,l,v){return '<div class="kpi"><div class="ico">'+i+'</div><div class="val">'+v+'</div><div class="lab">'+l+"</div></div>";}
 
+/* ---------- Dokumente aus der Ablage ---------- */
+function docs(){return window.DOKS?DOKS.stbDocs(st.y):[];}
+function bDocs(b,d){return S.belegDocs(b,d||docs());}
+function vorhanden(b,d){return !!J().belege[b.id]||bDocs(b,d).length>0;}
+function docLine(e){return '<div class="tx" style="padding:5px 0"><span class="m">📄 '+esc(DOKS.titel(e))+"<div>"+esc(DOKS.de(e.datum))+(e.betrag!=null?" · "+eur(+e.betrag):"")+" · "+esc(e.belegart||e.kategorie||"")+'</div></span><button class="mini" onclick="event.preventDefault();T2.docOpen(\''+esc(e.id)+'\')">Öffnen</button></div>';}
+
 /* ---------- Übersicht ---------- */
 function belegListe(){var std=S.BELEGE_STD.filter(function(b){return !data.belegeAus[b.id];}),own=data.belege.filter(function(b){return !b.del;});return std.concat(own);}
 function vDash(){
-  var s=S.status(data,st.y,COMP),bl=belegListe(),bok=bl.filter(function(b){return J().belege[b.id];}).length,of=data.offen.filter(function(x){return !x.del&&!x.done;}).length;
+  var s=S.status(data,st.y,COMP),bl=belegListe(),dd=docs(),bok=bl.filter(function(b){return vorhanden(b,dd);}).length,of=data.offen.filter(function(x){return !x.del&&!x.done;}).length;
   var h=yearBar();
   h+='<div class="grid2" style="margin-bottom:14px">'+kpi("🧮","Posten mit Wert",s.tot.wert+" / "+s.tot.n)+kpi("✅","Geprüft",s.tot.ok+" / "+s.tot.n)+kpi("📎","Belege beisammen",bok+" / "+bl.length)+kpi("❓","Offene Fragen",of)+"</div>";
   h+='<div class="panel"><h3>Stand je Anlage '+st.y+"</h3>"+S.ANLAGEN.filter(function(a){return s.by[a.k];}).map(function(a){var b=s.by[a.k];
@@ -253,15 +260,19 @@ function editor(p){
 
 /* ---------- Belege ---------- */
 function vBelege(){
-  var j=J(),bl=belegListe(),h=yearBar();
-  h+='<div class="note" style="margin-bottom:10px">Was für '+st.y+' gebraucht wird. Die Belege selbst bleiben bei dir – hier wird nur abgehakt, was beisammen ist.</div>';
+  var j=J(),bl=belegListe(),dd=docs(),used={},h=yearBar();
+  h+='<div class="note" style="margin-bottom:10px">Was für '+st.y+' gebraucht wird. Die Belege selbst bleiben bei dir – hier wird nur abgehakt, was beisammen ist. Dokumente, die über den Bereich Dokumente in den Steuerberater-Ordner '+st.y+' abgelegt wurden, werden automatisch zugeordnet.</div>';
   var last=null,inner="";
   bl.sort(function(a,b){return S.ANLAGEN.map(function(x){return x.k;}).indexOf(a.a)-S.ANLAGEN.map(function(x){return x.k;}).indexOf(b.a);}).forEach(function(b){
     if(b.a!==last){if(inner)h+='<div class="panel">'+inner+"</div>";inner='<h3>'+S.anlage(b.a).i+" "+esc(S.anlage(b.a).n)+"</h3>";last=b.a;}
-    var own=!S.BELEGE_STD.some(function(x){return x.id===b.id;});
-    inner+='<label class="chk"><input type="checkbox" '+(j.belege[b.id]?"checked ":"")+'onchange="T2.beleg(\''+esc(b.id)+'\',this.checked)"><span class="t">'+esc(b.n)+"</span>"+
-      '<button class="x" onclick="event.preventDefault();T2.belegWeg(\''+esc(b.id)+'\','+own+')" aria-label="Beleg entfernen">✕</button></label>';});
+    var own=!S.BELEGE_STD.some(function(x){return x.id===b.id;}),bd=bDocs(b,dd);bd.forEach(function(e){used[e.id]=1;});
+    inner+='<label class="chk"><input type="checkbox" '+(j.belege[b.id]||bd.length?"checked ":"")+(bd.length?"disabled ":"")+'onchange="T2.beleg(\''+esc(b.id)+'\',this.checked)"><span class="t">'+esc(b.n)+
+      (bd.length?'<div style="color:#7dd3fc">📎 '+bd.length+" Dokument"+(bd.length>1?"e":"")+" im Steuerberater-Ordner "+st.y+"</div>":"")+"</span>"+
+      '<button class="x" onclick="event.preventDefault();T2.belegWeg(\''+esc(b.id)+'\','+own+')" aria-label="Beleg entfernen">✕</button></label>'+
+      (bd.length?'<div style="margin:-4px 0 6px 28px">'+bd.map(docLine).join("")+"</div>":"");});
   if(inner)h+='<div class="panel">'+inner+"</div>";
+  var rest=dd.filter(function(e){return !used[e.id];});
+  if(rest.length)h+='<div class="panel"><h3>📎 Weitere Dokumente im Steuerberater-Ordner '+st.y+'</h3><div class="note" style="margin-bottom:6px">Keinem Beleg oben zugeordnet – sie kommen trotzdem in die Mappe.</div>'+rest.map(docLine).join("")+"</div>";
   h+='<div class="panel"><h3>Weiteren Beleg aufnehmen</h3><div class="g2"><input class="inp" id="nbN" placeholder="Bezeichnung"><select class="sel" id="nbA">'+S.ANLAGEN.map(function(a){return '<option value="'+a.k+'">'+esc(a.n)+"</option>";}).join("")+'</select></div><button class="mini" style="margin-top:8px" onclick="T2.belegNeu()">＋ Aufnehmen</button>'+
     (Object.keys(data.belegeAus).length?'<div class="note" style="margin-top:8px">'+Object.keys(data.belegeAus).length+' Standard-Belege ausgeblendet · <a href="#" style="color:#c4b5fd" onclick="T2.belegeAlle();return false">wieder einblenden</a></div>':"")+"</div>";
   return h;
@@ -280,7 +291,7 @@ function vFragen(){
 
 /* ---------- Mappe ---------- */
 function vMappe(){
-  var s=S.status(data,st.y,COMP),bl=belegListe(),bok=bl.filter(function(b){return J().belege[b.id];}).length,of=data.offen.filter(function(x){return !x.del&&!x.done;}).length,fehl=S.aktiv(data).filter(function(p){return !COMP[p.id]||COMP[p.id].v==null;});
+  var s=S.status(data,st.y,COMP),bl=belegListe(),dd=docs(),bok=bl.filter(function(b){return vorhanden(b,dd);}).length,of=data.offen.filter(function(x){return !x.del&&!x.done;}).length,fehl=S.aktiv(data).filter(function(p){return !COMP[p.id]||COMP[p.id].v==null;});
   var h=yearBar();
   h+='<div class="panel"><h3>📄 Unterlagen '+st.y+' für die Steuerberatung</h3><div class="note" style="margin-bottom:12px">Alle Posten je Anlage mit Vorjahresvergleich, offene Fragen, Stand der Belege und die Einzelaufstellung der Kontobuchungen. Druckfertig → „Als PDF speichern“.</div>'+
     '<div class="kv"><span>Posten mit Wert</span><span>'+s.tot.wert+" / "+s.tot.n+'</span></div><div class="kv"><span>Geprüft</span><span>'+s.tot.ok+" / "+s.tot.n+'</span></div><div class="kv"><span>Belege beisammen</span><span>'+bok+" / "+bl.length+'</span></div><div class="kv"><span>Offene Fragen</span><span>'+of+"</span></div>"+
@@ -305,7 +316,11 @@ function docHtml(withTx){
   var of=data.offen.filter(function(x){return !x.del;});
   h+="<h2>2. Fragen und Auffälligkeiten</h2>"+(of.length?"<table><tr><th>Bereich</th><th>Frage</th><th>Stand</th></tr>"+of.map(function(x){return "<tr><td>"+esc(S.anlage(x.a).n)+(x.y?"<br>"+x.y:"")+'</td><td style="white-space:pre-wrap">'+esc(x.t)+"</td><td>"+(x.done?"geklärt"+(x.antwort?": "+esc(x.antwort):""):"offen"+(x.antwort?"<br>"+esc(x.antwort):""))+"</td></tr>";}).join("")+"</table>":"<p>Keine.</p>");
   var bl=belegListe();
-  h+="<h2>3. Belege</h2><table><tr><th>Beleg</th><th>Bereich</th><th>Stand</th></tr>"+bl.map(function(b){return "<tr><td>"+esc(b.n)+"</td><td>"+esc(S.anlage(b.a).n)+"</td><td>"+(j.belege[b.id]?"liegt vor":"<b>fehlt noch</b>")+"</td></tr>";}).join("")+"</table>";
+  var dd=docs(),used={};
+  h+="<h2>3. Belege</h2><table><tr><th>Beleg</th><th>Bereich</th><th>Stand</th></tr>"+bl.map(function(b){var bd=bDocs(b,dd);bd.forEach(function(e){used[e.id]=1;});
+    return "<tr><td>"+esc(b.n)+(bd.length?'<div class="info">'+bd.map(function(e){return esc(e.datei);}).join("<br>")+"</div>":"")+"</td><td>"+esc(S.anlage(b.a).n)+"</td><td>"+(bd.length?"liegt vor ("+bd.length+" im Ordner)":j.belege[b.id]?"liegt vor":"<b>fehlt noch</b>")+"</td></tr>";}).join("")+"</table>";
+  var rest=dd.filter(function(e){return !used[e.id];});
+  if(rest.length)h+='<h3>Weitere Dokumente im Steuerberater-Ordner '+y+'</h3><table><tr><th>Datei</th><th>Belegart</th><th class="r">Betrag</th></tr>'+rest.map(function(e){return "<tr><td>"+esc(e.datei)+"</td><td>"+esc(e.belegart||"")+'</td><td class="r">'+(e.betrag!=null?C.eurRaw(+e.betrag):"")+"</td></tr>";}).join("")+"</table>";
   if(withTx){var fl=all.filter(function(p){var c=COMP[p.id];return c&&c.list&&c.list.some(function(t){return !t.aus;});});
     if(fl.length){h+='<h2 class="pb">4. Einzelaufstellung Kontobuchungen</h2>';
       fl.forEach(function(p){var c=COMP[p.id],l=c.list.filter(function(t){return !t.aus;});
@@ -354,6 +369,7 @@ window.T2={
   delPost:function(id){if(!confirm("Diesen Posten löschen?"))return;var p=post(id);p.del=true;upd(p);},
   beleg:function(id,on){var j=J();if(on)j.belege[id]=true;else delete j.belege[id];touchY();persist();render();},
   belegWeg:function(id,own){if(own){data.belege.forEach(function(b){if(b.id===id){b.del=true;b.upd=Date.now();}});}else{data.belegeAus[id]=true;data.einst.upd=Date.now();}persist();render();},
+  docOpen:function(id){var e=DOKS.index().filter(function(x){return x.id===id;})[0];if(!e)return;DOKS.oeffnen(e).catch(function(err){flash("⚠ "+(err.message||err),true);});},
   belegeAlle:function(){data.belegeAus={};data.einst.upd=Date.now();persist();render();},
   belegNeu:function(){var n=document.getElementById("nbN").value.trim(),a=document.getElementById("nbA").value;if(!n)return;data.belege.push({id:"b"+Date.now().toString(36),n:n,a:a,upd:Date.now()});persist();render();},
   frage:function(id,k,v){data.offen.forEach(function(x){if(x.id===id){x[k]=v;x.upd=Date.now();}});persist();render();},
@@ -379,7 +395,7 @@ window.T2={
 };
 document.addEventListener("keydown",function(e){if(e.key==="Escape"&&document.body.classList.contains("doc-on"))T2.closeDoc();});
 render();
-C.autoPull([AREA,"finanzen","haus","ferienwohnung","energie"],function(a,d){if(a===AREA)data=norm(d);render();});
+C.autoPull([AREA,"finanzen","haus","ferienwohnung","energie","dokumente"],function(a,d){if(a===AREA)data=norm(d);render();});
 })();
 </script>
 </body>

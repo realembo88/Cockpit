@@ -37,23 +37,26 @@ var SMOOF={brutto:"Umsatz brutto",netto7:"Umsatz netto (bei 7 % USt)",ust7:"Dari
 var ENF={einspeisung:"Netzeinspeisung PV (kWh)"};
 /* Belege, die jedes Jahr typischerweise gebraucht werden – allgemein gehalten */
 var BELEGE_STD=[
-  {id:"lstb",n:"Lohnsteuerbescheinigungen",a:"N"},
+  {id:"lstb",n:"Lohnsteuerbescheinigungen",a:"N",ba:["Lohnsteuerbescheinigungen"]},
   {id:"lohnersatz",n:"Bescheinigungen Lohnersatzleistungen (Krankengeld, Elterngeld)",a:"N"},
   {id:"kv",n:"Beitragsbescheinigungen Kranken-/Pflegeversicherung",a:"SA"},
-  {id:"vers",n:"Beitragsnachweise weitere Versicherungen (Haftpflicht, Unfall, Risikoleben)",a:"SA"},
+  {id:"vers",n:"Beitragsnachweise weitere Versicherungen (Haftpflicht, Unfall, Risikoleben)",a:"SA",ba:["Versicherungen"]},
   {id:"riester",n:"Altersvorsorge-/Riester-Bescheinigung",a:"SA"},
-  {id:"spenden",n:"Spendenquittungen / Zuwendungsbestätigungen",a:"SA"},
-  {id:"kita",n:"Rechnungen Kinderbetreuung (Kita, Hort) – unbar bezahlt",a:"KIND"},
-  {id:"35a",n:"Handwerker-/Dienstleisterrechnungen mit ausgewiesenem Lohnanteil",a:"HA"},
-  {id:"nk",n:"Jahresrechnungen der Versorger, Grundsteuerbescheid, Versicherungen Haus",a:"V"},
+  {id:"spenden",n:"Spendenquittungen / Zuwendungsbestätigungen",a:"SA",ba:["Spenden"]},
+  {id:"kita",n:"Rechnungen Kinderbetreuung (Kita, Hort) – unbar bezahlt",a:"KIND",ba:["Kinderbetreuung"]},
+  {id:"35a",n:"Handwerker-/Dienstleisterrechnungen mit ausgewiesenem Lohnanteil",a:"HA",ba:["Handwerker","Haushaltsnahe_Dienstleistungen"]},
+  {id:"nk",n:"Jahresrechnungen der Versorger, Grundsteuerbescheid, Versicherungen Haus",a:"V",ba:["Energie"]},
   {id:"nka",n:"Nebenkostenabrechnungen an die Mieter",a:"V"},
   {id:"darlehen",n:"Zinsbescheinigungen Darlehen",a:"V"},
   {id:"fewo",n:"Umsatz- und Provisionsabrechnungen der Buchungsportale",a:"VF"},
-  {id:"kap",n:"Jahressteuerbescheinigungen der Banken / Depots",a:"KAP"},
-  {id:"euer",n:"EÜR / Belege Gewerbe",a:"G"},
+  {id:"kap",n:"Jahressteuerbescheinigungen der Banken / Depots",a:"KAP",ba:["Kapitalertraege"]},
+  {id:"euer",n:"EÜR / Belege Gewerbe",a:"G",geschaeft:true},
   {id:"vst",n:"Eingangsrechnungen mit Umsatzsteuer (Vorsteuer)",a:"UST"},
-  {id:"vz",n:"Bescheid über Einkommensteuer-Vorauszahlungen",a:"ESt"}
+  {id:"vz",n:"Steuerbescheide / Bescheid über Vorauszahlungen",a:"ESt",ba:["Steuerbescheide"]}
 ];
+
+/* Dokumente aus der Ablage (Steuerberater-Ordner des Jahres) den Belegen zuordnen */
+function belegDocs(b,docs){return (docs||[]).filter(function(e){return b.geschaeft?e.bereich==="Geschaeftlich":(e.bereich!=="Geschaeftlich"&&(b.ba||[]).indexOf(e.belegart)>-1);});}
 
 /* ---------- Hilfen ---------- */
 function r2(v){return Math.round(v*100)/100;}
@@ -187,6 +190,6 @@ function status(data,y,comp){
 }
 
 return {ANLAGEN:ANLAGEN,QUELLEN:QUELLEN,QICON:QICON,EINHEITEN:EINHEITEN,HAUSF:HAUSF,SMOOF:SMOOF,ENF:ENF,BELEGE_STD:BELEGE_STD,
-  compute:compute,vorjahr:vorjahr,status:status,aktiv:aktiv,anlage:anlage,finKategorien:finKategorien,num:num,r2:r2,words:words};
+  compute:compute,vorjahr:vorjahr,belegDocs:belegDocs,status:status,aktiv:aktiv,anlage:anlage,finKategorien:finKategorien,num:num,r2:r2,words:words};
 })();
 if(typeof window!=="undefined")window.STEUER=STEUER;

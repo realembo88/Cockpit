@@ -29,6 +29,7 @@
 .cat{display:inline-block;margin-top:5px;font-size:11px;padding:2px 8px;border-radius:10px;background:#e040fb1f;color:#f0a6ff;border:none;cursor:pointer;}
 .cat.u{background:#ff980022;color:#ffb74d;}
 .cat.m::after{content:" ✎";}
+.cat.d{background:#0ea5e922;color:#7dd3fc;margin-left:4px;}
 .mx td:first-child,.mx th:first-child{position:sticky;left:0;background:var(--panel);z-index:1;cursor:pointer;}
 .mx tr.sum td{font-weight:700;background:var(--panel2);}
 .mx tr.sum td:first-child{background:var(--panel2);}
@@ -107,6 +108,7 @@ code{background:var(--field);padding:1px 5px;border-radius:4px;font-size:11px;}
 </div>
 <script src="../assets/cockpit.js"></script>
 <script src="logic.js"></script>
+<script src="../dokumente/logic.js"></script>
 <script>
 (function(){
 "use strict";
@@ -370,6 +372,7 @@ function vTx(){
     '<button class="pill'+(st.sort==="betrag"?" on":"")+'" onclick="F2.sort()">'+(st.sort==="betrag"?"nach Betrag":"nach Datum")+"</button></div>";
   var sum=list.reduce(function(s,t){return s+t.b;},0);
   h+='<div class="small muted" style="margin-bottom:8px">'+list.length+" Buchungen · Summe "+sEur(sum)+"</div>";
+  st.mt=window.DOKS&&DOKS.index().length?DOKS.txMatcher():null;
   h+='<div class="panel" id="txlist" style="padding:4px 14px">'+(list.length?list.slice(0,st.limit).map(txRow).join(""):'<div class="note" style="padding:12px 0">Nichts gefunden.</div>')+"</div>";
   if(list.length>st.limit)h+='<button class="btn ghost full" onclick="F2.more()">Weitere '+Math.min(80,list.length-st.limit)+" anzeigen</button>";
   return h;
@@ -390,7 +393,8 @@ function txRow(t){
         return h+'<div class="note">Diese Buchung hat keinen Empfänger und nur eine allgemeine Buchungsart. Für eine Regel trage unter „Regeln & Konten“ ein Schlüsselwort aus dem Verwendungszweck ein.</div>';
       })()+
       '<button class="btn ghost" style="margin-top:6px;padding:7px 12px;font-size:12px" onclick="F2.edit(null)">Fertig</button></div>';
-  }else h+='<button class="cat'+(c===F.UNKAT?" u":"")+(t.cat?" m":"")+'" onclick="F2.edit(\''+t.id+'\')">'+C.esc(c)+"</button>";
+  }else{h+='<button class="cat'+(c===F.UNKAT?" u":"")+(t.cat?" m":"")+'" onclick="F2.edit(\''+t.id+'\')">'+C.esc(c)+"</button>";
+    var dm=st.mt&&st.mt(t);if(dm)h+='<button class="cat d" title="'+C.esc(dm.datei)+'" onclick="F2.doc(\''+C.esc(dm.id)+'\')">📎 '+C.esc(DOKS.titel(dm).slice(0,40))+"</button>";}
   return h+'</div><div class="a '+(t.b<0?"neg":"pos")+'">'+(t.b<0?"−":"+")+C.eur(Math.abs(t.b))+"</div></div>";
 }
 
@@ -669,6 +673,7 @@ function fxForm(){var f=st.fxNew;
     '<div class="row2"><button class="btn" onclick="F2.fxAdd()">Hinzufügen</button><button class="btn ghost" style="flex:0 0 auto" onclick="F2.fxCancel()">Abbrechen</button></div></div>';}
 
 window.F2={
+  doc:function(id){var e=DOKS.index().filter(function(x){return x.id===id;})[0];if(!e)return;DOKS.oeffnen(e).catch(function(err){flash("⚠ "+(err.message||err)+" – Beleg: "+e.datei,true);});},
   tab:function(t){st.tab=t;st.edit=null;render();window.scrollTo(0,0);},
   yr:function(d){st.year+=d;st.limit=80;render();},
   ber:function(b){st.ber=b;render();},
@@ -794,7 +799,7 @@ if(data._summary&&/•••/.test(JSON.stringify(data._summary)))persist();
 window.addEventListener('cockpit:priv',function(){if(!document.body.classList.contains('eur-on'))render();});
 window.__finCheck={checkData:checkData,findTransfers:findTransfers};
 render();
-C.autoPull([AREA],function(a,d){data=norm(d);render();});
+C.autoPull([AREA,"dokumente"],function(a,d){if(a===AREA)data=norm(d);render();});
 })();
 </script>
 </body>

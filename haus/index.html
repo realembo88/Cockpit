@@ -87,6 +87,7 @@ body.doc-on .wrap{display:none;}
 <div id="docOverlay"></div>
 <script src="../assets/cockpit.js"></script>
 <script src="logic.js"></script>
+<script src="../dokumente/logic.js"></script>
 <script>
 (function(){
 "use strict";
@@ -205,10 +206,18 @@ function vKosten(){
       '<div><div class="lbl">Verteilerschlüssel</div><select class="sel" onchange="H2.kost(\''+p.k+'\',\'s\',this.value)">'+Object.keys(HS.SCHL).map(function(s){return '<option value="'+s+'"'+(p.s===s?" selected":"")+">"+HS.SCHL[s]+"</option>";}).join("")+"</select></div></div>";
     h+='<div class="chk">'+(q&&q.betrag?"Vorjahr "+eur(q.betrag)+(p.betrag?' · <span class="'+(p.betrag>q.betrag?"up":"dn")+'">'+(p.betrag>=q.betrag?"+":"")+C.num((p.betrag/q.betrag-1)*100,0)+" %</span>":"")+" · ":"")+
       (ks?(ks.n?"Konto "+st.y+" („"+esc(p.such)+"“): <b>"+eur(ks.summe)+"</b> in "+ks.n+" Abbuchungen":"Keine Abbuchungen „"+esc(p.such)+"“ in "+st.y+" gefunden"):"Kein Suchwort für den Konto-Abgleich")+' · <a href="#" style="color:#fdba74" onclick="H2.such(\''+p.k+'\');return false">Suchwort</a></div>';
+    if(window.DOKS)DOKS.hausVorschlag(st.y,p.k).forEach(function(e){var v=e.betrag!=null?+e.betrag:null,gleich=v!=null&&Math.abs(v-p.betrag)<0.005;
+      h+='<div class="chk" style="color:#7dd3fc">📎 '+esc(DOKS.titel(e))+" ("+DOKS.de(e.datum)+")"+(v!=null?" · "+eur(v):"")+(gleich?" ✓ übernommen":"")+
+        (v!=null&&!gleich?' · <a href="#" style="color:#fdba74" onclick="H2.docBetrag(\''+p.k+'\',\''+esc(e.id)+'\');return false">Betrag übernehmen</a>':"")+' · <a href="#" style="color:#7dd3fc" onclick="H2.docOpen(\''+esc(e.id)+'\');return false">öffnen</a></div>';});
     if(p.k==="heizung")h+='<div class="chk" style="color:#ffcc80">Ohne Wärmemengenzähler wird nach Fläche verteilt. Die Heizkostenverordnung verlangt 50–70 % nach Verbrauch – Mieter dürfen dann um 15 % kürzen (§ 12 HeizkV).</div>';
     h+='<textarea class="inp" rows="2" style="margin-top:8px;font-size:12px" placeholder="Erläuterung für die Abrechnung, z. B. Gründe für eine Änderung (optional)" onchange="H2.kost(\''+p.k+'\',\'info\',this.value)">'+esc(o.info||p.info||"")+"</textarea></div>";});
   h+='<button class="btn ghost full" style="margin-bottom:14px" onclick="H2.addX()">＋ Weitere umlagefähige Kostenart</button>';
   h+='<div class="panel"><h3>Strom (nach Zähler)</h3><div class="g3"><div><div class="lbl">Preis je kWh (€)</div><input class="inp" inputmode="decimal" value="'+(j.strompreis!=null?String(j.strompreis).replace(".",","):"")+'" placeholder="z. B. 0,32" onchange="H2.preis(this.value)"></div><div class="note" style="align-self:end">Zählerstände unter „Zähler“. Abgerechnet wird nur der Verbrauch der Mieter.</div></div></div>';
+  if(window.DOKS){var vorg={};r.pos.forEach(function(p){DOKS.hausVorschlag(st.y,p.k).forEach(function(e){vorg[e.id]=1;});});
+    var weitere=DOKS.hausDocs(st.y).filter(function(e){return !vorg[e.id]&&["Wohnen","Energie_PV","Versicherungen","Steuern_Privat"].indexOf(e.kategorie)>-1;});
+    if(weitere.length)h+='<div class="panel"><h3>📎 Weitere Rechnungen '+st.y+' aus der Ablage</h3>'+weitere.map(function(e){return '<div class="row"><div class="l"><b>'+esc(DOKS.titel(e))+'</b><div class="s">'+DOKS.de(e.datum)+" · "+esc(e.kategorie)+'</div></div><div class="r">'+eur(+(e.betrag!=null?e.betrag:e.zahlbetrag))+
+      '<div><select class="sel" style="width:auto;padding:4px 6px;font-size:11px;margin-top:4px" onchange="if(this.value)H2.docBetrag(this.value,\''+esc(e.id)+'\')"><option value="">übernehmen als …</option>'+r.pos.map(function(p){return '<option value="'+p.k+'">'+esc(p.n)+"</option>";}).join("")+"</select></div></div></div>";}).join("")+
+      '<div class="note" style="margin-top:6px">Rechnungen aus dem Bereich Dokumente mit Bezugsjahr '+st.y+'. Maßgeblich ist der Gesamtbetrag der Jahresrechnung, nicht die Nachzahlung.</div></div>';}
   h+='<div class="panel"><h3>Summe '+st.y+'</h3><div class="big">'+eur(r.gesamt)+"</div>"+(prev?'<div class="note">Vorjahr '+eur(prev.gesamt)+"</div>":"")+"</div>";
   return h;
 }
@@ -356,6 +365,9 @@ window.H2={
   such:function(k){var p=HS.posList(data,st.y).filter(function(x){return x.k===k;})[0],v=prompt("Suchwörter für den Konto-Abgleich (mehrere mit Leerzeichen):",p?p.such:"");if(v==null)return;H2.kost(k,"such",v.trim());},
   addX:function(){var n=prompt("Name der Kostenart (muss im Mietvertrag als umlagefähig vereinbart sein):");if(!n)return;var j=J();j.extra=j.extra||[];j.extra.push({k:"x"+Date.now().toString(36),n:n.trim(),p:"",s:"flaeche",betrag:0});touch();persist();render();},
   delX:function(k){if(!confirm("Kostenart entfernen?"))return;var j=J();(j.extra||[]).forEach(function(e){if(e.k===k)e.del=true;});touch();persist();render();},
+  docBetrag:function(k,id){var e=DOKS.index().filter(function(x){return x.id===id;})[0];if(!e)return;var v=e.betrag!=null?+e.betrag:+e.zahlbetrag;if(isNaN(v))return;
+    var j=J(),x=(j.extra||[]).filter(function(q){return q.k===k;})[0],o=x||(j.kosten[k]=j.kosten[k]||{});o.betrag=Math.round(v*100)/100;o.beleg=e.datei;touch();persist();flash("✓ "+C.eurRaw(v)+" übernommen");},
+  docOpen:function(id){var e=DOKS.index().filter(function(x){return x.id===id;})[0];if(!e)return;DOKS.oeffnen(e).catch(function(err){flash("⚠ "+(err.message||err),true);});},
   preis:function(v){var n=pnum(v);J().strompreis=n;touch();persist();render();},
   fewoFix:function(v){var j=J();j.fewoFix=v===""?null:pnum(v);touch();persist();render();},
   openSeg:function(id){st.openSeg=st.openSeg===id?null:id;render();},
@@ -400,7 +412,7 @@ window.H2={
 };
 document.addEventListener("keydown",function(e){if(e.key==="Escape"&&document.body.classList.contains("doc-on"))H2.closeDoc();});
 render();
-C.autoPull([AREA,"finanzen","ferienwohnung","energie"],function(a,d){if(a===AREA)data=norm(d);render();});
+C.autoPull([AREA,"finanzen","ferienwohnung","energie","dokumente"],function(a,d){if(a===AREA)data=norm(d);render();});
 })();
 </script>
 </body>
