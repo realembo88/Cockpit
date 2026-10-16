@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0e1a">
+<title>Cockpit · Steuer</title>
+<link rel="manifest" href="../manifest.webmanifest">
+<link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/style.css">
+<style>
+.filt{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px;}
+.yr{display:flex;align-items:center;background:var(--panel);border:1px solid var(--border);border-radius:10px;}
+.yr button{background:none;border:none;color:var(--muted);font-size:19px;padding:4px 12px;cursor:pointer;}
+.yr b{color:#fff;min-width:44px;text-align:center;}
+.pill{border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:20px;padding:6px 12px;font-size:12px;cursor:pointer;}
+.pill.on{background:#8b5cf6;border-color:#8b5cf6;color:#fff;font-weight:700;}
+.inp,.sel{width:100%;background:var(--field);border:1px solid var(--border);border-radius:8px;padding:9px 10px;color:#fff;font-size:14px;font-family:inherit;}
+.inp:focus,.sel:focus{outline:none;border-color:#8b5cf6;}
+.lbl{font-size:11px;color:var(--muted);margin:0 0 4px;}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.note{font-size:11px;color:var(--muted);line-height:1.6;}
+.up{color:#ff8a80;} .dn{color:#69f0ae;}
+.mini{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;}
+.mini.on{border-color:#69f0ae;color:#69f0ae;}
+.x{background:none;border:none;color:#3a4a6a;font-size:16px;cursor:pointer;}
+.agrp{font-size:12px;color:#c4b5fd;font-weight:700;letter-spacing:.04em;margin:18px 0 8px;display:flex;justify-content:space-between;}
+.agrp span{color:var(--muted);font-weight:500;}
+.pst{border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px;background:var(--panel2);border-left:4px solid #475569;}
+.pst.wert{border-left-color:#8b5cf6;} .pst.ok{border-left-color:#22c55e;}
+.pst .h{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;}
+.pst .h b{color:#fff;font-size:13px;}
+.pst .s{font-size:11px;color:var(--muted);margin-top:3px;line-height:1.5;}
+.pst .r{text-align:right;white-space:nowrap;}
+.val{font-size:17px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums;}
+.val.leer{color:#475569;font-weight:600;font-size:14px;}
+.pers{display:inline-block;font-size:10px;border-radius:8px;padding:1px 7px;margin-left:4px;background:#8b5cf622;color:#c4b5fd;vertical-align:middle;}
+.acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;}
+.box{border-top:1px solid #152038;margin-top:10px;padding-top:10px;}
+.txl{max-height:320px;overflow:auto;}
+.tx{display:flex;gap:8px;align-items:flex-start;font-size:12px;padding:6px 0;border-bottom:1px solid #152038;}
+.tx.aus{opacity:.45;text-decoration:line-through;}
+.tx .m{flex:1;min-width:0;} .tx .m div{color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.tx .b{white-space:nowrap;font-variant-numeric:tabular-nums;}
+.catbox{max-height:180px;overflow:auto;border:1px solid var(--border);border-radius:8px;padding:6px 8px;background:var(--field);}
+.catbox label{display:flex;gap:8px;align-items:center;font-size:12px;padding:3px 0;color:#cbd5e1;}
+.arow{display:flex;gap:10px;align-items:center;padding:10px 2px;border-top:1px solid #152038;cursor:pointer;}
+.arow:first-child{border-top:none;}
+.arow .i{font-size:18px;width:26px;text-align:center;}
+.arow .n{flex:1;min-width:0;font-size:13px;color:#fff;}
+.arow .n div{font-size:11px;color:var(--muted);margin-top:3px;}
+.bar{height:6px;background:#152038;border-radius:4px;overflow:hidden;margin-top:6px;}
+.bar i{display:block;height:100%;background:#8b5cf6;}
+.bar i.ok{background:#22c55e;}
+.chk{display:flex;gap:10px;align-items:flex-start;padding:9px 2px;border-top:1px solid #152038;font-size:13px;}
+.chk:first-child{border-top:none;}
+.chk input{margin-top:3px;width:18px;height:18px;accent-color:#22c55e;}
+.chk .t{flex:1;color:#e2e8f0;} .chk .t div{font-size:11px;color:var(--muted);margin-top:2px;}
+.frage{border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px;background:var(--panel2);}
+.frage.done{opacity:.6;}
+.frage .t{font-size:13px;color:#fff;line-height:1.5;white-space:pre-wrap;}
+input[type=file]{display:none;}
+/* Dokument */
+#docOverlay{display:none;}
+body.doc-on #docOverlay{display:block;position:fixed;inset:0;z-index:50;overflow:auto;background:#e9edf3;padding:0 0 40px;}
+body.doc-on .wrap{display:none;}
+.doc-bar{position:sticky;top:0;display:flex;gap:8px;align-items:center;padding:10px 14px;background:#0d1829;color:#fff;z-index:2;flex-wrap:wrap;}
+.doc{background:#fff;color:#111827;max-width:860px;margin:16px auto;padding:34px 38px;font-size:11.5px;line-height:1.45;box-shadow:0 2px 12px rgba(0,0,0,.15);}
+.doc h1{font-size:19px;margin:0 0 3px;color:#111827;}
+.doc h2{font-size:14px;margin:22px 0 8px;color:#111827;border-bottom:1.5px solid #111827;padding-bottom:3px;}
+.doc h3{font-size:12px;margin:16px 0 5px;color:#111827;}
+.doc .sub{color:#4b5563;font-size:10.5px;}
+.doc table{width:100%;border-collapse:collapse;}
+.doc th{text-align:left;font-weight:600;color:#374151;border-bottom:1px solid #9ca3af;padding:4px 5px;font-size:10px;}
+.doc td{padding:4px 5px;border-bottom:1px solid #e5e7eb;vertical-align:top;color:#111827;font-size:10.5px;}
+.doc .r{text-align:right;white-space:nowrap;}
+.doc .info{color:#6b7280;font-size:9.5px;}
+.doc .box{background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px;padding:9px 11px;margin-top:10px;font-size:10.5px;color:#374151;}
+.doc .pb{page-break-before:always;}
+@media print{
+  @page{size:A4;margin:14mm 12mm;}
+  body{background:#fff!important;padding:0!important;}
+  :root{padding:0!important;}
+  body.doc-on .doc-bar{display:none!important;}
+  body.doc-on #docOverlay{position:static;background:#fff;padding:0;overflow:visible;}
+  .doc{box-shadow:none;max-width:none;padding:0;margin:0;}
+  .doc tr{page-break-inside:avoid;}
+  .doc h2,.doc h3{page-break-after:avoid;}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div id="top"></div>
+<nav class="tabs" id="tabs"></nav>
+<div class="content" id="main"></div>
+</div>
+<div id="docOverlay"></div>
+<script src="../assets/cockpit.js"></script>
+<script src="../finanzen/logic.js"></script>
+<script src="../haus/logic.js"></script>
+<script src="logic.js"></script>
+<script>
+(function(){
+"use strict";
+var C=window.Cockpit,S=window.STEUER,AREA="steuer";
+
+/* Datenmodell (privat, im Daten-Repo):
+   personen [{k,n}], posten [{id,a,n,pers,q,c,e,hint,ord,upd,del}], belege [{id,n,a,upd,del}], belegeAus {id:true},
+   offen [{id,t,a,y,done,antwort,upd,del}],
+   jahre {Jahr:{m:{posten:wert},ok:{posten:true},note:{posten:text},ex:{posten:[txIds]},ref:{posten:wert},belege:{beleg:true},upd}}, einst {upd} */
+function blank(){return {personen:[],posten:[],belege:[],belegeAus:{},offen:[],jahre:{},einst:{}};}
+function norm(d){d=d&&typeof d==="object"?d:blank();["personen","posten","belege","offen"].forEach(function(k){if(!Array.isArray(d[k]))d[k]=[];});
+  ["jahre","einst","belegeAus"].forEach(function(k){if(!d[k]||typeof d[k]!=="object")d[k]={};});return d;}
+function clone(x){return JSON.parse(JSON.stringify(x));}
+function byId(a,b){var o={};b.concat(a).forEach(function(x){var c=o[x.id];if(!c||(x.upd||0)>=(c.upd||0))o[x.id]=x;});return Object.keys(o).map(function(k){return o[k];});}
+function merge(l,r){l=norm(clone(l));r=norm(clone(r));var o=blank();
+  o.posten=byId(l.posten,r.posten);o.belege=byId(l.belege,r.belege);o.offen=byId(l.offen,r.offen);
+  Object.keys(Object.assign({},r.jahre,l.jahre)).forEach(function(y){var a=l.jahre[y],b=r.jahre[y];o.jahre[y]=!a?b:!b?a:((a.upd||0)>=(b.upd||0)?a:b);});
+  var n=(l.einst.upd||0)>=(r.einst.upd||0)?l:r;o.einst=n.einst;o.personen=n.personen.length?n.personen:(l.personen.length?l.personen:r.personen);o.belegeAus=n.belegeAus;
+  o._summary=summaryFor(o);return o;}
+C.registerMerge(AREA,merge);
+
+var data=norm(C.getLocal(AREA,blank));
+var NOW=new Date().getFullYear();
+var st={tab:"uebersicht",y:NOW,anl:"alle",open:{},flash:null,nur:"alle"};
+function J(y){y=y||st.y;var j=data.jahre[y]=data.jahre[y]||{};["m","ok","note","ex","ref","belege"].forEach(function(k){if(!j[k]||typeof j[k]!=="object")j[k]={};});return j;}
+function touchY(y){J(y).upd=Date.now();}
+function persist(){data._summary=summaryFor(data);C.save(AREA,data);}
+function flash(t,warn){st.flash={t:t,warn:!!warn};render();clearTimeout(flash.tm);flash.tm=setTimeout(function(){st.flash=null;render();},warn?4500:2400);}
+function esc(s){return C.esc(s);}
+function eur(v,d){return C.eur(v,d==null?2:d);}
+function pnum(v){return S.num(v);}
+function post(id){return data.posten.filter(function(p){return p.id===id&&!p.del;})[0];}
+function persName(k){var p=data.personen.filter(function(x){return x.k===k;})[0];return p?p.n:"";}
+
+/* Daten der anderen Bereiche */
+function ctx(){
+  var f=C.getLocal("finanzen",null)||{},R=Array.isArray(f.rules)?f.rules:FIN.DEFAULT_RULES;FIN.setPartnerMap(f.pmap||{},f.tmap||{});
+  var h=C.getLocal("haus",null),fw=C.getLocal("ferienwohnung",null);
+  return {fin:{tx:Array.isArray(f.tx)?f.tx:[],rules:R,konten:f.konten||{}},F:FIN,haus:h,HS:window.HAUS,
+    bookings:fw&&fw.bookings?Object.keys(fw.bookings).map(function(k){return fw.bookings[k];}):[],apt:h&&h.einst?h.einst.apt:null,en:C.getLocal("energie",null)};
+}
+var CTX=null,COMP=null,VJ=null;
+function calc(){CTX=ctx();COMP=S.compute(data,st.y,CTX);VJ=S.vorjahr(data,st.y,CTX);}
+function summaryFor(d){
+  try{var c=S.compute(norm(d),NOW,ctx()),s=S.status(norm(d),NOW,c),of=(d.offen||[]).filter(function(x){return !x.del&&!x.done;}).length;
+    if(!s.tot.n)return {k:"—",s:"Noch nicht eingerichtet"};
+    return {k:"Steuer "+NOW,s:s.tot.wert+"/"+s.tot.n+" Posten mit Wert · "+s.tot.ok+" geprüft"+(of?" · "+of+" offene Fragen":"")};}catch(e){return {k:"—",s:""};}
+}
+function fmt(v,e,raw){if(v==null)return "–";e=e||"€";
+  if(e==="€")return raw?C.eurRaw(v):eur(v);if(e==="%")return C.num(v,2)+" %";return C.int(v)+" "+e;}
+function delta(v,p){if(v==null||p==null||!p)return "";var d=(v/p-1)*100;return '<span style="color:#cbd5e1">'+(d>=0?"+":"")+C.num(d,0)+" %</span>";}
+
+/* ---------- Rahmen ---------- */
+function render(){
+  calc();
+  document.getElementById("top").innerHTML=C.topbar({title:"Steuer",icon:"🧾",sub:"Mappe für die Steuerberatung",accent:"#a78bfa",accent2:"#7c3aed"});C.paintStatus();
+  var tabs=[["uebersicht","📊 Übersicht"],["anlagen","📁 Anlagen"],["belege","📎 Belege"],["fragen","❓ Fragen"],["mappe","📄 Mappe"],["einst","⚙️ Einstellungen"]];
+  document.getElementById("tabs").innerHTML=tabs.map(function(t){return '<button class="tab'+(st.tab===t[0]?" on":"")+'" onclick="T2.tab(\''+t[0]+'\')">'+t[1]+"</button>";}).join("");
+  var h="";if(st.flash)h+='<div class="flash'+(st.flash.warn?" warn":"")+'">'+esc(st.flash.t)+"</div>";
+  if(!S.aktiv(data).length&&st.tab!=="einst")h+='<div class="empty"><div class="big">🧾</div>Noch keine Posten angelegt.<br><span class="small">Unter Einstellungen die Startdatei importieren oder Posten anlegen.</span><br><button class="btn" style="margin-top:14px;background:#8b5cf6" onclick="T2.tab(\'einst\')">Zu den Einstellungen</button></div>';
+  else h+=({uebersicht:vDash,anlagen:vAnl,belege:vBelege,fragen:vFragen,mappe:vMappe,einst:vEinst}[st.tab])();
+  document.getElementById("main").innerHTML=h;
+}
+function yearBar(extra){return '<div class="filt"><div class="yr"><button onclick="T2.yr(-1)" aria-label="Vorjahr">‹</button><b>'+st.y+'</b><button onclick="T2.yr(1)" aria-label="Folgejahr">›</button></div>'+(extra||"")+"</div>";}
+function kpi(i,l,v){return '<div class="kpi"><div class="ico">'+i+'</div><div class="val">'+v+'</div><div class="lab">'+l+"</div></div>";}
+
+/* ---------- Übersicht ---------- */
+function belegListe(){var std=S.BELEGE_STD.filter(function(b){return !data.belegeAus[b.id];}),own=data.belege.filter(function(b){return !b.del;});return std.concat(own);}
+function vDash(){
+  var s=S.status(data,st.y,COMP),bl=belegListe(),bok=bl.filter(function(b){return J().belege[b.id];}).length,of=data.offen.filter(function(x){return !x.del&&!x.done;}).length;
+  var h=yearBar();
+  h+='<div class="grid2" style="margin-bottom:14px">'+kpi("🧮","Posten mit Wert",s.tot.wert+" / "+s.tot.n)+kpi("✅","Geprüft",s.tot.ok+" / "+s.tot.n)+kpi("📎","Belege beisammen",bok+" / "+bl.length)+kpi("❓","Offene Fragen",of)+"</div>";
+  h+='<div class="panel"><h3>Stand je Anlage '+st.y+"</h3>"+S.ANLAGEN.filter(function(a){return s.by[a.k];}).map(function(a){var b=s.by[a.k];
+    return '<div class="arow" onclick="T2.goAnl(\''+a.k+'\')"><div class="i">'+a.i+'</div><div class="n">'+esc(a.n)+'<div>'+b.wert+" von "+b.n+" Posten mit Wert · "+b.ok+' geprüft</div><div class="bar"><i class="'+(b.ok===b.n?"ok":"")+'" style="width:'+Math.round(b.wert/b.n*100)+'%"></i></div></div><div class="small muted">›</div></div>';}).join("")+"</div>";
+  /* Größte Abweichungen zum Vorjahr */
+  var dv=st.y>=NOW?[]:S.aktiv(data).filter(function(p){var c=COMP[p.id],v=VJ[p.id];return (p.e||"€")==="€"&&c&&c.v!=null&&v&&v.v&&Math.abs(c.v-v.v)>=100&&Math.abs(c.v/v.v-1)>=0.2;})
+    .sort(function(a,b){return Math.abs(COMP[b.id].v-VJ[b.id].v)-Math.abs(COMP[a.id].v-VJ[a.id].v);}).slice(0,6);
+  if(dv.length)h+='<div class="panel"><h3>Deutliche Änderungen zum Vorjahr</h3>'+dv.map(function(p){return '<div class="arow" onclick="T2.goPost(\''+p.id+'\')"><div class="n">'+esc(p.n)+(p.pers?' <span class="pers">'+esc(persName(p.pers))+"</span>":"")+"<div>"+(st.y-1)+": "+fmt(VJ[p.id].v,p.e)+" → "+st.y+": "+fmt(COMP[p.id].v,p.e)+"</div></div>"+delta(COMP[p.id].v,VJ[p.id].v)+"</div>";}).join("")+
+    '<div class="note" style="margin-top:6px">Ab 20 % und 100 € Unterschied. Im laufenden Jahr ist das oft nur ein Zwischenstand.</div></div>';
+  h+='<div class="note">Zeitplan: im Januar/Februar '+(st.y+1)+' Lohnsteuer- und Jahresbescheinigungen sowie die Nebenkostenabrechnung, ab März '+(st.y+1)+' die Mappe an die Steuerberatung. Diese Übersicht ist eine Arbeitsgrundlage und ersetzt keine steuerliche Beratung.</div>';
+  return h;
+}
+
+/* ---------- Anlagen mit Posten ---------- */
+function vAnl(){
+  var all=S.aktiv(data),used={};all.forEach(function(p){used[p.a]=1;});
+  var h=yearBar('<select class="sel" style="width:auto;padding:6px 8px;font-size:12px" onchange="T2.nur(this.value)">'+[["alle","alle Posten"],["offen","noch ohne Wert"],["ungeprueft","nicht geprüft"]].map(function(o){return '<option value="'+o[0]+'"'+(st.nur===o[0]?" selected":"")+">"+o[1]+"</option>";}).join("")+"</select>");
+  h+='<div class="filt" style="margin-top:-6px">'+'<button class="pill'+(st.anl==="alle"?" on":"")+'" onclick="T2.anl(\'alle\')">Alle</button>'+
+    S.ANLAGEN.filter(function(a){return used[a.k];}).map(function(a){return '<button class="pill'+(st.anl===a.k?" on":"")+'" onclick="T2.anl(\''+a.k+'\')">'+a.i+" "+esc(a.k==="ESt"?"Allgemein":a.k==="VF"?"V-FeWo":a.k==="SA"?"Vorsorge":a.k==="HA"?"§ 35a":a.k==="UST"?"USt":a.k==="KIND"?"Kind":a.k==="SON"?"Sonstiges":"Anlage "+a.k)+"</button>";}).join("")+"</div>";
+  var j=J(),list=all.filter(function(p){if(st.anl!=="alle"&&p.a!==st.anl)return false;var c=COMP[p.id];
+    if(st.nur==="offen")return !c||c.v==null;if(st.nur==="ungeprueft")return !j.ok[p.id];return true;});
+  if(!list.length)return h+'<div class="empty">Keine Posten in dieser Auswahl.</div>';
+  var last=null;
+  list.forEach(function(p){if(p.a!==last){last=p.a;var a=S.anlage(p.a),n=list.filter(function(x){return x.a===p.a;}).length;h+='<div class="agrp">'+a.i+" "+esc(a.n)+"<span>"+n+" Posten</span></div>";}h+=card(p);});
+  h+='<button class="btn ghost full" style="margin-top:8px" onclick="T2.addPost()">＋ Posten hinzufügen</button>';
+  return h;
+}
+function card(p){
+  var c=COMP[p.id]||{},v=VJ[p.id],j=J(),ok=!!j.ok[p.id],o=st.open[p.id]||"",e=p.e||"€";
+  var h='<div class="pst'+(ok?" ok":c.v!=null?" wert":"")+'" id="p_'+esc(p.id)+'"><div class="h"><div style="min-width:0"><b>'+esc(p.n)+"</b>"+(p.pers?'<span class="pers">'+esc(persName(p.pers))+"</span>":"")+
+    '<div class="s">'+S.QICON[p.q]+" "+esc(qText(p))+(c.info?" · "+esc(c.info):"")+(c.korr?' · <span style="color:#fbbf24">korrigiert, berechnet '+fmt(c.auto,e)+"</span>":"")+"</div></div>"+
+    '<div class="r"><div class="val'+(c.v==null?" leer":"")+'">'+(c.v==null?"offen":fmt(c.v,e))+'</div><div class="s">'+(v?(st.y-1)+": "+fmt(v.v,e)+(v.ref?"":" (berechnet)")+" "+delta(c.v,v.v):"kein Vorjahreswert")+"</div></div></div>";
+  if(p.q==="manuell")h+='<div style="margin-top:8px"><input class="inp" inputmode="decimal" placeholder="Wert '+st.y+(e!=="€"?" in "+e:" in €")+'" value="'+(j.m[p.id]!=null&&j.m[p.id]!==""?esc(e==="€"?C.num(+j.m[p.id],2):String(j.m[p.id]).replace(".",",")):"")+'" onchange="T2.wert(\''+p.id+'\',this.value)"></div>';
+  if(p.hint)h+='<div class="s" style="margin-top:6px;color:#a5b4fc">💡 '+esc(p.hint)+"</div>";
+  if(j.note[p.id]&&o!=="note")h+='<div class="s" style="margin-top:6px;color:#e2e8f0">📝 '+esc(j.note[p.id])+"</div>";
+  h+='<div class="acts"><button class="mini'+(ok?" on":"")+'" onclick="T2.ok(\''+p.id+'\')">'+(ok?"✓ geprüft":"☐ geprüft")+'</button><button class="mini" onclick="T2.open(\''+p.id+'\',\'note\')">📝 Notiz</button>'+
+    (c.list?'<button class="mini" onclick="T2.open(\''+p.id+'\',\'tx\')">💶 '+c.list.length+" Buchungen "+(o==="tx"?"▴":"▾")+"</button>":"")+
+    (p.q!=="manuell"?'<button class="mini" onclick="T2.open(\''+p.id+'\',\'korr\')">✏️ Korrektur</button>':"")+
+    '<button class="mini" onclick="T2.open(\''+p.id+'\',\'edit\')">⚙️ Einstellen</button></div>';
+  if(o==="note")h+='<div class="box"><textarea class="inp" rows="2" placeholder="Notiz für die Steuerberatung, z. B. Erläuterung oder fehlender Beleg" onchange="T2.note(\''+p.id+'\',this.value)">'+esc(j.note[p.id]||"")+"</textarea></div>";
+  if(o==="korr")h+='<div class="box"><div class="lbl">Wert '+st.y+' von Hand festlegen (überschreibt die Berechnung, z. B. laut Beleg)</div><input class="inp" inputmode="decimal" placeholder="leer = berechneter Wert" value="'+(j.m[p.id]!=null&&j.m[p.id]!==""?esc(String(j.m[p.id]).replace(".",",")):"")+'" onchange="T2.wert(\''+p.id+'\',this.value)"></div>';
+  if(o==="tx"&&c.list)h+='<div class="box">'+(c.list.length?'<div class="note" style="margin-bottom:6px">Haken entfernen, um eine Buchung für diesen Posten auszuschließen.</div><div class="txl">'+c.list.map(function(t){
+      return '<label class="tx'+(t.aus?" aus":"")+'"><input type="checkbox" '+(t.aus?"":"checked ")+'onchange="T2.ex(\''+p.id+'\',\''+esc(t.id)+'\',!this.checked)"><span class="m">'+esc(HAUS.de(t.d))+" · "+esc(t.p||"–")+"<div>"+esc(t.z||"")+" · "+esc(t.cat)+'</div></span><span class="b">'+eur(t.b)+"</span></label>";}).join("")+"</div>":'<div class="note">Keine passenden Buchungen in '+st.y+". Kategorien oder Suchwörter unter „Einstellen“ prüfen.</div>")+"</div>";
+  if(o==="edit")h+=editor(p);
+  return h+"</div>";
+}
+function qText(p){var c=p.c||{};
+  if(p.q==="haus")return S.HAUSF[c.f]||"Haus";if(p.q==="smoobu")return S.SMOOF[c.f]||"Ferienwohnung";if(p.q==="energie")return S.ENF[c.f]||"Energie";
+  if(p.q==="finanzen"){var a=[];if(c.cats&&c.cats.length)a.push(c.cats.join(", "));if(c.such)a.push("„"+c.such+"“");return "Finanzen"+(a.length?": "+a.join(" oder "):"")+(c.dir>0?" · Eingänge":c.dir<0?" · Ausgaben":"");}
+  if(p.q==="formel")return "Berechnet: "+((c.t||[]).map(function(t,i){var q=post(t.id),f=S.num(t.f);if(f==null)f=1;
+    return (i?(f<0?" − ":" + "):(f<0?"− ":""))+(Math.abs(f)!==1?C.num(Math.abs(f),Math.abs(f)%1?4:0).replace(/0+$/,"").replace(/,$/,"")+" × ":"")+(q?q.n:"?");}).join("")||"–");
+  return S.QUELLEN[p.q]||p.q;}
+function editor(p){
+  var c=p.c||{},f=function(l,i){return '<div><div class="lbl">'+l+"</div>"+i+"</div>";},sel=function(k,opts,cur){return '<select class="sel" onchange="T2.set(\''+p.id+'\',\''+k+'\',this.value)">'+opts.map(function(o){return '<option value="'+esc(o[0])+'"'+(String(cur)===String(o[0])?" selected":"")+">"+esc(o[1])+"</option>";}).join("")+"</select>";};
+  var h='<div class="box"><div class="g2">'+f("Bezeichnung",'<input class="inp" value="'+esc(p.n)+'" onchange="T2.set(\''+p.id+'\',\'n\',this.value)">')+
+    f("Anlage",sel("a",S.ANLAGEN.map(function(a){return [a.k,a.n];}),p.a))+
+    f("Person",sel("pers",[["","gemeinsam / ohne"]].concat(data.personen.map(function(x){return [x.k,x.n];})),p.pers||""))+
+    f("Einheit",sel("e",S.EINHEITEN.map(function(x){return [x,x];}),p.e||"€"))+"</div>"+
+    '<div style="margin-top:8px">'+f("Quelle",sel("q",Object.keys(S.QUELLEN).map(function(k){return [k,S.QICON[k]+" "+S.QUELLEN[k]];}),p.q))+"</div>";
+  if(p.q==="finanzen"){
+    var cats=S.finKategorien(CTX);
+    h+='<div class="g2" style="margin-top:8px">'+f("Richtung",sel("c.dir",[["-1","Ausgaben"],["1","Eingänge"],["0","beides (Saldo)"]],c.dir==null?-1:c.dir))+f("Konten",sel("c.ber",[["alle","alle Konten"],["privat","nur private"],["geschaeft","nur geschäftliche"]],c.ber||"alle"))+"</div>"+
+      '<div style="margin-top:8px"><div class="lbl">Kategorien aus Finanzen (eine reicht)</div><div class="catbox">'+(cats.length?cats.map(function(k){return '<label><input type="checkbox" '+((c.cats||[]).indexOf(k)>-1?"checked ":"")+'onchange="T2.cat(\''+p.id+'\',this.dataset.k,this.checked)" data-k="'+esc(k)+'">'+esc(k)+"</label>";}).join(""):'<span class="note">Noch keine Kategorien in Finanzen.</span>')+"</div></div>"+
+      '<div style="margin-top:8px">'+f("oder Suchwörter (Empfänger, Verwendungszweck)",'<input class="inp" value="'+esc(c.such||"")+'" placeholder="z. B. kindergarten hort" onchange="T2.set(\''+p.id+'\',\'c.such\',this.value)">')+"</div>"+
+      '<label class="note" style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" '+(c.ohneNeutral?"checked ":"")+'onchange="T2.set(\''+p.id+'\',\'c.ohneNeutral\',this.checked)"> Umbuchungen, Sparen und Privateinlagen nicht mitzählen</label>'+
+      ((c.ohne||[]).length?'<div class="note">Ausgenommen: '+c.ohne.map(esc).join(", ")+' <a href="#" style="color:#fbbf24" onclick="T2.set(\''+p.id+'\',\'c.ohne\',\'\');return false">aufheben</a></div>':"");}
+  if(p.q==="haus")h+='<div style="margin-top:8px">'+f("Kennzahl aus dem Bereich Haus",sel("c.f",[["","bitte wählen"]].concat(Object.keys(S.HAUSF).map(function(k){return [k,S.HAUSF[k]];})),c.f||""))+"</div>";
+  if(p.q==="smoobu")h+='<div style="margin-top:8px">'+f("Kennzahl aus Smoobu",sel("c.f",[["","bitte wählen"]].concat(Object.keys(S.SMOOF).map(function(k){return [k,S.SMOOF[k]];})),c.f||""))+"</div>";
+  if(p.q==="energie")h+='<div style="margin-top:8px">'+f("Kennzahl aus dem Bereich Energie",sel("c.f",[["","bitte wählen"]].concat(Object.keys(S.ENF).map(function(k){return [k,S.ENF[k]];})),c.f||""))+"</div>";
+  if(p.q==="fest")h+='<div style="margin-top:8px">'+f("Fester Wert",'<input class="inp" inputmode="decimal" value="'+esc(c.v!=null?String(c.v).replace(".",","):"")+'" onchange="T2.set(\''+p.id+'\',\'c.v\',this.value)">')+"</div>";
+  if(p.q==="formel"){var others=S.aktiv(data).filter(function(x){return x.id!==p.id;});
+    h+='<div style="margin-top:8px"><div class="lbl">Summe aus Faktor × Posten (z. B. 1 × Einnahmen, −1 × Ausgaben)</div>'+(c.t||[]).map(function(t,i){
+      return '<div class="g2" style="grid-template-columns:80px 1fr 30px;margin-bottom:6px"><input class="inp" inputmode="decimal" value="'+esc(String(t.f==null?1:t.f).replace(".",","))+'" onchange="T2.term(\''+p.id+'\','+i+',\'f\',this.value)"><select class="sel" onchange="T2.term(\''+p.id+'\','+i+',\'id\',this.value)">'+
+        others.map(function(o){return '<option value="'+esc(o.id)+'"'+(o.id===t.id?" selected":"")+">"+esc(o.n+(o.pers?" ("+persName(o.pers)+")":""))+"</option>";}).join("")+'</select><button class="x" onclick="T2.term(\''+p.id+'\','+i+',\'del\')" aria-label="Bestandteil entfernen">✕</button></div>';}).join("")+
+      '<button class="mini" onclick="T2.term(\''+p.id+'\',-1,\'add\')">＋ Bestandteil</button></div>';}
+  h+='<div style="margin-top:8px">'+f("Hinweis (erscheint am Posten und in der Mappe)",'<input class="inp" value="'+esc(p.hint||"")+'" onchange="T2.set(\''+p.id+'\',\'hint\',this.value)">')+"</div>";
+  h+='<div style="margin-top:8px">'+f("Wert laut Steuerbescheid "+(st.y-1)+" (Vorjahresvergleich, optional)",'<input class="inp" inputmode="decimal" value="'+esc(J(st.y-1).ref[p.id]!=null?String(J(st.y-1).ref[p.id]).replace(".",","):"")+'" onchange="T2.ref(\''+p.id+'\',this.value)">')+"</div>";
+  h+='<div style="display:flex;justify-content:space-between;margin-top:10px"><span class="note">Änderungen werden sofort gespeichert.</span><button class="mini" style="color:#ff8a80" onclick="T2.delPost(\''+p.id+'\')">Posten löschen</button></div></div>';
+  return h;
+}
+
+/* ---------- Belege ---------- */
+function vBelege(){
+  var j=J(),bl=belegListe(),h=yearBar();
+  h+='<div class="note" style="margin-bottom:10px">Was für '+st.y+' gebraucht wird. Die Belege selbst bleiben bei dir – hier wird nur abgehakt, was beisammen ist.</div>';
+  var last=null,inner="";
+  bl.sort(function(a,b){return S.ANLAGEN.map(function(x){return x.k;}).indexOf(a.a)-S.ANLAGEN.map(function(x){return x.k;}).indexOf(b.a);}).forEach(function(b){
+    if(b.a!==last){if(inner)h+='<div class="panel">'+inner+"</div>";inner='<h3>'+S.anlage(b.a).i+" "+esc(S.anlage(b.a).n)+"</h3>";last=b.a;}
+    var own=!S.BELEGE_STD.some(function(x){return x.id===b.id;});
+    inner+='<label class="chk"><input type="checkbox" '+(j.belege[b.id]?"checked ":"")+'onchange="T2.beleg(\''+esc(b.id)+'\',this.checked)"><span class="t">'+esc(b.n)+"</span>"+
+      '<button class="x" onclick="event.preventDefault();T2.belegWeg(\''+esc(b.id)+'\','+own+')" aria-label="Beleg entfernen">✕</button></label>';});
+  if(inner)h+='<div class="panel">'+inner+"</div>";
+  h+='<div class="panel"><h3>Weiteren Beleg aufnehmen</h3><div class="g2"><input class="inp" id="nbN" placeholder="Bezeichnung"><select class="sel" id="nbA">'+S.ANLAGEN.map(function(a){return '<option value="'+a.k+'">'+esc(a.n)+"</option>";}).join("")+'</select></div><button class="mini" style="margin-top:8px" onclick="T2.belegNeu()">＋ Aufnehmen</button>'+
+    (Object.keys(data.belegeAus).length?'<div class="note" style="margin-top:8px">'+Object.keys(data.belegeAus).length+' Standard-Belege ausgeblendet · <a href="#" style="color:#c4b5fd" onclick="T2.belegeAlle();return false">wieder einblenden</a></div>':"")+"</div>";
+  return h;
+}
+
+/* ---------- Fragen an die Steuerberatung ---------- */
+function vFragen(){
+  var list=data.offen.filter(function(x){return !x.del;}).sort(function(a,b){return (a.done?1:0)-(b.done?1:0)||(b.upd||0)-(a.upd||0);});
+  var h='<div class="note" style="margin-bottom:10px">Fragen und Auffälligkeiten für die Steuerberatung. Offene Fragen erscheinen in der Mappe.</div>';
+  h+=list.length?list.map(function(x){return '<div class="frage'+(x.done?" done":"")+'"><div class="small muted" style="margin-bottom:4px">'+S.anlage(x.a).i+" "+esc(S.anlage(x.a).n)+(x.y?" · "+x.y:"")+'</div><div class="t">'+esc(x.t)+"</div>"+
+    '<textarea class="inp" rows="2" style="margin-top:8px;font-size:12px" placeholder="Antwort / Ergebnis" onchange="T2.frage(\''+x.id+'\',\'antwort\',this.value)">'+esc(x.antwort||"")+"</textarea>"+
+    '<div class="acts"><button class="mini'+(x.done?" on":"")+'" onclick="T2.frage(\''+x.id+'\',\'done\','+(!x.done)+')">'+(x.done?"✓ geklärt":"☐ geklärt")+'</button><button class="mini" style="color:#ff8a80" onclick="T2.frageWeg(\''+x.id+'\')">löschen</button></div></div>';}).join(""):'<div class="empty">Keine Fragen.</div>';
+  h+='<div class="panel"><h3>Neue Frage</h3><textarea class="inp" id="nfT" rows="3" placeholder="Frage oder Auffälligkeit"></textarea><div class="g2" style="margin-top:8px"><select class="sel" id="nfA">'+S.ANLAGEN.map(function(a){return '<option value="'+a.k+'">'+esc(a.n)+"</option>";}).join("")+'</select><button class="btn" style="background:#8b5cf6" onclick="T2.frageNeu()">＋ Aufnehmen</button></div></div>';
+  return h;
+}
+
+/* ---------- Mappe ---------- */
+function vMappe(){
+  var s=S.status(data,st.y,COMP),bl=belegListe(),bok=bl.filter(function(b){return J().belege[b.id];}).length,of=data.offen.filter(function(x){return !x.del&&!x.done;}).length,fehl=S.aktiv(data).filter(function(p){return !COMP[p.id]||COMP[p.id].v==null;});
+  var h=yearBar();
+  h+='<div class="panel"><h3>📄 Unterlagen '+st.y+' für die Steuerberatung</h3><div class="note" style="margin-bottom:12px">Alle Posten je Anlage mit Vorjahresvergleich, offene Fragen, Stand der Belege und die Einzelaufstellung der Kontobuchungen. Druckfertig → „Als PDF speichern“.</div>'+
+    '<div class="kv"><span>Posten mit Wert</span><span>'+s.tot.wert+" / "+s.tot.n+'</span></div><div class="kv"><span>Geprüft</span><span>'+s.tot.ok+" / "+s.tot.n+'</span></div><div class="kv"><span>Belege beisammen</span><span>'+bok+" / "+bl.length+'</span></div><div class="kv"><span>Offene Fragen</span><span>'+of+"</span></div>"+
+    '<label class="note" style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="mpTx" checked> Einzelaufstellung der Kontobuchungen anhängen</label>'+
+    '<div class="row2" style="margin-top:12px"><button class="btn" style="background:#8b5cf6" onclick="T2.doc()">📄 Unterlagen erstellen</button><button class="btn ghost" style="flex:0 0 auto" onclick="T2.csv()">⬇ CSV</button></div></div>';
+  if(fehl.length)h+='<div class="panel"><h3>Noch ohne Wert ('+fehl.length+")</h3>"+fehl.map(function(p){return '<div class="arow" onclick="T2.goPost(\''+p.id+'\')"><div class="i">'+S.anlage(p.a).i+'</div><div class="n">'+esc(p.n)+(p.pers?' <span class="pers">'+esc(persName(p.pers))+"</span>":"")+"<div>"+esc((COMP[p.id]||{}).info||"")+'</div></div><div class="small muted">›</div></div>';}).join("")+"</div>";
+  return h;
+}
+function docHtml(withTx){
+  var y=st.y,j=J(),raw=function(v,e){return fmt(v,e,true);},pers=data.personen.map(function(p){return p.n;}).join(" und ");
+  var h='<div class="doc"><h1>Unterlagen zur Steuererklärung '+y+'</h1><div class="sub">'+(pers?esc(pers)+" · ":"")+"erstellt am "+new Date().toLocaleDateString("de-DE")+" · Arbeitsgrundlage aus dem persönlichen Cockpit</div>";
+  h+='<div class="box"><b>Lesehilfe:</b> „'+(y-1)+'“ ist der Wert laut Steuerberechnung des Vorjahres (sonst aus den Daten berechnet, mit * markiert). Quelle „Finanzen“ = Summe der Kontobuchungen nach Buchungsdatum (Einzelaufstellung im Anhang), „Haus“ = Aufteilung der Hauskosten wie in der Nebenkostenabrechnung, „Smoobu“ = Buchungen der Ferienwohnung. ✓ = von uns geprüft. Angaben ohne Gewähr, bitte mit den Belegen abgleichen.</div>';
+  var all=S.aktiv(data);
+  h+="<h2>1. Posten je Anlage</h2>";
+  S.ANLAGEN.forEach(function(a){var l=all.filter(function(p){return p.a===a.k;});if(!l.length)return;
+    h+="<h3>"+a.i+" "+esc(a.n)+'</h3><table><tr><th>Posten</th><th>Person</th><th class="r">'+y+'</th><th class="r">'+(y-1)+'</th><th>Quelle / Erläuterung</th><th class="r">✓</th></tr>';
+    l.forEach(function(p){var c=COMP[p.id]||{},v=VJ[p.id],e=p.e||"€";
+      h+="<tr><td>"+esc(p.n)+"</td><td>"+esc(persName(p.pers)||"")+'</td><td class="r"><b>'+(c.v==null?"fehlt":raw(c.v,e))+'</b></td><td class="r">'+(v?raw(v.v,e)+(v.ref?"":"*"):"–")+"</td><td>"+esc(qText(p))+
+        (c.info?'<div class="info">'+esc(c.info)+"</div>":"")+(c.korr?'<div class="info">von Hand korrigiert, berechnet '+raw(c.auto,e)+"</div>":"")+(p.hint?'<div class="info">'+esc(p.hint)+"</div>":"")+(j.note[p.id]?'<div class="info"><b>Notiz:</b> '+esc(j.note[p.id])+"</div>":"")+
+        '</td><td class="r">'+(j.ok[p.id]?"✓":"")+"</td></tr>";});
+    h+="</table>";});
+  var of=data.offen.filter(function(x){return !x.del;});
+  h+="<h2>2. Fragen und Auffälligkeiten</h2>"+(of.length?"<table><tr><th>Bereich</th><th>Frage</th><th>Stand</th></tr>"+of.map(function(x){return "<tr><td>"+esc(S.anlage(x.a).n)+(x.y?"<br>"+x.y:"")+'</td><td style="white-space:pre-wrap">'+esc(x.t)+"</td><td>"+(x.done?"geklärt"+(x.antwort?": "+esc(x.antwort):""):"offen"+(x.antwort?"<br>"+esc(x.antwort):""))+"</td></tr>";}).join("")+"</table>":"<p>Keine.</p>");
+  var bl=belegListe();
+  h+="<h2>3. Belege</h2><table><tr><th>Beleg</th><th>Bereich</th><th>Stand</th></tr>"+bl.map(function(b){return "<tr><td>"+esc(b.n)+"</td><td>"+esc(S.anlage(b.a).n)+"</td><td>"+(j.belege[b.id]?"liegt vor":"<b>fehlt noch</b>")+"</td></tr>";}).join("")+"</table>";
+  if(withTx){var fl=all.filter(function(p){var c=COMP[p.id];return c&&c.list&&c.list.some(function(t){return !t.aus;});});
+    if(fl.length){h+='<h2 class="pb">4. Einzelaufstellung Kontobuchungen</h2>';
+      fl.forEach(function(p){var c=COMP[p.id],l=c.list.filter(function(t){return !t.aus;});
+        h+="<h3>"+esc(p.n)+(p.pers?" · "+esc(persName(p.pers)):"")+' <span class="sub">('+l.length+" Buchungen, Summe "+raw(c.auto!=null?c.auto:c.v,"€")+')</span></h3><table><tr><th>Datum</th><th>Empfänger / Auftraggeber</th><th>Verwendungszweck</th><th class="r">Betrag</th></tr>'+
+          l.map(function(t){return "<tr><td>"+HAUS.de(t.d)+"</td><td>"+esc(t.p||"")+"</td><td>"+esc(String(t.z||"").slice(0,90))+'</td><td class="r">'+C.eurRaw(t.b)+"</td></tr>";}).join("")+"</table>";});}}
+  return h+"</div>";
+}
+
+/* ---------- Einstellungen ---------- */
+function vEinst(){
+  var h='<div class="panel"><h3>Personen</h3>'+(data.personen.length?data.personen.map(function(p,i){return '<div class="g2" style="grid-template-columns:1fr 34px;margin-bottom:8px"><input class="inp" value="'+esc(p.n)+'" onchange="T2.person('+i+',this.value)" aria-label="Name"><button class="x" onclick="T2.personWeg('+i+')" aria-label="Person entfernen">✕</button></div>';}).join(""):'<div class="note">Noch keine Personen.</div>')+
+    '<button class="mini" onclick="T2.personNeu()">＋ Person</button><div class="note" style="margin-top:8px">Nur Vornamen o. Ä. – keine Steuer-ID oder Steuernummer im Cockpit.</div></div>';
+  h+='<div class="panel"><h3>Posten ('+S.aktiv(data).length+')</h3><div class="note" style="margin-bottom:8px">Bearbeiten direkt am Posten unter „Anlagen“ → „⚙️ Einstellen“.</div><button class="btn ghost full" onclick="T2.addPost()">＋ Neuer Posten</button></div>';
+  h+='<div class="panel"><h3>📥 Startdatei importieren</h3><div class="note" style="margin-bottom:10px">Liest eine Startdatei (z. B. „steuer-start.json“) ein: Personen, Posten mit ihren Quellen, Vorjahreswerte und Fragen. Einträge mit gleicher Kennung werden überschrieben, alles andere bleibt.</div>'+
+    '<label class="btn ghost full" style="display:block;text-align:center;cursor:pointer">Datei auswählen<input type="file" accept=".json,application/json" onchange="T2.imp(this)"></label></div>';
+  h+='<div class="note">Die Werte kommen aus den Bereichen Finanzen, Haus, Ferienwohnung und Energie auf diesem Gerät. Die Mappe ist eine Arbeitsgrundlage für die Steuerberatung und keine Steuererklärung.</div>';
+  return h;
+}
+
+/* ---------- Aktionen ---------- */
+function setPath(o,k,v){if(k.indexOf("c.")===0){o.c=o.c||{};o.c[k.slice(2)]=v;}else o[k]=v;}
+function upd(p){p.upd=Date.now();persist();render();}
+window.T2={
+  tab:function(t){st.tab=t;render();window.scrollTo(0,0);},
+  yr:function(d){st.y+=d;render();},
+  anl:function(a){st.anl=a;render();},
+  nur:function(v){st.nur=v;render();},
+  goAnl:function(a){st.anl=a;st.tab="anlagen";render();window.scrollTo(0,0);},
+  goPost:function(id){var p=post(id);if(!p)return;st.anl=p.a;st.nur="alle";st.tab="anlagen";render();var el=document.getElementById("p_"+id);if(el)el.scrollIntoView({block:"center"});},
+  open:function(id,w){st.open[id]=st.open[id]===w?"":w;render();},
+  wert:function(id,v){var j=J(),n=pnum(v);if(n==null)delete j.m[id];else j.m[id]=n;touchY();persist();render();},
+  ok:function(id){var j=J();if(j.ok[id])delete j.ok[id];else j.ok[id]=true;touchY();persist();render();},
+  note:function(id,v){var j=J();if(v.trim())j.note[id]=v.trim();else delete j.note[id];touchY();persist();render();},
+  ex:function(id,tx,aus){var j=J(),l=j.ex[id]=(j.ex[id]||[]).filter(function(x){return x!==tx;});if(aus)l.push(tx);if(!l.length)delete j.ex[id];touchY();persist();render();},
+  ref:function(id,v){var j=J(st.y-1),n=pnum(v);if(n==null)delete j.ref[id];else j.ref[id]=n;touchY(st.y-1);persist();render();},
+  set:function(id,k,v){var p=post(id);if(!p)return;
+    if(k==="c.dir")v=+v;if(k==="c.v")v=pnum(v);if(k==="c.ohne")v=[];
+    if(k==="q"&&v!==p.q){p.c={};if(v==="finanzen")p.c={dir:-1,ber:"alle",cats:[],such:""};if(v==="formel")p.c={t:[]};}
+    setPath(p,k,v);upd(p);},
+  cat:function(id,k,on){var p=post(id);if(!p)return;p.c=p.c||{};var l=(p.c.cats||[]).filter(function(x){return x!==k;});if(on)l.push(k);p.c.cats=l;upd(p);},
+  term:function(id,i,k,v){var p=post(id);if(!p)return;p.c=p.c||{};var t=p.c.t=p.c.t||[];
+    if(k==="add"){var o=S.aktiv(data).filter(function(x){return x.id!==id;})[0];if(!o)return;t.push({id:o.id,f:1});}
+    else if(k==="del")t.splice(i,1);else if(k==="f")t[i].f=pnum(v)==null?1:pnum(v);else t[i][k]=v;upd(p);},
+  addPost:function(){var id="p"+Date.now().toString(36),a=st.anl!=="alle"?st.anl:"SON";data.posten.push({id:id,a:a,n:"Neuer Posten",pers:"",q:"manuell",c:{},e:"€",ord:999,upd:Date.now()});
+    st.open[id]="edit";st.tab="anlagen";st.anl=a;st.nur="alle";persist();render();var el=document.getElementById("p_"+id);if(el)el.scrollIntoView({block:"center"});},
+  delPost:function(id){if(!confirm("Diesen Posten löschen?"))return;var p=post(id);p.del=true;upd(p);},
+  beleg:function(id,on){var j=J();if(on)j.belege[id]=true;else delete j.belege[id];touchY();persist();render();},
+  belegWeg:function(id,own){if(own){data.belege.forEach(function(b){if(b.id===id){b.del=true;b.upd=Date.now();}});}else{data.belegeAus[id]=true;data.einst.upd=Date.now();}persist();render();},
+  belegeAlle:function(){data.belegeAus={};data.einst.upd=Date.now();persist();render();},
+  belegNeu:function(){var n=document.getElementById("nbN").value.trim(),a=document.getElementById("nbA").value;if(!n)return;data.belege.push({id:"b"+Date.now().toString(36),n:n,a:a,upd:Date.now()});persist();render();},
+  frage:function(id,k,v){data.offen.forEach(function(x){if(x.id===id){x[k]=v;x.upd=Date.now();}});persist();render();},
+  frageWeg:function(id){if(!confirm("Frage löschen?"))return;T2.frage(id,"del",true);},
+  frageNeu:function(){var t=document.getElementById("nfT").value.trim(),a=document.getElementById("nfA").value;if(!t)return;data.offen.push({id:"f"+Date.now().toString(36),t:t,a:a,y:st.y,upd:Date.now()});persist();render();},
+  person:function(i,v){data.personen[i].n=v.trim();data.einst.upd=Date.now();persist();render();},
+  personNeu:function(){data.personen.push({k:"p"+Date.now().toString(36),n:"Person "+(data.personen.length+1)});data.einst.upd=Date.now();persist();render();},
+  personWeg:function(i){if(!confirm("Person entfernen? Die Posten bleiben, nur ohne Zuordnung."))return;data.personen.splice(i,1);data.einst.upd=Date.now();persist();render();},
+  doc:function(){var tx=document.getElementById("mpTx");document.getElementById("docOverlay").innerHTML='<div class="doc-bar"><button class="btn" onclick="window.print()">🖨 Drucken / als PDF speichern</button><button class="btn ghost" onclick="T2.closeDoc()">Schließen</button><span class="small" style="opacity:.7">Im Druckdialog „Als PDF speichern“ wählen.</span></div>'+docHtml(!tx||tx.checked);
+    document.body.classList.add("doc-on");window.scrollTo(0,0);},
+  closeDoc:function(){document.body.classList.remove("doc-on");document.getElementById("docOverlay").innerHTML="";},
+  csv:function(){var j=J(),rows=[["Anlage","Posten","Person","Einheit",String(st.y),String(st.y-1),"Quelle","Info","geprüft","Notiz"]];
+    S.aktiv(data).forEach(function(p){var c=COMP[p.id]||{},v=VJ[p.id];rows.push([S.anlage(p.a).n,p.n,persName(p.pers),p.e||"€",c.v,v?v.v:"",qText(p),c.info||"",j.ok[p.id]?"ja":"",j.note[p.id]||""]);});
+    C.downloadText("steuer-"+st.y+".csv","﻿"+rows.map(function(r){return r.map(function(v){return typeof v==="number"?String(v).replace(".",","):v==null?"":'"'+String(v).replace(/"/g,'""')+'"';}).join(";");}).join("\n"),"text/csv");},
+  imp:function(inp){var f=inp.files&&inp.files[0];inp.value="";if(!f)return;C.readFile(f).then(function(t){var o=JSON.parse(t);
+      if(!o||o.schema!=="cockpit-steuer-start/1")throw new Error("Keine Steuer-Startdatei");
+      var now=Date.now(),rep=function(list,items){(items||[]).forEach(function(x){x.upd=now;for(var i=list.length-1;i>=0;i--)if(list[i].id===x.id)list.splice(i,1);list.push(x);});};
+      if(Array.isArray(o.personen)&&o.personen.length){data.personen=o.personen;data.einst.upd=now;}
+      rep(data.posten,o.posten);rep(data.belege,o.belege);rep(data.offen,o.offen);
+      Object.keys(o.jahre||{}).forEach(function(y){var cur=J(y),n=o.jahre[y];["m","ok","note","ex","ref","belege"].forEach(function(k){if(n[k])cur[k]=Object.assign({},cur[k],n[k]);});cur.upd=now;});
+      persist();flash("✓ Startdaten eingelesen: "+(o.posten||[]).length+" Posten, "+(o.offen||[]).length+" Fragen");})
+    .catch(function(e){flash("⚠ "+(e.message||"Datei konnte nicht gelesen werden"),true);});}
+};
+document.addEventListener("keydown",function(e){if(e.key==="Escape"&&document.body.classList.contains("doc-on"))T2.closeDoc();});
+render();
+C.autoPull([AREA,"finanzen","haus","ferienwohnung","energie"],function(a,d){if(a===AREA)data=norm(d);render();});
+})();
+</script>
+</body>
+</html>
