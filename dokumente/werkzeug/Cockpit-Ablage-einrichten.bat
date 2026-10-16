@@ -19,42 +19,39 @@ set "SKRIPT=%HIER%cockpit_ablage.py"
 if not exist "%SKRIPT%" goto :keinskript
 if not exist "%HIER%ablage.py" echo  WARNUNG: ablage.py liegt nicht in diesem Ordner - beide Dateien muessen zusammen liegen.
 
-rem --- Python finden: bevorzugt das Python, in dem "anthropic" installiert ist -
+rem --- Python finden ----------------------------------------------------------
+rem  Alle Kandidaten werden ausprobiert; bevorzugt wird das Python, in dem das
+rem  Paket "anthropic" installiert ist (also das, mit dem ablage.py laeuft).
+rem  Auch Python aus dem Microsoft Store (WindowsApps) wird beruecksichtigt.
+pushd "%HIER%"
 set "PYEXE="
 set "PYARG="
-set "P1="
-set "P2="
-for /f "delims=" %%i in ('where python.exe 2^>nul ^| findstr /v /i "WindowsApps"') do if not defined P1 set "P1=%%i"
-for /f "delims=" %%i in ('where py.exe 2^>nul') do if not defined P2 set "P2=%%i"
-if not defined P1 goto :py2
-"%P1%" -c "import anthropic" >nul 2>&1
-if errorlevel 1 goto :py2
-set "PYEXE=%P1%"
-goto :pyok
-:py2
-if not defined P2 goto :pyfallback
-"%P2%" -3 -c "import anthropic" >nul 2>&1
-if errorlevel 1 goto :pyfallback
-set "PYEXE=%P2%"
-set "PYARG=-3"
-goto :pyok
-:pyfallback
-if defined P1 set "PYEXE=%P1%"
-if not defined PYEXE if defined P2 set "PYEXE=%P2%"
-if not defined PYEXE goto :keinpython
-if not defined P1 set "PYARG=-3"
-echo  WARNUNG: Das Python-Paket "anthropic" fehlt. Bitte einmal ausfuehren:
+set "FALLBACK="
+set "FALLARG="
+if exist "verarbeiten.bat" for /f "usebackq tokens=1" %%t in (`findstr /i /c:"ablage.py" "verarbeiten.bat"`) do if exist "%%~t" call :probe "%%~t" ""
+for /f "delims=" %%i in ('where python.exe 2^>nul') do call :probe "%%i" ""
+for /f "delims=" %%i in ('where python3.exe 2^>nul') do call :probe "%%i" ""
+for /f "delims=" %%i in ('where py.exe 2^>nul') do call :probe "%%i" "-3"
+for /d %%d in ("%LOCALAPPDATA%\Programs\Python\Python3*") do if exist "%%d\python.exe" call :probe "%%d\python.exe" ""
+for /d %%d in ("%ProgramFiles%\Python3*") do if exist "%%d\python.exe" call :probe "%%d\python.exe" ""
+for /d %%d in ("C:\Python3*") do if exist "%%d\python.exe" call :probe "%%d\python.exe" ""
+popd
+if defined PYEXE goto :pygefunden
+if not defined FALLBACK goto :keinpython
+set "PYEXE=%FALLBACK%"
+set "PYARG=%FALLARG%"
+echo  WARNUNG: Python gefunden, aber das Paket "anthropic" fehlt dort. Bitte einmal ausfuehren:
 echo           "%PYEXE%" %PYARG% -m pip install anthropic pypdf
-:pyok
+:pygefunden
 echo  Python:    %PYEXE% %PYARG%
 
 rem --- Link-Typ cockpit-ablage:// registrieren ------------------------------
-set "KEY=HKCU\Software\Classes\cockpit-ablage"
-reg add "%KEY%" /ve /t REG_SZ /d "URL:Cockpit Ablage" /f >nul
+set "REGKEY=HKCU\Software\Classes\cockpit-ablage"
+reg add "%REGKEY%" /ve /t REG_SZ /d "URL:Cockpit Ablage" /f >nul
 if errorlevel 1 goto :regfehler
-reg add "%KEY%" /v "URL Protocol" /t REG_SZ /d "" /f >nul
+reg add "%REGKEY%" /v "URL Protocol" /t REG_SZ /d "" /f >nul
 if errorlevel 1 goto :regfehler
-reg add "%KEY%\shell\open\command" /ve /t REG_SZ /d "\"%PYEXE%\" %PYARG% \"%SKRIPT%\" \"%%1\"" /f >nul
+reg add "%REGKEY%\shell\open\command" /ve /t REG_SZ /d "\"%PYEXE%\" %PYARG% \"%SKRIPT%\" \"%%1\"" /f >nul
 if errorlevel 1 goto :regfehler
 echo  Link-Typ:  cockpit-ablage:// eingerichtet
 
@@ -137,6 +134,25 @@ echo  "Verbindung testen" tippen. Chrome fragt einmal, ob cockpit-ablage
 echo  geoeffnet werden darf: "Immer zulassen" anhaken und oeffnen.
 goto :ende
 
+rem --- Unterprogramm: Python-Kandidaten pruefen ---------------------------------
+rem  Parameter: Programm und Zusatzargument (z. B. -3 fuer py.exe)
+:probe
+if defined PYEXE goto :eof
+set "PC=%~1"
+set "PA=%~2"
+"%PC%" %PA% -c "import anthropic" >nul 2>&1
+if errorlevel 1 goto :probe2
+set "PYEXE=%PC%"
+set "PYARG=%PA%"
+goto :eof
+:probe2
+if defined FALLBACK goto :eof
+"%PC%" %PA% -c "import sys" >nul 2>&1
+if errorlevel 1 goto :eof
+set "FALLBACK=%PC%"
+set "FALLARG=%PA%"
+goto :eof
+
 :keinskript
 echo  FEHLER: cockpit_ablage.py liegt nicht im selben Ordner wie diese Datei:
 echo          %HIER%
@@ -144,8 +160,10 @@ goto :ende
 
 :keinpython
 echo  FEHLER: Python wurde nicht gefunden.
-echo  Bitte Python von python.org installieren - beim Setup den Haken bei
-echo  "Add python.exe to PATH" setzen - und diese Datei erneut starten.
+if exist "%HIER%verarbeiten.bat" echo  So startet deine verarbeiten.bat Python - bitte ein Foto davon schicken:
+if exist "%HIER%verarbeiten.bat" findstr /i /c:"py" "%HIER%verarbeiten.bat" | findstr /v /i "KEY"
+echo  Falls Python fehlt: von python.org installieren, beim Setup den Haken bei
+echo  "Add python.exe to PATH" setzen und diese Datei erneut starten.
 goto :ende
 
 :regfehler
