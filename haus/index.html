@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0e1a">
+<title>Cockpit · Haus</title>
+<link rel="manifest" href="../manifest.webmanifest">
+<link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/style.css">
+<style>
+.filt{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px;}
+.yr{display:flex;align-items:center;background:var(--panel);border:1px solid var(--border);border-radius:10px;}
+.yr button{background:none;border:none;color:var(--muted);font-size:19px;padding:4px 12px;cursor:pointer;}
+.yr b{color:#fff;min-width:44px;text-align:center;}
+.pill{border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:20px;padding:6px 12px;font-size:12px;cursor:pointer;}
+.pill.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:700;}
+.row{display:flex;justify-content:space-between;gap:10px;padding:10px 2px;font-size:13px;border-top:1px solid #152038;align-items:flex-start;}
+.row:first-child{border-top:none;}
+.row .l{min-width:0;flex:1;}
+.row .l b{color:#fff;font-size:13px;}
+.row .s{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.5;}
+.row .r{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;}
+.pos{border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px;background:var(--panel2);}
+.pos .h{display:flex;justify-content:space-between;gap:8px;align-items:baseline;margin-bottom:8px;}
+.pos .h b{color:#fff;font-size:14px;}
+.pos .h span{font-size:11px;color:var(--muted);}
+.g3{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.inp,.sel,textarea.inp{width:100%;background:var(--field);border:1px solid var(--border);border-radius:8px;padding:9px 10px;color:#fff;font-size:14px;}
+.inp:focus,.sel:focus{outline:none;border-color:var(--accent);}
+.lbl{font-size:11px;color:var(--muted);margin:0 0 4px;}
+.chk{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5;}
+.chk b{color:#cbd5e1;}
+.up{color:#ff8a80;} .dn{color:#69f0ae;}
+.note{font-size:11px;color:var(--muted);line-height:1.6;}
+.warnbox{border:1px solid #ff980066;background:#1a1000;color:#ffcc80;border-radius:10px;padding:10px 12px;font-size:12px;line-height:1.6;margin-bottom:14px;}
+table.t{width:100%;border-collapse:collapse;font-size:12px;}
+table.t th{text-align:right;color:var(--muted);font-weight:500;padding:6px 4px;border-bottom:1px solid var(--border);font-size:11px;}
+table.t th:first-child,table.t td:first-child{text-align:left;}
+table.t td{padding:7px 4px;border-bottom:1px solid #152038;text-align:right;font-variant-numeric:tabular-nums;}
+table.t tr.sum td{font-weight:700;color:#fff;border-top:1px solid var(--border);}
+.tscroll{overflow-x:auto;margin:0 -4px;padding:0 4px;}
+.big{font-size:26px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums;}
+.mini{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;}
+.x{background:none;border:none;color:#3a4a6a;font-size:16px;cursor:pointer;}
+.unit{font-size:12px;color:#fdba74;font-weight:700;letter-spacing:.05em;margin:14px 0 6px;}
+.bel{border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px;background:var(--panel2);}
+.bel.miete{border-left:4px solid #fb923c;} .bel.fewo{border-left:4px solid #2dd4bf;} .bel.eigen{border-left:4px solid #64748b;} .bel.leer{border-left:4px dashed #475569;}
+.badge{display:inline-block;font-size:10px;border-radius:8px;padding:2px 7px;margin-left:6px;vertical-align:middle;}
+.b-miete{background:#fb923c22;color:#fdba74;} .b-fewo{background:#2dd4bf22;color:#5eead4;} .b-eigen{background:#64748b33;color:#cbd5e1;} .b-leer{background:#47556933;color:#94a3b8;}
+input[type=file]{display:none;}
+/* Abrechnung als Dokument (Bildschirm-Overlay, beim Drucken nur das Dokument) */
+#docOverlay{display:none;}
+body.doc-on #docOverlay{display:block;position:fixed;inset:0;z-index:50;overflow:auto;background:#e9edf3;padding:0 0 40px;}
+body.doc-on .wrap{display:none;}
+.doc-bar{position:sticky;top:0;display:flex;gap:8px;align-items:center;padding:10px 14px;background:#0d1829;color:#fff;z-index:2;}
+.doc{background:#fff;color:#111827;max-width:820px;margin:16px auto;padding:34px 38px;font-size:12px;line-height:1.5;box-shadow:0 2px 12px rgba(0,0,0,.15);}
+.doc h1{font-size:18px;margin:18px 0 2px;color:#111827;}
+.doc h2{font-size:13px;margin:20px 0 6px;color:#111827;border-bottom:1.5px solid #111827;padding-bottom:3px;}
+.doc .sub{color:#4b5563;font-size:11px;}
+.doc .absender{font-size:10px;color:#4b5563;border-bottom:1px solid #d1d5db;padding-bottom:2px;margin-bottom:6px;display:inline-block;}
+.doc .kopf{display:flex;justify-content:space-between;gap:20px;}
+.doc table{width:100%;border-collapse:collapse;}
+.doc th{text-align:left;font-weight:600;color:#374151;border-bottom:1px solid #9ca3af;padding:4px 5px;font-size:10.5px;}
+.doc td{padding:4px 5px;border-bottom:1px solid #e5e7eb;vertical-align:top;color:#111827;font-size:11px;}
+.doc .r{text-align:right;white-space:nowrap;}
+.doc tr.tot td{font-weight:700;border-top:1.5px solid #111827;border-bottom:none;}
+.doc .erg{margin-top:14px;padding:10px 12px;border:1.5px solid #111827;border-radius:6px;font-size:13px;display:flex;justify-content:space-between;font-weight:700;}
+.doc .box{background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px;padding:9px 11px;margin-top:12px;font-size:10.5px;color:#374151;}
+@media print{
+  @page{size:A4;margin:16mm 14mm;}
+  body{background:#fff!important;padding:0!important;}
+  :root{padding:0!important;}
+  body.doc-on .doc-bar{display:none!important;}
+  body.doc-on #docOverlay{position:static;background:#fff;padding:0;overflow:visible;}
+  .doc{box-shadow:none;max-width:none;padding:0;margin:0;}
+  .doc tr{page-break-inside:avoid;}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div id="top"></div>
+<nav class="tabs" id="tabs"></nav>
+<div class="content" id="main"></div>
+</div>
+<div id="docOverlay"></div>
+<script src="../assets/cockpit.js"></script>
+<script src="logic.js"></script>
+<script>
+(function(){
+"use strict";
+var C=window.Cockpit,HS=window.HAUS,AREA="haus";
+
+/* Datenmodell (privat, im Daten-Repo):
+   einheiten [{k,n,flaeche}], belegung [{id,unit,art,name,von,bis,personen,vz,pquelle,pfix,such,anrede,upd,del}],
+   jahre {Jahr:{kosten:{k:{betrag,s,such,info}},extra:[],strompreis,zaehler:{unit:[{d,v}]},flaechen,fewoFix,vzIst:{id:betrag},neueVz:{id:{betrag,ab}},versandt:{id:datum},wasserHZ,notiz,upd}},
+   einst {vermieter,objekt,bank,frist,apt,upd} */
+function blank(){return {einheiten:[],belegung:[],jahre:{},einst:{}};}
+function norm(d){d=d&&typeof d==="object"?d:blank();if(!Array.isArray(d.einheiten))d.einheiten=[];if(!Array.isArray(d.belegung))d.belegung=[];if(!d.jahre||typeof d.jahre!=="object")d.jahre={};if(!d.einst||typeof d.einst!=="object")d.einst={};return d;}
+function clone(x){return JSON.parse(JSON.stringify(x));}
+function merge(l,r){l=norm(clone(l));r=norm(clone(r));var o=blank(),by={};
+  r.belegung.concat(l.belegung).forEach(function(b){var a=by[b.id];if(!a||(b.upd||0)>=(a.upd||0))by[b.id]=b;});o.belegung=Object.keys(by).map(function(k){return by[k];});
+  Object.keys(Object.assign({},r.jahre,l.jahre)).forEach(function(y){var a=l.jahre[y],b=r.jahre[y];o.jahre[y]=!a?b:!b?a:((a.upd||0)>=(b.upd||0)?a:b);});
+  var newer=(l.einst.upd||0)>=(r.einst.upd||0)?l:r;o.einst=newer.einst;o.einheiten=(newer.einheiten.length?newer:(l.einheiten.length?l:r)).einheiten;
+  o._summary=summaryFor(o);return o;}
+C.registerMerge(AREA,merge);
+
+var data=norm(C.getLocal(AREA,blank));
+var NOW=new Date().getFullYear();
+var st={tab:"uebersicht",y:defaultYear(),mieter:null,flash:null,openSeg:null,printFor:null};
+function defaultYear(){var ys=Object.keys(data.jahre).map(Number).sort();if(!ys.length)return NOW;if(ys.indexOf(NOW)>-1)return NOW;return ys[ys.length-1];}
+function J(y){y=y||st.y;if(!data.jahre[y])data.jahre[y]={kosten:{},zaehler:{}};var j=data.jahre[y];if(!j.kosten)j.kosten={};if(!j.zaehler)j.zaehler={};return j;}
+function touch(y){J(y).upd=Date.now();}
+function persist(){data._summary=summaryFor(data);C.save(AREA,data);}
+function flash(t,warn){st.flash={t:t,warn:!!warn};render();clearTimeout(flash.tm);flash.tm=setTimeout(function(){st.flash=null;render();},warn?4500:2400);}
+function fin(){var f=C.getLocal("finanzen",null);return f&&Array.isArray(f.tx)?f.tx:[];}
+function bookings(){var f=C.getLocal("ferienwohnung",null);return f&&f.bookings?Object.keys(f.bookings).map(function(k){return f.bookings[k];}):[];}
+function R(y){return HS.calc(data,y||st.y,{bookings:bookings(),apt:data.einst.apt});}
+function eur(v,d){return C.eur(v,d==null?2:d);}
+function raw(v,d){return C.eurRaw(v,d==null?2:d);}
+function num(v,d){return C.num(v,d==null?2:d);}
+function de(s){return HS.de(s);}
+function esc(s){return C.esc(s);}
+function summaryFor(d){
+  var ys=Object.keys(d.jahre||{}).map(Number).filter(function(y){var k=(d.jahre[y]||{}).kosten||{};return Object.keys(k).some(function(x){return +k[x].betrag>0;});}).sort();
+  if(!ys.length)return {k:"—",s:d.einheiten&&d.einheiten.length?"Noch keine Kosten erfasst":"Noch nicht eingerichtet"};
+  var y=ys[ys.length-1],r;try{r=HS.calc(norm(d),y,{bookings:bookings(),apt:(d.einst||{}).apt});}catch(e){return {k:"—",s:""};}
+  var m=r.mieter.map(function(s){return s.name.replace(/^Familie\s+/,"")+(s.saldo>=0?" Nachz. ":" Guthaben ")+C.eurRaw(Math.abs(s.saldo),0);});
+  return {k:"NK "+y,s:m.length?m.join(" · "):"Keine Mieter im Jahr"};
+}
+
+/* ---------- Rahmen ---------- */
+function render(){
+  document.getElementById("top").innerHTML=C.topbar({title:"Haus",icon:"🏘️",sub:"Nebenkosten · Kostenaufteilung",accent:"#fb923c",accent2:"#f97316"});C.paintStatus();
+  var tabs=[["uebersicht","📊 Übersicht"],["abrechnung","🧾 Abrechnung"],["kosten","💶 Kosten"],["belegung","👥 Belegung"],["zaehler","🔢 Zähler"],["steuer","🧮 Für die Steuer"],["einst","⚙️ Einstellungen"]];
+  document.getElementById("tabs").innerHTML=tabs.map(function(t){return '<button class="tab'+(st.tab===t[0]?" on":"")+'" onclick="H2.tab(\''+t[0]+'\')">'+t[1]+"</button>";}).join("");
+  var h="";if(st.flash)h+='<div class="flash'+(st.flash.warn?" warn":"")+'">'+esc(st.flash.t)+"</div>";
+  if(!data.einheiten.length&&st.tab!=="einst")h+='<div class="empty"><div class="big">🏘️</div>Noch keine Wohnungen angelegt.<br><span class="small">Unter Einstellungen die Startdatei importieren oder die Wohnungen anlegen.</span><br><button class="btn" style="margin-top:14px;background:#fb923c" onclick="H2.tab(\'einst\')">Zu den Einstellungen</button></div>';
+  else h+=({uebersicht:vDash,abrechnung:vAbr,kosten:vKosten,belegung:vBel,zaehler:vZ,steuer:vSteuer,einst:vEinst}[st.tab])();
+  document.getElementById("main").innerHTML=h;
+}
+function yearBar(){var ys={};Object.keys(data.jahre).forEach(function(y){ys[y]=1;});ys[NOW]=1;ys[st.y]=1;
+  return '<div class="filt"><div class="yr"><button onclick="H2.yr(-1)" aria-label="Vorjahr">‹</button><b>'+st.y+'</b><button onclick="H2.yr(1)" aria-label="Folgejahr">›</button></div>'+
+    (J().notiz?'<span class="small muted" style="flex:1;min-width:180px">'+esc(J().notiz)+"</span>":"")+"</div>";}
+function kpi(i,l,v){return '<div class="kpi"><div class="ico">'+i+'</div><div class="val">'+v+'</div><div class="lab">'+l+"</div></div>";}
+function warnBox(r){return r.warn.length?'<div class="warnbox">⚠ '+r.warn.map(esc).join("<br>⚠ ")+"</div>":"";}
+function badge(a){return '<span class="badge b-'+a+'">'+HS.ART[a]+"</span>";}
+
+/* ---------- Übersicht ---------- */
+function vDash(){
+  var r=R(),h=yearBar()+warnBox(r),prev=data.jahre[st.y-1]?R(st.y-1):null;
+  var mi=r.pos.reduce(function(a,p){return a+(r.nach.miete[p.k]||0);},0),fw=r.pos.reduce(function(a,p){return a+(r.nach.fewo[p.k]||0);},0),eg=r.gesamt-mi-fw;
+  h+='<div class="grid2" style="margin-bottom:14px">'+kpi("💶","Umlagefähige Kosten "+st.y,eur(r.gesamt,0)+(prev&&prev.gesamt&&r.gesamt?' <span class="small '+(r.gesamt>prev.gesamt?"up":"dn")+'">'+(r.gesamt>=prev.gesamt?"+":"")+C.num((r.gesamt/prev.gesamt-1)*100,0)+" %</span>":""))+
+    kpi("👥","davon Mieter",eur(mi,0))+kpi("🛏️","davon Ferienwohnung",eur(fw,0))+kpi("🏠","davon Eigennutzung/Leerstand",eur(eg,0))+"</div>";
+  if(!r.gesamt)h+='<div class="panel"><b style="color:#fdba74">Für '+st.y+' sind noch keine Kosten erfasst.</b><div class="note" style="margin-top:6px">Sobald die Jahresrechnungen der Versorger da sind, unter „Kosten“ eintragen. Stromzähler unter „Zähler“ – die Monatswerte aus dem Bereich Energie lassen sich übernehmen.</div><button class="btn" style="margin-top:10px;background:#fb923c" onclick="H2.tab(\'kosten\')">Kosten eintragen</button></div>';
+  h+='<div class="panel"><h3>Abrechnungen '+st.y+"</h3>"+(r.mieter.length?r.mieter.map(function(s){var vs=(J().versandt||{})[s.id];
+    return '<div class="row" style="cursor:pointer" onclick="H2.showM(\''+s.id+'\')"><div class="l"><b>'+esc(s.name)+"</b> "+badge("miete")+'<div class="s">'+esc(s.unit)+" · "+de(s.von)+" – "+de(s.bis)+" · "+s.tage+" Tage"+(vs?" · ✉ versandt am "+de(vs):"")+'</div></div><div class="r"><div class="'+(s.saldo>=0?"up":"dn")+'" style="font-weight:700">'+(s.saldo>=0?"Nachzahlung ":"Guthaben ")+eur(Math.abs(s.saldo))+'</div><div class="s">Kosten '+eur(s.gesamt)+" · VZ "+eur(s.vzIst)+"</div></div></div>";}).join(""):'<div class="note">Keine vermietete Wohnung in '+st.y+".</div>")+
+    '<div class="note" style="margin-top:8px">Die Abrechnung muss den Mietern spätestens am <b>31.12.'+(st.y+1)+'</b> zugehen (§ 556 Abs. 3 BGB).</div></div>';
+  /* Kostenpositionen mit Vorjahr */
+  h+='<div class="panel"><h3>Kosten '+st.y+(prev?" im Vergleich zu "+(st.y-1):"")+'</h3><div class="tscroll"><table class="t"><tr><th>Kostenart</th>'+(prev?"<th>"+(st.y-1)+"</th>":"")+"<th>"+st.y+"</th>"+(prev?"<th>Δ</th>":"")+"</tr>"+
+    r.pos.filter(function(p){return p.betrag||(prev&&prev.pos.some(function(q){return q.k===p.k&&q.betrag;}));}).map(function(p){var q=prev&&prev.pos.filter(function(x){return x.k===p.k;})[0],pv=q?q.betrag:0;
+      return "<tr><td>"+esc(p.n)+"</td>"+(prev?"<td>"+eur(pv)+"</td>":"")+"<td>"+eur(p.betrag)+"</td>"+(prev?'<td class="'+(p.betrag>pv?"up":"dn")+'">'+(pv?(p.betrag>=pv?"+":"")+C.num((p.betrag/pv-1)*100,0)+" %":"–")+"</td>":"")+"</tr>";}).join("")+
+    '<tr class="sum"><td>Summe</td>'+(prev?"<td>"+eur(prev.gesamt)+"</td>":"")+"<td>"+eur(r.gesamt)+"</td>"+(prev?"<td></td>":"")+"</tr></table></div></div>";
+  h+='<div class="note">Strom wird nicht über die Kostenarten, sondern je Wohnung nach Zähler abgerechnet ('+C.num(r.preis*100,0)+" ct/kWh).</div>";
+  return h;
+}
+
+/* ---------- Abrechnung je Mieter ---------- */
+function vAbr(){
+  var r=R(),h=yearBar()+warnBox(r);
+  if(!r.mieter.length)return h+'<div class="empty">Keine vermietete Wohnung in '+st.y+".</div>";
+  if(!st.mieter||!r.mieter.some(function(s){return s.id===st.mieter;}))st.mieter=r.mieter[0].id;
+  h+='<div class="filt">'+r.mieter.map(function(s){return '<button class="pill'+(st.mieter===s.id?" on":"")+'" onclick="H2.m(\''+s.id+'\')">'+esc(s.name)+"</button>";}).join("")+"</div>";
+  var s=r.mieter.filter(function(x){return x.id===st.mieter;})[0],j=J(),nv=(j.neueVz||{})[s.id]||{};
+  h+='<div class="panel"><div class="small muted">'+esc(s.unit)+" · "+de(s.von)+" – "+de(s.bis)+" · "+s.tage+" von "+r.D+' Tagen</div><div class="big '+(s.saldo>=0?"up":"dn")+'" style="margin:6px 0">'+(s.saldo>=0?"Nachzahlung ":"Guthaben ")+eur(Math.abs(s.saldo))+"</div>";
+  h+='<div class="tscroll"><table class="t"><tr><th>Kostenart</th><th>Haus gesamt</th><th>Schlüssel</th><th>Anteil</th><th>Betrag</th></tr>'+
+    r.pos.filter(function(p){return p.betrag;}).map(function(p){var a=s.anteile[p.k]||{q:0,b:0};
+      return "<tr><td>"+esc(p.n)+"</td><td>"+eur(p.betrag)+"</td><td>"+(p.s==="personen"?C.int(s.pt)+" / "+C.int(r.PT)+" PT":C.num(s.flaeche,2)+" m² · "+s.tage+" T")+"</td><td>"+C.num(a.q*100,2)+" %</td><td>"+eur(a.b)+"</td></tr>";}).join("")+
+    '<tr class="sum"><td>Betriebskosten</td><td></td><td></td><td></td><td>'+eur(s.summe)+"</td></tr>"+
+    "<tr><td>Strom "+esc(s.unit)+(s.strom?" ("+C.int(s.strom.kwh)+" kWh × "+C.num(r.preis*100,0)+" ct)":" – Zählerstände fehlen")+"</td><td></td><td></td><td></td><td>"+eur(s.stromKosten)+"</td></tr>"+
+    '<tr class="sum"><td>Kosten gesamt</td><td></td><td></td><td></td><td>'+eur(s.gesamt)+"</td></tr>"+
+    "<tr><td>abzgl. Vorauszahlungen ("+s.vzMonate+" × "+eur(s.vz||0)+")</td><td></td><td></td><td></td><td>− "+eur(s.vzIst)+"</td></tr>"+
+    '<tr class="sum"><td>'+(s.saldo>=0?"Nachzahlung":"Guthaben")+'</td><td></td><td></td><td></td><td class="'+(s.saldo>=0?"up":"dn")+'">'+eur(Math.abs(s.saldo))+"</td></tr></table></div>";
+  /* Vorauszahlungen laut Konto */
+  var k=s.such?HS.kontoZeitraum(fin(),s.von,s.bis,s.such):null;
+  h+='<div class="g3" style="margin-top:12px"><div><div class="lbl">Tatsächlich gezahlte Vorauszahlungen</div><input class="inp" inputmode="decimal" value="'+esc(String((j.vzIst||{})[s.id]!=null?(j.vzIst||{})[s.id]:"").replace(".",","))+'" placeholder="'+num(s.vzSoll)+'" onchange="H2.vzIst(\''+s.id+'\',this.value)"></div>'+
+    '<div><div class="lbl">Neue monatliche Vorauszahlung (optional)</div><input class="inp" inputmode="decimal" value="'+esc(nv.betrag!=null?String(nv.betrag).replace(".",","):"")+'" placeholder="Vorschlag '+(s.vzVorschlag||"–")+' €" onchange="H2.neueVz(\''+s.id+'\',\'betrag\',this.value)"></div></div>';
+  h+='<div class="chk">Leer = Soll laut Mietvertrag ('+s.vzMonate+" Monate). "+(k?"Zahlungseingänge „"+esc(s.such)+"“ im Zeitraum: <b>"+eur(k.summe)+"</b> in "+k.n+" Buchungen (enthält ggf. auch die Kaltmiete).":"Unter „Belegung“ ein Suchwort hinterlegen, dann zeigt das Cockpit die Zahlungseingänge aus Finanzen zum Abgleich.")+
+    " Vorschlag Vorauszahlung: Kosten aufs Jahr hochgerechnet, auf 5 € gerundet.</div>";
+  if(nv.betrag)h+='<div style="margin-top:8px"><div class="lbl">Neue Vorauszahlung gilt ab</div><input class="inp" type="date" value="'+esc(nv.ab||"")+'" onchange="H2.neueVz(\''+s.id+'\',\'ab\',this.value)"></div>';
+  var vs=(j.versandt||{})[s.id];
+  h+='<div class="row2" style="margin-top:14px"><button class="btn" style="background:#fb923c" onclick="H2.print(\''+s.id+'\')">📄 Abrechnung als PDF</button><button class="btn ghost" style="flex:0 0 auto" onclick="H2.vers(\''+s.id+'\')">'+(vs?"✉ versandt "+de(vs):"✉ als versandt markieren")+"</button></div></div>";
+  h+='<div class="note">Erläuterungen zu Kostenänderungen (Tab „Kosten“) erscheinen auf der Abrechnung. Hinweis: Wird Heizung ohne Verbrauchserfassung nur nach Fläche verteilt, dürfen Mieter ihren Heizkostenanteil nach § 12 HeizkV um 15 % kürzen.</div>';
+  return h;
+}
+
+/* ---------- Kosten ---------- */
+function vKosten(){
+  var r=R(),j=J(),prev=data.jahre[st.y-1]?R(st.y-1):null,tx=fin(),h=yearBar();
+  h+='<div class="note" style="margin-bottom:12px">Maßgeblich sind die <b>Jahresrechnungen</b> der Versorger, nicht die monatlichen Abschläge. Die Kontosumme aus Finanzen dient nur zur Kontrolle.</div>';
+  r.pos.forEach(function(p){var o=(j.kosten||{})[p.k]||{},q=prev&&prev.pos.filter(function(x){return x.k===p.k;})[0],ks=HS.kontoSumme(tx,st.y,p.such,-1);
+    h+='<div class="pos"><div class="h"><b>'+esc(p.n)+'</b><span>'+esc(p.p)+(p.extra?' · <a href="#" style="color:#ff8a80" onclick="H2.delX(\''+p.k+'\');return false">entfernen</a>':"")+"</span></div>";
+    h+='<div class="g3"><div><div class="lbl">Betrag '+st.y+' (€)</div><input class="inp" inputmode="decimal" value="'+(p.betrag?C.num(p.betrag,2):"")+'" placeholder="'+(q&&q.betrag?"Vorjahr "+num(q.betrag):"0,00")+'" onchange="H2.kost(\''+p.k+'\',\'betrag\',this.value)"></div>'+
+      '<div><div class="lbl">Verteilerschlüssel</div><select class="sel" onchange="H2.kost(\''+p.k+'\',\'s\',this.value)">'+Object.keys(HS.SCHL).map(function(s){return '<option value="'+s+'"'+(p.s===s?" selected":"")+">"+HS.SCHL[s]+"</option>";}).join("")+"</select></div></div>";
+    h+='<div class="chk">'+(q&&q.betrag?"Vorjahr "+eur(q.betrag)+(p.betrag?' · <span class="'+(p.betrag>q.betrag?"up":"dn")+'">'+(p.betrag>=q.betrag?"+":"")+C.num((p.betrag/q.betrag-1)*100,0)+" %</span>":"")+" · ":"")+
+      (ks?(ks.n?"Konto "+st.y+" („"+esc(p.such)+"“): <b>"+eur(ks.summe)+"</b> in "+ks.n+" Abbuchungen":"Keine Abbuchungen „"+esc(p.such)+"“ in "+st.y+" gefunden"):"Kein Suchwort für den Konto-Abgleich")+' · <a href="#" style="color:#fdba74" onclick="H2.such(\''+p.k+'\');return false">Suchwort</a></div>';
+    if(p.k==="heizung")h+='<div class="chk" style="color:#ffcc80">Ohne Wärmemengenzähler wird nach Fläche verteilt. Die Heizkostenverordnung verlangt 50–70 % nach Verbrauch – Mieter dürfen dann um 15 % kürzen (§ 12 HeizkV).</div>';
+    h+='<textarea class="inp" rows="2" style="margin-top:8px;font-size:12px" placeholder="Erläuterung für die Abrechnung, z. B. Gründe für eine Änderung (optional)" onchange="H2.kost(\''+p.k+'\',\'info\',this.value)">'+esc(o.info||p.info||"")+"</textarea></div>";});
+  h+='<button class="btn ghost full" style="margin-bottom:14px" onclick="H2.addX()">＋ Weitere umlagefähige Kostenart</button>';
+  h+='<div class="panel"><h3>Strom (nach Zähler)</h3><div class="g3"><div><div class="lbl">Preis je kWh (€)</div><input class="inp" inputmode="decimal" value="'+(j.strompreis!=null?String(j.strompreis).replace(".",","):"")+'" placeholder="z. B. 0,32" onchange="H2.preis(this.value)"></div><div class="note" style="align-self:end">Zählerstände unter „Zähler“. Abgerechnet wird nur der Verbrauch der Mieter.</div></div></div>';
+  h+='<div class="panel"><h3>Summe '+st.y+'</h3><div class="big">'+eur(r.gesamt)+"</div>"+(prev?'<div class="note">Vorjahr '+eur(prev.gesamt)+"</div>":"")+"</div>";
+  return h;
+}
+
+/* ---------- Belegung ---------- */
+function vBel(){
+  var r=R(),j=J(),h=yearBar();
+  h+='<div class="panel"><h3>Personen der Ferienwohnung in '+st.y+'</h3><div class="filt" style="margin:0">'+
+    '<button class="pill'+(j.fewoFix==null||j.fewoFix===""?" on":"")+'" onclick="H2.fewoFix(\'\')">aus Smoobu (Nächte × Gäste)</button>'+
+    '<button class="pill'+(j.fewoFix!=null&&j.fewoFix!==""?" on":"")+'" onclick="H2.fewoFix(1)">pauschal</button>'+
+    (j.fewoFix!=null&&j.fewoFix!==""?'<input class="inp" style="width:80px" inputmode="numeric" value="'+esc(j.fewoFix)+'" onchange="H2.fewoFix(this.value)"><span class="small muted">Person(en) pro Tag</span>':"")+"</div>"+
+    '<div class="note" style="margin-top:8px">Gilt für die Verteilung von Wasser und Abwasser. Aus Smoobu zählen nur bestätigte Buchungen (ohne Stornos und Sperrzeiten); jede belegte Nacht mit der Zahl der Gäste (Erwachsene + Kinder).</div></div>';
+  h+='<div class="note" style="margin-bottom:6px">Personentage im Jahr gesamt: <b>'+C.int(r.PT)+"</b></div>";
+  r.units.forEach(function(u){
+    h+='<div class="unit">'+esc(u.k)+" · "+esc(u.n)+" · "+C.num(u.flaeche,2)+" m²</div>";
+    r.segs.filter(function(s){return s.unit===u.k;}).forEach(function(s){
+      var b=s.auto?null:data.belegung.filter(function(x){return x.id===s.id;})[0];
+      h+='<div class="bel '+s.art+'"><div class="row" style="border:none;padding:0"><div class="l"><b>'+esc(s.name)+"</b>"+(s.name===HS.ART[s.art]?"":badge(s.art))+'<div class="s">'+de(s.von)+" – "+de(s.bis)+" · "+s.tage+" Tage · "+C.int(s.pt)+" Personentage"+
+        (s.art==="fewo"&&s.sm?" · "+s.sm.naechte+" Nächte in "+s.sm.buchungen+" Buchungen"+(s.sm.ohneGaeste?" ("+s.sm.ohneGaeste+" ohne Gästezahl → 1 Person)":""):"")+(s.art==="fewo"&&s.fix!=null?" · pauschal "+s.fix+" Pers.":"")+
+        (s.art==="miete"?" · VZ "+eur(+s.vz||0)+"/Monat":"")+"</div></div>"+(b?'<button class="mini" onclick="H2.openSeg(\''+b.id+'\')">'+(st.openSeg===b.id?"schließen":"bearbeiten")+"</button>":"")+"</div>";
+      if(b&&st.openSeg===b.id)h+=segForm(b);
+      h+="</div>";});
+    r.konflikt.filter(function(k){return k.unit===u.k&&k.ganz;}).forEach(function(k){var b=seg(k.id);if(!b)return;
+      h+='<div class="bel '+b.art+'" style="border-color:#ff980088"><div class="row" style="border:none;padding:0"><div class="l"><b>'+esc(b.name)+"</b>"+badge(b.art)+'<div class="s" style="color:#ffcc80">⚠ überschneidet sich mit „'+esc(k.mit)+"“ · "+de(b.von)+" – "+(b.bis?de(b.bis):"offen")+' · wird nicht berechnet</div></div><button class="mini" onclick="H2.openSeg(\''+b.id+'\')">'+(st.openSeg===b.id?"schließen":"bearbeiten")+"</button></div>"+(st.openSeg===b.id?segForm(b):"")+"</div>";});});
+  h+='<button class="btn ghost full" style="margin-top:6px" onclick="H2.addSeg()">＋ Belegung hinzufügen (Mieterwechsel, Ferienwohnung, Eigennutzung)</button>';
+  h+='<div class="note" style="margin-top:10px">Lücken gelten als Leerstand (Kosten trägt der Eigentümer). Ein leeres „bis“ bedeutet: läuft weiter. Bei einem Mieterwechsel die alte Belegung mit „bis“ beenden und eine neue anlegen.</div>';
+  return h;
+}
+function segForm(b){
+  var f=function(lbl,inner){return '<div><div class="lbl">'+lbl+"</div>"+inner+"</div>";},
+      i=function(k,v,t,ph){return '<input class="inp" '+(t?'type="'+t+'"':'inputmode="decimal"')+' value="'+esc(v==null?"":String(v).replace(/^(\d+)\.(\d+)$/,"$1,$2"))+'" placeholder="'+(ph||"")+'" onchange="H2.seg(\''+b.id+'\',\''+k+'\',this.value)">';};
+  var h='<div style="margin-top:10px;border-top:1px solid #152038;padding-top:10px"><div class="g3">'+
+    f("Wohnung",'<select class="sel" onchange="H2.seg(\''+b.id+'\',\'unit\',this.value)">'+data.einheiten.map(function(u){return '<option'+(u.k===b.unit?" selected":"")+">"+esc(u.k)+"</option>";}).join("")+"</select>")+
+    f("Art",'<select class="sel" onchange="H2.seg(\''+b.id+'\',\'art\',this.value)">'+Object.keys(HS.ART).map(function(a){return '<option value="'+a+'"'+(a===b.art?" selected":"")+">"+HS.ART[a]+"</option>";}).join("")+"</select>")+
+    f("von",i("von",b.von,"date"))+f("bis (leer = läuft)",i("bis",b.bis,"date"))+"</div>";
+  h+='<div class="g3" style="margin-top:8px">'+f("Name / Bezeichnung",'<input class="inp" value="'+esc(b.name||"")+'" onchange="H2.seg(\''+b.id+'\',\'name\',this.value)">');
+  if(b.art==="miete"||b.art==="eigen")h+=f("Personen",i("personen",b.personen));
+  if(b.art==="fewo")h+=f("Personen (falls pauschal)",i("pfix",b.pfix));
+  h+="</div>";
+  if(b.art==="miete")h+='<div class="g3" style="margin-top:8px">'+f("Vorauszahlung/Monat (€)",i("vz",b.vz))+f("Monate mit Vorauszahlung (leer = automatisch)",i("monate",b.monate))+"</div>"+
+    '<div class="g3" style="margin-top:8px">'+f("Anrede in der Abrechnung",'<input class="inp" value="'+esc(b.anrede||"")+'" placeholder="Sehr geehrte Familie …" onchange="H2.seg(\''+b.id+'\',\'anrede\',this.value)">')+f("Suchwort Zahlungseingang (Finanzen)",'<input class="inp" value="'+esc(b.such||"")+'" placeholder="z. B. Nachname" onchange="H2.seg(\''+b.id+'\',\'such\',this.value)">')+"</div>"+
+    '<div style="margin-top:8px">'+f("Empfänger-Anschrift (für den Brief)",'<textarea class="inp" rows="2" placeholder="Name&#10;Straße, PLZ Ort" onchange="H2.seg(\''+b.id+'\',\'anschrift\',this.value)">'+esc(b.anschrift||"")+"</textarea>")+"</div>";
+  h+='<div style="margin-top:10px;display:flex;justify-content:space-between"><span class="note">Änderungen werden sofort gespeichert.</span><button class="mini" style="color:#ff8a80" onclick="H2.delSeg(\''+b.id+'\')">Belegung löschen</button></div></div>';
+  return h;
+}
+
+/* ---------- Zähler ---------- */
+function vZ(){
+  var j=J(),r=R(),en=C.getLocal("energie",null),h=yearBar();
+  h+='<div class="note" style="margin-bottom:10px">Stand am <b>Ende</b> des angegebenen Tages. Für den Jahresanfang den Stand vom 31.12. des Vorjahres eintragen; bei einem Mieterwechsel den Stand am letzten Miettag. Zwischen zwei Ablesungen wird bei Bedarf anteilig gerechnet.</div>';
+  r.units.forEach(function(u){var list=((j.zaehler||{})[u.k]||[]).slice().sort(function(a,b){return a.d.localeCompare(b.d);}),efeld=u.k==="UG"?"ug":u.k==="DG"?"dg":null;
+    h+='<div class="panel"><h3>Strom '+esc(u.k)+" · "+esc(u.n)+"</h3>";
+    h+=list.length?list.map(function(x,i){return '<div class="row"><div class="l">'+de(x.d)+(x.q?' <span class="small muted">· '+esc(x.q)+"</span>":"")+'</div><div class="r">'+C.num(x.v,0)+' kWh <button class="x" onclick="H2.delZ(\''+u.k+'\',\''+x.d+'\')" aria-label="Ablesung löschen">✕</button></div></div>';}).join(""):'<div class="note">Noch keine Ablesungen.</div>';
+    h+='<div class="g3" style="margin-top:8px"><input class="inp" type="date" id="zd_'+u.k+'" value="'+st.y+'-12-31"><input class="inp" inputmode="decimal" id="zv_'+u.k+'" placeholder="Zählerstand kWh"></div>'+
+      '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="mini" onclick="H2.addZ(\''+u.k+'\')">＋ Ablesung</button>'+(efeld&&en?'<button class="mini" onclick="H2.zEnergie(\''+u.k+'\',\''+efeld+'\')">⬇ aus Energie übernehmen</button>':"")+"</div>";
+    var seg=r.segs.filter(function(s){return s.unit===u.k;});
+    h+='<div class="chk" style="margin-top:10px">'+seg.map(function(s){return esc(s.name)+" ("+de(s.von)+"–"+de(s.bis)+"): "+(s.strom?"<b>"+C.int(s.strom.kwh)+" kWh</b>"+(s.strom.von.exakt&&s.strom.bis.exakt?"":" (anteilig geschätzt)"):"–");}).join("<br>")+"</div></div>";});
+  h+='<div class="panel"><h3>Wasser Hauptzähler (zur Information)</h3><div class="g3"><div><div class="lbl">Stand Jahresanfang (m³)</div><input class="inp" inputmode="decimal" value="'+esc(j.wasserHZ&&j.wasserHZ.a!=null?j.wasserHZ.a:"")+'" onchange="H2.wz(\'a\',this.value)"></div><div><div class="lbl">Stand Jahresende (m³)</div><input class="inp" inputmode="decimal" value="'+esc(j.wasserHZ&&j.wasserHZ.e!=null?j.wasserHZ.e:"")+'" onchange="H2.wz(\'e\',this.value)"></div></div>'+
+    (j.wasserHZ&&j.wasserHZ.a!=null&&j.wasserHZ.e!=null&&j.wasserHZ.e!==""?'<div class="chk">Verbrauch Haus: <b>'+C.num(j.wasserHZ.e-j.wasserHZ.a,0)+" m³</b></div>":"")+"</div>";
+  return h;
+}
+
+/* ---------- Für die Steuer ---------- */
+function vSteuer(){
+  var r=R(),h=yearBar();
+  var cols=[["miete","Dauervermietung"],["fewo","Ferienwohnung"],["eigen","Eigennutzung"],["leer","Leerstand"]].filter(function(c){return c[0]!=="leer"||r.flAnteil.leer>0;});
+  h+='<div class="note" style="margin-bottom:10px">Aufteilung der umlagefähigen Hauskosten '+st.y+' nach Nutzung – mit denselben Schlüsseln wie die Nebenkostenabrechnung. Grundlage für Anlage V / V-FeWo und die Vorsteuer der Ferienwohnung.</div>';
+  h+='<div class="panel"><h3>Zeitgewichteter Flächenanteil</h3>'+cols.map(function(c){return '<div class="row"><div class="l">'+c[1]+'</div><div class="r"><b>'+C.num(r.flAnteil[c[0]]*100,2)+" %</b></div></div>";}).join("")+
+    '<div class="row"><div class="l"><b>vermietet gesamt</b> (Dauervermietung + Ferienwohnung)</div><div class="r"><b>'+C.num((r.flAnteil.miete+r.flAnteil.fewo)*100,2)+" %</b></div></div></div>";
+  h+='<div class="panel"><h3>Kosten nach Nutzung</h3><div class="tscroll"><table class="t"><tr><th>Kostenart</th><th>Gesamt</th>'+cols.map(function(c){return "<th>"+c[1]+"</th>";}).join("")+"</tr>"+
+    r.pos.filter(function(p){return p.betrag;}).map(function(p){return "<tr><td>"+esc(p.n)+"</td><td>"+eur(p.betrag)+"</td>"+cols.map(function(c){return "<td>"+eur(r.nach[c[0]][p.k]||0)+"</td>";}).join("")+"</tr>";}).join("")+
+    '<tr class="sum"><td>Summe</td><td>'+eur(r.gesamt)+"</td>"+cols.map(function(c){return "<td>"+eur(r.pos.reduce(function(a,p){return a+(r.nach[c[0]][p.k]||0);},0))+"</td>";}).join("")+"</tr>"+
+    "<tr><td>Strom (kWh nach Zähler)</td><td></td>"+cols.map(function(c){return "<td>"+C.int(r.strom[c[0]])+" kWh</td>";}).join("")+"</tr></table></div>"+
+    '<button class="mini" style="margin-top:10px" onclick="H2.csv()">⬇ Als Tabelle (CSV) speichern</button></div>';
+  var mi=r.mieter;
+  if(mi.length)h+='<div class="panel"><h3>Umlagen der Mieter '+st.y+"</h3>"+mi.map(function(s){return '<div class="row"><div class="l"><b>'+esc(s.name)+'</b><div class="s">'+de(s.von)+" – "+de(s.bis)+'</div></div><div class="r">Vorauszahlungen '+eur(s.vzIst)+'<div class="s">Abrechnung '+(s.saldo>=0?"Nachzahlung ":"Guthaben ")+eur(Math.abs(s.saldo))+"</div></div></div>";}).join("")+
+    '<div class="note" style="margin-top:6px">Für die Steuer zählt, wann das Geld fließt: Vorauszahlungen im Jahr der Zahlung, Nachzahlungen/Erstattungen aus dieser Abrechnung erst im Jahr der Begleichung.</div></div>';
+  h+='<div class="note">Strom: für die Steuer zählen die tatsächlichen Stromkosten, nicht der Abrechnungspreis je kWh – die kWh-Aufteilung hilft beim Anteil. Diese Übersicht ersetzt keine steuerliche Beratung.</div>';
+  return h;
+}
+
+/* ---------- Einstellungen ---------- */
+function vEinst(){
+  var e=data.einst,h="";
+  h+='<div class="panel"><h3>Wohnungen</h3>'+(data.einheiten.length?data.einheiten.map(function(u,i){return '<div class="g3" style="margin-bottom:8px;grid-template-columns:70px 1fr 110px"><input class="inp" value="'+esc(u.k)+'" onchange="H2.unit('+i+',\'k\',this.value)" aria-label="Kürzel"><input class="inp" value="'+esc(u.n||"")+'" onchange="H2.unit('+i+',\'n\',this.value)" aria-label="Name"><input class="inp" inputmode="decimal" value="'+String(u.flaeche||"").replace(".",",")+'" onchange="H2.unit('+i+',\'flaeche\',this.value)" aria-label="Fläche m²"></div>';}).join(""):'<div class="note">Noch keine Wohnungen.</div>')+
+    '<button class="mini" onclick="H2.addUnit()">＋ Wohnung</button>'+
+    (data.einheiten.length?'<div class="note" style="margin-top:8px">Gesamtfläche '+C.num(data.einheiten.reduce(function(a,u){return a+(+u.flaeche||0);},0),2)+" m²."+(J().flaechen?" Für "+st.y+" gelten abweichende Flächen ("+Object.keys(J().flaechen).map(function(k){return k+" "+C.num(J().flaechen[k],2);}).join(", ")+' m²) <a href="#" style="color:#fdba74" onclick="H2.dropFl();return false">entfernen</a>':"")+"</div>":"")+"</div>";
+  h+='<div class="panel"><h3>Angaben für die Abrechnung</h3>'+
+    '<div class="field"><label>Vermieter (Name und Anschrift)</label><textarea class="inp" rows="3" onchange="H2.einst(\'vermieter\',this.value)">'+esc(e.vermieter||"")+"</textarea></div>"+
+    '<div class="field"><label>Objekt (Anschrift des Hauses)</label><input class="inp" value="'+esc(e.objekt||"")+'" onchange="H2.einst(\'objekt\',this.value)"></div>'+
+    '<div class="field"><label>Bankverbindung für Nachzahlungen</label><input class="inp" value="'+esc(e.bank||"")+'" placeholder="IBAN, Kontoinhaber" onchange="H2.einst(\'bank\',this.value)"></div>'+
+    '<div class="field"><label>Zahlungsfrist (Tage)</label><input class="inp" inputmode="numeric" value="'+esc(e.frist||"30")+'" onchange="H2.einst(\'frist\',this.value)"></div>'+
+    '<div class="note">Diese Angaben liegen nur in deinen privaten Daten, nicht im öffentlichen Code.</div></div>';
+  var fw=C.getLocal("ferienwohnung",null),apts=fw&&fw.apartments?fw.apartments:{};
+  h+='<div class="panel"><h3>Ferienwohnung in Smoobu</h3><select class="sel" onchange="H2.einst(\'apt\',this.value)"><option value="alle">alle Wohnungen in Smoobu</option>'+Object.keys(apts).map(function(k){return '<option value="'+esc(k)+'"'+(e.apt===k?" selected":"")+">"+esc(apts[k])+"</option>";}).join("")+"</select>"+
+    '<div class="note" style="margin-top:6px">'+(bookings().length?bookings().length+" Buchungen aus dem Bereich Ferienwohnung vorhanden.":"Noch keine Buchungen – im Bereich Ferienwohnung mit Smoobu abgleichen.")+"</div></div>";
+  h+='<div class="panel"><h3>📥 Startdaten importieren</h3><div class="note" style="margin-bottom:10px">Liest eine Startdatei (z. B. „haus-start.json“) ein: Wohnungen, Belegung und Jahreswerte. Vorhandene Einträge mit gleicher Kennung werden überschrieben, alles andere bleibt.</div>'+
+    '<label class="btn ghost full" style="display:block;text-align:center;cursor:pointer">Datei auswählen<input type="file" accept=".json,application/json" onchange="H2.imp(this)"></label></div>';
+  return h;
+}
+
+/* ---------- Abrechnung als Dokument ---------- */
+function docHtml(id){
+  var r=R(),s=r.mieter.filter(function(x){return x.id===id;})[0];if(!s)return "";
+  var e=data.einst,j=J(),b=data.belegung.filter(function(x){return x.id===id;})[0]||{},nv=(j.neueVz||{})[id]||{},prev=data.jahre[st.y-1]?R(st.y-1):null;
+  var vm=String(e.vermieter||"").split(/\n/).filter(Boolean),today=new Date().toLocaleDateString("de-DE");
+  var h='<div class="doc">';
+  h+='<div class="kopf"><div>'+(vm.length?'<div class="absender">'+esc(vm.join(" · "))+"</div>":"")+"<div>"+esc(b.anschrift||s.name).replace(/\n/g,"<br>")+"</div></div>"+
+    '<div style="text-align:right">'+vm.map(esc).join("<br>")+"<br><br>"+esc(today)+"</div></div>";
+  h+="<h1>Betriebskostenabrechnung "+st.y+'</h1><div class="sub">Objekt: '+esc(e.objekt||"")+" · Wohnung: "+esc(s.unit)+" ("+C.num(s.flaeche,2)+" m²)<br>Abrechnungszeitraum: 01.01."+st.y+" – 31.12."+st.y+" · Ihr Nutzungszeitraum: "+de(s.von)+" – "+de(s.bis)+" ("+s.tage+" Tage)</div>";
+  h+="<p>"+esc(b.anrede||"Sehr geehrte Damen und Herren,")+"</p><p>für den oben genannten Zeitraum rechnen wir die Betriebskosten wie folgt ab:</p>";
+  h+='<table><tr><th>Kostenart</th><th class="r">Gesamtkosten</th><th>Verteilerschlüssel</th><th class="r">Gesamt</th><th class="r">Ihr Anteil</th><th class="r">Ihr Betrag</th></tr>';
+  r.pos.filter(function(p){return p.betrag;}).forEach(function(p){var a=s.anteile[p.k]||{b:0};
+    var ges=p.s==="personen"?C.int(r.PT)+" Pers.-Tage":p.s==="einheiten"?r.units.length+" WE × "+r.D+" T":C.num(r.F,2)+" m² × "+r.D+" T";
+    var ant=p.s==="personen"?C.int(s.pt)+" Pers.-Tage":p.s==="einheiten"?"1 WE × "+s.tage+" T":C.num(s.flaeche,2)+" m² × "+s.tage+" T";
+    h+="<tr><td>"+esc(p.n)+'<div class="sub">'+esc(p.p)+'</div></td><td class="r">'+raw(p.betrag)+"</td><td>"+HS.SCHL[p.s]+'</td><td class="r">'+ges+'</td><td class="r">'+ant+'</td><td class="r">'+raw(a.b)+"</td></tr>";});
+  h+='<tr class="tot"><td colspan="5">Summe Betriebskosten</td><td class="r">'+raw(s.summe)+"</td></tr></table>";
+  if(s.strom)h+='<h2>Strom Wohnung '+esc(s.unit)+'</h2><table><tr><th>Zählerstand</th><th class="r">kWh</th></tr><tr><td>'+de(HS.addD(s.von,-1))+(s.strom.von.exakt?"":" (anteilig ermittelt)")+'</td><td class="r">'+C.num(s.strom.von.v,0)+"</td></tr><tr><td>"+de(s.bis)+(s.strom.bis.exakt?"":" (anteilig ermittelt)")+'</td><td class="r">'+C.num(s.strom.bis.v,0)+'</td></tr><tr class="tot"><td>Verbrauch '+C.int(s.strom.kwh)+" kWh × "+C.num(r.preis,4).replace(/0+$/,"")+' €/kWh</td><td class="r">'+raw(s.stromKosten)+"</td></tr></table>";
+  h+='<h2>Ergebnis</h2><table><tr><td>Betriebskosten</td><td class="r">'+raw(s.summe)+"</td></tr>"+(s.stromKosten?'<tr><td>Strom</td><td class="r">'+raw(s.stromKosten)+"</td></tr>":"")+
+    '<tr class="tot"><td>Ihre Kosten gesamt</td><td class="r">'+raw(s.gesamt)+'</td></tr><tr><td>abzüglich geleistete Vorauszahlungen</td><td class="r">− '+raw(s.vzIst)+"</td></tr></table>";
+  h+='<div class="erg"><span>'+(s.saldo>=0?"Nachzahlung":"Guthaben")+"</span><span>"+raw(Math.abs(s.saldo))+"</span></div>";
+  h+="<p>"+(s.saldo>=0?"Bitte überweisen Sie den Nachzahlungsbetrag innerhalb von "+esc(e.frist||"30")+" Tagen nach Zugang dieser Abrechnung"+(e.bank?" auf folgendes Konto: "+esc(e.bank):"")+".":"Das Guthaben erstatten wir Ihnen innerhalb von "+esc(e.frist||"30")+" Tagen bzw. verrechnen es nach Absprache.")+"</p>";
+  if(nv.betrag)h+="<p>Auf Grundlage dieser Abrechnung passen wir die monatliche Betriebskostenvorauszahlung "+(nv.ab?"ab "+de(nv.ab)+" ":"")+"auf <b>"+raw(+nv.betrag)+"</b> an (§ 560 Abs. 4 BGB).</p>";
+  var notes=r.pos.filter(function(p){return p.betrag&&p.info;});
+  if(notes.length||prev)h+="<h2>Erläuterungen</h2>";
+  if(prev){h+='<table><tr><th>Kostenart</th><th class="r">'+(st.y-1)+'</th><th class="r">'+st.y+'</th><th class="r">Änderung</th></tr>'+r.pos.filter(function(p){return p.betrag;}).map(function(p){var q=prev.pos.filter(function(x){return x.k===p.k;})[0],pv=q?q.betrag:0;
+      return "<tr><td>"+esc(p.n)+'</td><td class="r">'+(pv?raw(pv):"–")+'</td><td class="r">'+raw(p.betrag)+'</td><td class="r">'+(pv?(p.betrag>=pv?"+":"")+C.num((p.betrag/pv-1)*100,0)+" %":"–")+"</td></tr>";}).join("")+"</table>";}
+  notes.forEach(function(p){h+="<p><b>"+esc(p.n)+":</b> "+esc(p.info)+"</p>";});
+  h+='<div class="box"><b>Hinweise zu den Verteilerschlüsseln:</b> Flächenabhängige Kosten werden nach Wohnfläche und Nutzungstagen verteilt (Gesamtfläche '+C.num(r.F,2)+" m², "+r.D+" Tage). Wasser und Abwasser werden nach Personentagen verteilt (Personen × Tage aller Wohnungen; die Ferienwohnung nach tatsächlicher Belegung"+(j.fewoFix!=null&&j.fewoFix!==""?", hier pauschal "+esc(j.fewoFix)+" Person pro Tag":" laut Buchungssystem: Nächte × Gäste")+"). Der Strom wird nach dem Zähler Ihrer Wohnung abgerechnet. "+
+    "Die Rechnungen und Belege können Sie nach Terminabsprache einsehen. Einwendungen gegen diese Abrechnung sind spätestens bis zum Ablauf des zwölften Monats nach Zugang mitzuteilen (§ 556 Abs. 3 BGB).</div>";
+  h+='<p style="margin-top:26px">Mit freundlichen Grüßen</p><p style="margin-top:34px">'+esc(vm[0]||"")+"</p></div>";
+  return h;
+}
+
+/* ---------- Aktionen ---------- */
+function pnum(v){var n=C.parseNum(v);return isNaN(n)?null:n;}
+function seg(id){return data.belegung.filter(function(b){return b.id===id;})[0];}
+window.H2={
+  tab:function(t){st.tab=t;render();window.scrollTo(0,0);},
+  yr:function(d){st.y+=d;render();},
+  m:function(id){st.mieter=id;render();},
+  showM:function(id){st.mieter=id;st.tab="abrechnung";render();window.scrollTo(0,0);},
+  kost:function(k,f,v){var j=J(),x=(j.extra||[]).filter(function(e){return e.k===k;})[0],o=x||(j.kosten[k]=j.kosten[k]||{});
+    if(f==="betrag"){var n=pnum(v);o.betrag=n==null?0:Math.round(n*100)/100;}else o[f]=v;touch();persist();render();},
+  such:function(k){var p=HS.posList(data,st.y).filter(function(x){return x.k===k;})[0],v=prompt("Suchwörter für den Konto-Abgleich (mehrere mit Leerzeichen):",p?p.such:"");if(v==null)return;H2.kost(k,"such",v.trim());},
+  addX:function(){var n=prompt("Name der Kostenart (muss im Mietvertrag als umlagefähig vereinbart sein):");if(!n)return;var j=J();j.extra=j.extra||[];j.extra.push({k:"x"+Date.now().toString(36),n:n.trim(),p:"",s:"flaeche",betrag:0});touch();persist();render();},
+  delX:function(k){if(!confirm("Kostenart entfernen?"))return;var j=J();(j.extra||[]).forEach(function(e){if(e.k===k)e.del=true;});touch();persist();render();},
+  preis:function(v){var n=pnum(v);J().strompreis=n;touch();persist();render();},
+  fewoFix:function(v){var j=J();j.fewoFix=v===""?null:pnum(v);touch();persist();render();},
+  openSeg:function(id){st.openSeg=st.openSeg===id?null:id;render();},
+  seg:function(id,k,v){var b=seg(id);if(!b)return;if(["personen","vz","pfix","monate"].indexOf(k)>-1)v=v===""?"":pnum(v);b[k]=v;
+    if(k==="art"&&v==="fewo"&&!b.pquelle){b.pquelle="smoobu";b.pfix=b.pfix||1;}b.upd=Date.now();persist();render();},
+  addSeg:function(){var id="b"+Date.now().toString(36),segs=HS.segments(data,st.y),
+      leer=segs.filter(function(x){return x.art==="leer";})[0],u=leer?leer.unit:(data.einheiten[0]||{}).k||"",von=leer?leer.von:st.y+"-01-01";
+    data.belegung.push({id:id,unit:u,art:"miete",name:"Neue Belegung",von:von,bis:"",personen:1,vz:0,upd:Date.now()});st.openSeg=id;persist();render();
+    if(!leer)flash("Kein Leerstand im Jahr – bitte bei der bisherigen Belegung ein Ende („bis“) setzen, sonst überschneiden sich die Zeiträume.",true);},
+  delSeg:function(id){if(!confirm("Diese Belegung löschen?"))return;var b=seg(id);b.del=true;b.upd=Date.now();persist();render();},
+  addZ:function(u){var d=document.getElementById("zd_"+u).value,v=pnum(document.getElementById("zv_"+u).value);if(!d||v==null){flash("⚠ Datum und Zählerstand eintragen",true);return;}
+    var j=J();j.zaehler[u]=(j.zaehler[u]||[]).filter(function(x){return x.d!==d;});j.zaehler[u].push({d:d,v:v});touch();persist();render();},
+  delZ:function(u,d){var j=J();j.zaehler[u]=(j.zaehler[u]||[]).filter(function(x){return x.d!==d;});touch();persist();render();},
+  zEnergie:function(u,f){var en=C.getLocal("energie",null),list=HS.fromEnergie(en,st.y,f);if(!list.length){flash("⚠ Im Bereich Energie gibt es für "+st.y+" noch keine Zählerstände "+u,true);return;}
+    var j=J(),have={};(j.zaehler[u]||[]).forEach(function(x){have[x.d]=1;});var n=0;j.zaehler[u]=j.zaehler[u]||[];list.forEach(function(x){if(!have[x.d]){j.zaehler[u].push(x);n++;}});
+    touch();persist();flash(n?"✓ "+n+" Ablesungen übernommen":"Alle Ablesungen waren schon vorhanden");},
+  wz:function(k,v){var j=J();j.wasserHZ=j.wasserHZ||{};j.wasserHZ[k]=pnum(v);touch();persist();render();},
+  vzIst:function(id,v){var j=J();j.vzIst=j.vzIst||{};var n=pnum(v);if(n==null)delete j.vzIst[id];else j.vzIst[id]=n;touch();persist();render();},
+  neueVz:function(id,k,v){var j=J();j.neueVz=j.neueVz||{};var o=j.neueVz[id]=j.neueVz[id]||{};o[k]=k==="betrag"?pnum(v):v;if(k==="betrag"&&o.betrag==null)delete j.neueVz[id];touch();persist();render();},
+  vers:function(id){var j=J();j.versandt=j.versandt||{};if(j.versandt[id]){if(!confirm("Markierung „versandt“ entfernen?"))return;delete j.versandt[id];}else j.versandt[id]=C.today();touch();persist();render();},
+  print:function(id){document.getElementById("docOverlay").innerHTML='<div class="doc-bar"><button class="btn" onclick="window.print()">🖨 Drucken / als PDF speichern</button><button class="btn ghost" onclick="H2.closeDoc()">Schließen</button><span class="small" style="opacity:.7">Im Druckdialog „Als PDF speichern“ wählen.</span></div>'+docHtml(id);
+    document.body.classList.add("doc-on");window.scrollTo(0,0);},
+  closeDoc:function(){document.body.classList.remove("doc-on");document.getElementById("docOverlay").innerHTML="";},
+  csv:function(){var r=R(),rows=[["Kostenart","Gesamt","Dauervermietung","Ferienwohnung","Eigennutzung","Leerstand"]];
+    r.pos.filter(function(p){return p.betrag;}).forEach(function(p){rows.push([p.n,p.betrag].concat(["miete","fewo","eigen","leer"].map(function(a){return HS.r2(r.nach[a][p.k]||0);})));});
+    rows.push(["Strom kWh",""].concat(["miete","fewo","eigen","leer"].map(function(a){return r.strom[a];})));
+    rows.push(["Flächenanteil %",""].concat(["miete","fewo","eigen","leer"].map(function(a){return HS.r2(r.flAnteil[a]*100);})));
+    C.downloadText("haus-kostenaufteilung-"+st.y+".csv","﻿"+rows.map(function(x){return x.map(function(v){return typeof v==="number"?String(v).replace(".",","):'"'+String(v).replace(/"/g,'""')+'"';}).join(";");}).join("\n"),"text/csv");},
+  unit:function(i,k,v){var u=data.einheiten[i];if(!u)return;var old=u.k;u[k]=k==="flaeche"?pnum(v):v.trim();
+    if(k==="k"&&old!==u.k)data.belegung.forEach(function(b){if(b.unit===old){b.unit=u.k;b.upd=Date.now();}});data.einst.upd=Date.now();persist();render();},
+  addUnit:function(){data.einheiten.push({k:"W"+(data.einheiten.length+1),n:"Wohnung",flaeche:0});data.einst.upd=Date.now();persist();render();},
+  dropFl:function(){if(!confirm("Abweichende Flächen für "+st.y+" entfernen? Dann gelten die Flächen oben."))return;delete J().flaechen;touch();persist();render();},
+  einst:function(k,v){data.einst[k]=v;data.einst.upd=Date.now();persist();render();},
+  imp:function(inp){var f=inp.files&&inp.files[0];inp.value="";if(!f)return;C.readFile(f).then(function(t){var o=JSON.parse(t);
+      if(!o||o.schema!=="cockpit-haus-start/1")throw new Error("Keine Haus-Startdatei");
+      var now=Date.now();if(Array.isArray(o.einheiten)&&o.einheiten.length){data.einheiten=o.einheiten;data.einst.upd=now;}
+      if(o.objekt&&o.objekt.adresse&&!data.einst.objekt){data.einst.objekt=o.objekt.adresse;data.einst.upd=now;}
+      (o.belegung||[]).forEach(function(b){data.belegung=data.belegung.filter(function(x){return x.id!==b.id;});b.upd=now;data.belegung.push(b);});
+      Object.keys(o.jahre||{}).forEach(function(y){var cur=data.jahre[y]||{};var n=Object.assign({},cur,o.jahre[y]);n.kosten=Object.assign({},cur.kosten||{},o.jahre[y].kosten||{});n.zaehler=Object.assign({},cur.zaehler||{},o.jahre[y].zaehler||{});n.upd=now;data.jahre[y]=n;});
+      persist();st.y=defaultYear();flash("✓ Startdaten eingelesen: "+data.einheiten.length+" Wohnungen, "+(o.belegung||[]).length+" Belegungen, Jahre "+Object.keys(o.jahre||{}).join(", "));})
+    .catch(function(e){flash("⚠ "+(e.message||"Datei konnte nicht gelesen werden"),true);});}
+};
+document.addEventListener("keydown",function(e){if(e.key==="Escape"&&document.body.classList.contains("doc-on"))H2.closeDoc();});
+render();
+C.autoPull([AREA,"finanzen","ferienwohnung","energie"],function(a,d){if(a===AREA)data=norm(d);render();});
+})();
+</script>
+</body>
+</html>
