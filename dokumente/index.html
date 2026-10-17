@@ -50,6 +50,9 @@
 
 .btn:disabled{opacity:.45;cursor:default;}
 code{background:var(--field);padding:1px 5px;border-radius:4px;font-size:11px;}
+.bon{margin-top:6px;font-size:12px;color:#fde68a;}
+.art{font-size:12px;color:#cbd5e1;display:flex;justify-content:space-between;gap:10px;padding:2px 0;}
+.art span:last-child{white-space:nowrap;font-variant-numeric:tabular-nums;}
 a.dl{color:#7dd3fc;}
 #prev{display:none;}
 body.prev-on #prev{display:grid;position:fixed;inset:0;z-index:50;background:#060a14;grid-template-rows:auto 1fr;}
@@ -70,6 +73,7 @@ body.prev-on #prev{display:grid;position:fixed;inset:0;z-index:50;background:#06
 <div id="prev"></div>
 <script src="../assets/cockpit.js"></script>
 <script src="logic.js"></script>
+<script src="../finanzen/einkauf.js"></script>
 <script>
 (function(){
 "use strict";
@@ -82,6 +86,7 @@ function norm(d){d=d&&typeof d==="object"?d:blank();if(!Array.isArray(d.index))d
 function merge(l,r){l=norm(l);r=norm(r);var n=String(l.aktualisiert||"")>=String(r.aktualisiert||"")?l:r;var o=JSON.parse(JSON.stringify(n));
   o.eingang=(l.upd||0)>=(r.upd||0)?l.eingang:r.eingang;o.upd=Math.max(l.upd||0,r.upd||0);o._summary=summaryFor(o);return o;}
 C.registerMerge(AREA,merge);
+C.registerMerge("einkaeufe",EINK.merge);
 var data=norm(C.getLocal(AREA,blank));
 function persist(){data.upd=Date.now();data._summary=summaryFor(data);C.save(AREA,data);}
 function summaryFor(d){var n=(d.index||[]).length,e=d.eingang;
@@ -100,7 +105,10 @@ function konfig(){return (st.vor&&st.vor.konfig)||data.konfig||{empfaenger:{},ar
 /* ---------- Ordner & Daten laden ---------- */
 function init(){D.state().then(function(s){st.perm=s.s;st.root=s.s==="granted"?s.h:null;st.rootName=s.h?s.h.name:"";render();if(st.root)reload();});}
 function reload(){if(!st.root)return Promise.resolve();
-  return Promise.all([D.readJSON(st.root,"_cockpit/vorschlaege.json"),D.readJSON(st.root,"_cockpit/index.json"),D.listPDFs(st.root).catch(function(){return null;})]).then(function(a){
+  return Promise.all([D.readJSON(st.root,"_cockpit/vorschlaege.json"),D.readJSON(st.root,"_cockpit/index.json"),D.listPDFs(st.root).catch(function(){return null;}),
+      D.readJSON(st.root,"_cockpit/einkaeufe.json").catch(function(){return null;})]).then(function(a){
+    /* Kassenbons für die Einkaufs-Statistik (Finanzen → Einkäufe) übernehmen */
+    var ek=EINK.fromFile(C.getLocal("einkaeufe",null),a[3]);if(ek)C.save("einkaeufe",ek);
     st.vor=a[0]||{dateien:{},konfig:null};st.pdfs=a[2];
     var idx=a[1],changed=false;
     if(idx&&Array.isArray(idx.dokumente)&&String(idx.aktualisiert||"")!==String(data.aktualisiert||"")){data.index=idx.dokumente;data.aktualisiert=idx.aktualisiert||"";changed=true;}
@@ -150,11 +158,11 @@ function vEingang(){
   if(!st.pdfs.length)return h+'<div class="empty"><div class="big">📭</div>Der Eingang ist leer.<br><span class="small">Scans landen in 00_Eingang – danach hier „Analysieren“.</span></div>';
   var k=konfig(),frei=0,sicher=0;
   st.pdfs.forEach(function(p){var e=st.vor.dateien[p.name]||{},m=meta(p.name),ed=st.edit[p.name]||{},err=m?D.valid(m,k):"",o=st.open[p.name];
-    if(ed.frei&&m&&!err)frei++;if(m&&!err&&!ed.frei&&(m.konfidenz==="hoch"||m.konfidenz==="mittel"))sicher++;
+    if(ed.frei&&m&&!err)frei++;if(m&&!err&&!ed.frei&&!m.doppelt&&(m.konfidenz==="hoch"||m.konfidenz==="mittel"))sicher++;
     h+='<div class="doc'+(ed.frei&&!err?" frei":e.fehler?" err":m?" vor":"")+'"><div class="h"><div style="min-width:0"><b>'+esc(p.name)+"</b>"+
-      (m&&m.konfidenz?'<span class="badge k-'+esc(m.konfidenz)+'">'+esc(m.konfidenz)+"</span>":"")+(m&&m.steuerrelevant?'<span class="badge k-st">ST</span>':"")+
+      (m&&m.konfidenz?'<span class="badge k-'+esc(m.konfidenz)+'">'+esc(m.konfidenz)+"</span>":"")+(m&&m.steuerrelevant?'<span class="badge k-st">ST</span>':"")+(m&&m.doppelt?'<span class="badge k-niedrig">doppelt</span>':"")+
       '<div class="s">'+Math.max(1,Math.round(p.size/1024))+" KB"+(m?" · "+esc(m.archiv_bereich+" / "+m.archiv_kategorie)+(m.steuerrelevant&&m.stb_belegart?" · Steuer "+esc(D.stbJahr(m))+": "+esc(m.stb_belegart):"")+(m.betrag!=null?" · "+C.eur(+m.betrag):""):e.fehler?' · <span style="color:#f87171">'+esc(e.fehler)+"</span>":" · noch nicht analysiert")+"</div>"+
-      (m?'<div class="fn">'+esc(D.fname(m))+"</div>":"")+(err?'<div class="s" style="color:#fbbf24">⚠ '+esc(err)+"</div>":"")+(m&&m.hinweise?'<div class="s">💡 '+esc(m.hinweise)+"</div>":"")+"</div></div>"+
+      (m&&m.kassenbon?bonZeile(m.kassenbon):"")+(m?'<div class="fn">'+esc(D.fname(m))+"</div>":"")+(err?'<div class="s" style="color:#fbbf24">⚠ '+esc(err)+"</div>":"")+(m&&m.hinweise?'<div class="s">💡 '+esc(m.hinweise)+"</div>":"")+"</div></div>"+
       '<div class="acts"><button class="mini" onclick="D2.prev(\''+jsq(p.name)+'\')">👁 Ansehen</button>'+(m?'<button class="mini" onclick="D2.toggle(\''+jsq(p.name)+'\')">✏️ '+(o?"Schließen":"Bearbeiten")+'</button><button class="mini'+(ed.frei&&!err?" on":"")+'" onclick="D2.frei(\''+jsq(p.name)+'\')"'+(err?" disabled":"")+">"+(ed.frei&&!err?"✓ freigegeben":"☐ freigeben")+"</button>":"")+
       (st.edit[p.name]&&st.edit[p.name].meta?'<button class="mini" onclick="D2.reset(\''+jsq(p.name)+'\')">↺ Vorschlag</button>':"")+"</div>"+
       (o&&m?form(p.name,m):"")+"</div>";});
@@ -162,6 +170,11 @@ function vEingang(){
   return h;
 }
 function jsq(s){return String(s).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;");}
+function bonZeile(b){return '<div class="bon">🧾 Kassenbon '+esc(b.laden||"")+" · "+C.eur(+b.summe)+" · "+EINK.ICON[b.zahlart||"unbekannt"]+" "+esc(EINK.ZA[b.zahlart||"unbekannt"])+" · "+(b.artikel||[]).length+" Artikel"+
+  (b.diff?' · <span style="color:#fbbf24">Positionen weichen um '+C.eur(Math.abs(b.diff))+" ab</span>":"")+"</div>";}
+function bonForm(n,b){var arts=b.artikel||[];
+  return '<div style="margin-top:10px"><div class="lbl">Kassenbon: Zahlart</div><select class="sel" onchange="D2.set(\''+n+'\',\'zahlart\',this.value)">'+Object.keys(EINK.ZA).map(function(z){return '<option value="'+z+'"'+(z===(b.zahlart||"unbekannt")?" selected":"")+">"+EINK.ICON[z]+" "+EINK.ZA[z]+"</option>";}).join("")+"</select>"+
+    (arts.length?'<div class="lbl" style="margin-top:8px">'+arts.length+" Positionen</div>"+arts.map(function(a){return '<div class="art"><span>'+esc(a[0])+(+a[3]&&+a[3]!==1?' <span class="muted">× '+C.num(+a[3],+a[3]%1?3:0)+"</span>":"")+' <span class="muted">· '+esc(EINK.katName(null,+a[2]))+"</span></span><span>"+C.eur(+a[1])+"</span></div>";}).join(""):"")+"</div>";}
 function form(name,m){
   var k=konfig(),n=jsq(name),f=function(l,i){return '<div><div class="lbl">'+l+"</div>"+i+"</div>";},
       inp=function(key,val,type,ph){return '<input class="inp" '+(type?'type="'+type+'"':"")+' value="'+esc(val==null?"":val)+'" placeholder="'+(ph||"")+'" onchange="D2.set(\''+n+'\',\''+key+'\',this.value)">';},
@@ -174,8 +187,9 @@ function form(name,m){
     '<label class="note" style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:13px;color:#e2e8f0"><input type="checkbox" '+(m.steuerrelevant?"checked ":"")+'onchange="D2.set(\''+n+'\',\'steuerrelevant\',this.checked)"> steuerrelevant (Kopie in den Steuerberater-Ordner)</label>'+
     (m.steuerrelevant?'<div style="margin-top:8px">'+f("Belegart für den Steuerberater",sel("stb_belegart",(k.stb||{})[m.archiv_bereich]||[],m.stb_belegart,"bitte wählen"))+"</div>":"")+
     '<div class="g2" style="margin-top:8px">'+f("Betrag (€)",inp("betrag",m.betrag!=null?String(m.betrag).replace(".",","):"",null,"z. B. 123,45"))+f("Zahlbetrag (€, Guthaben negativ)",inp("zahlbetrag",m.zahlbetrag!=null?String(m.zahlbetrag).replace(".",","):""))+"</div>"+
+    (m.kassenbon?bonForm(n,m.kassenbon):"")+
     (m.steuer_begruendung?'<div class="note" style="margin-top:8px">Steuer: '+esc(m.steuer_begruendung)+"</div>":"")+
-    '<div class="note" style="margin-top:8px">Ablage: 02_Archiv/'+esc(m.archiv_bereich+"/"+(m.archiv_kategorie||"?"))+"/"+(m.steuerrelevant?"<br>Kopie: 01_Steuerberater/"+esc(D.stbJahr(m)+"/"+m.archiv_bereich+"/"+(m.stb_belegart||"?"))+"/":"")+"</div></div>";
+    '<div class="note" style="margin-top:8px">Ablage: 02_Archiv/'+esc(m.archiv_bereich+"/"+(m.archiv_kategorie||"?"))+"/"+(m.archiv_kategorie==="Einkaeufe"?esc(D.stbJahr(m))+"/":"")+(m.steuerrelevant?"<br>Kopie: 01_Steuerberater/"+esc(D.stbJahr(m)+"/"+m.archiv_bereich+"/"+(m.stb_belegart||"?"))+"/":"")+"</div></div>";
   return h;
 }
 function archivKurz(){var n=data.index.length;return n?'<div class="note">Im Archiv sind '+n+' Dokumente verzeichnet – siehe Reiter „Archiv“.</div>':"";}
@@ -183,14 +197,18 @@ function archivKurz(){var n=data.index.length;return n?'<div class="note">Im Arc
 /* ---------- Archiv ---------- */
 function vArchiv(){
   var idx=data.index,q=D.norm(st.q),ys={};idx.forEach(function(e){var y=e.jahr||(e.datum?e.datum.slice(0,4):"");if(y)ys[y]=1;});
+  var nBon=0,zeigBons=st.fbon||!!q;
   var list=idx.filter(function(e){if(st.fb!=="alle"&&e.bereich!==st.fb)return false;if(st.fst&&!e.st)return false;
+    if(e.kategorie==="Einkaeufe"&&!zeigBons){nBon++;return false;}
     if(st.fy&&String(e.jahr||(e.datum||"").slice(0,4))!==st.fy)return false;
     if(q&&D.norm([e.datei,e.absender,e.betreff,e.kategorie,e.belegart,e.empfaenger,e.betrag].join(" ")).indexOf(q)<0)return false;return true;});
   var h=st.perm!=="granted"?connectHint():"";
   h+='<input class="inp" style="margin-bottom:10px" placeholder="Suchen: Absender, Betreff, Kategorie, Betrag …" value="'+esc(st.q)+'" oninput="D2.q(this.value)">';
   h+='<div class="filt"><select class="sel" style="width:auto;padding:6px 8px;font-size:12px" onchange="D2.fy(this.value)"><option value="">alle Jahre</option>'+Object.keys(ys).sort().reverse().map(function(y){return '<option'+(st.fy===y?" selected":"")+">"+y+"</option>";}).join("")+"</select>"+
     [["alle","Alle"],["Privat","Privat"],["Geschaeftlich","Geschäft"]].map(function(b){return '<button class="pill'+(st.fb===b[0]?" on":"")+'" onclick="D2.fb(\''+b[0]+'\')">'+b[1]+"</button>";}).join("")+
-    '<button class="pill'+(st.fst?" on":"")+'" onclick="D2.fst()">nur Steuer</button></div>';
+    '<button class="pill'+(st.fst?" on":"")+'" onclick="D2.fst()">nur Steuer</button>'+
+    (idx.some(function(e){return e.kategorie==="Einkaeufe";})?'<button class="pill'+(st.fbon?" on":"")+'" onclick="D2.fbon()">🧾 Kassenbons</button>':"")+"</div>";
+  if(nBon)h+='<div class="note" style="margin:-4px 0 8px">'+nBon+' Kassenbons ausgeblendet – die Auswertung steht unter <a class="dl" href="../finanzen/index.html#einkauf">Finanzen → Einkäufe</a>.</div>';
   h+='<div class="small muted" style="margin-bottom:8px">'+list.length+" von "+idx.length+" Dokumenten"+(data.aktualisiert?" · Stand "+D.de(data.aktualisiert)+" "+String(data.aktualisiert).slice(11,16):"")+"</div>";
   if(!idx.length)return h+'<div class="empty">Noch keine Dokumente verzeichnet.<br><span class="small">Nach dem ersten Ablegen – oder unter Einrichtung „Bestehendes Archiv aufnehmen“.</span></div>';
   h+='<div class="panel" style="padding:4px 14px">'+list.slice(0,st.limit).map(function(e){
@@ -257,14 +275,15 @@ window.D2={
     else if(k==="jahr")m.jahr=v?+v:null;
     else if(k==="steuerrelevant"){m.steuerrelevant=!!v;if(v&&!m.stb_belegart){var a=(konfig().stb||{})[m.archiv_bereich]||[];m.stb_belegart=a[0]||null;}}
     else if(k==="archiv_bereich"){m.archiv_bereich=v;m.archiv_kategorie="";m.stb_belegart=m.steuerrelevant?(((konfig().stb||{})[v]||[])[0]||null):null;}
-    else if(k==="datum"){m.datum=v;if(v&&!m.jahr)m.jahr=+v.slice(0,4);}
+    else if(k==="datum"){m.datum=v;if(v&&!m.jahr)m.jahr=+v.slice(0,4);if(m.kassenbon&&v)m.kassenbon.datum=v;}
+    else if(k==="zahlart"){if(m.kassenbon)m.kassenbon.zahlart=v;}
     else m[k]=v;
     e.frei=false;after();},
   emp:function(n,x){var e=editOf(n),m=e.meta,l=String(m.empfaenger||"").split("-").filter(Boolean),keys=Object.keys(konfig().empfaenger||{});
     if(l.indexOf(x)>-1)l=l.filter(function(y){return y!==x;});else l.push(x);l.sort(function(a,b){return keys.indexOf(a)-keys.indexOf(b);});m.empfaenger=l.join("-");e.frei=false;after();},
   frei:function(n,inPrev){var e=editOf(n);if(!e.meta||D.valid(e.meta,konfig()))return;e.frei=!e.frei;if(inPrev&&e.frei){saveEdits();render();D2.next();return;}after();},
   reset:function(n){delete st.edit[n];after();},
-  alleSicher:function(){(st.pdfs||[]).forEach(function(p){var m=meta(p.name);if(m&&!D.valid(m,konfig())&&(m.konfidenz==="hoch"||m.konfidenz==="mittel")){editOf(p.name).frei=true;}});after();},
+  alleSicher:function(){(st.pdfs||[]).forEach(function(p){var m=meta(p.name);if(m&&!m.doppelt&&!D.valid(m,konfig())&&(m.konfidenz==="hoch"||m.konfidenz==="mittel")){editOf(p.name).frei=true;}});after();},
   ablegen:function(){var docs=(st.pdfs||[]).filter(function(p){var e=st.edit[p.name];return e&&e.frei&&e.meta&&!D.valid(e.meta,konfig());}).map(function(p){return {datei:p.name,meta:st.edit[p.name].meta};});
     if(!docs.length)return;var id=D.newId();
     D.writeJSON(st.root,"_cockpit/auftrag.json",{id:id,erstellt:new Date().toISOString(),dokumente:docs}).then(function(){
@@ -278,12 +297,12 @@ window.D2={
         render();return reload();});})
     .catch(function(e){flash("⚠ Auftrag konnte nicht geschrieben werden: "+(e.message||e),true);});},
   q:function(v){st.q=v;var el=document.activeElement,pos=el&&el.selectionStart;render();var i=document.querySelector('#main input.inp');if(i){i.focus();try{i.setSelectionRange(pos,pos);}catch(e){}}},
-  fy:function(v){st.fy=v;render();},fb:function(v){st.fb=v;render();},fst:function(){st.fst=!st.fst;render();},more:function(){st.limit+=60;render();},
+  fy:function(v){st.fy=v;render();},fb:function(v){st.fb=v;render();},fst:function(){st.fst=!st.fst;render();},fbon:function(){st.fbon=!st.fbon;render();},more:function(){st.limit+=60;render();},
   open:function(id){var e=data.index.filter(function(x){return x.id===id;})[0];if(!e)return;D.oeffnen(e).then(function(){if(st.perm==="prompt")init();},function(err){flash("⚠ "+(err.message||err),true);});}
 };
 document.addEventListener("keydown",function(e){if(e.key==="Escape"&&st.prevName)D2.closePrev();});
 render();init();
-C.autoPull([AREA],function(a,d){data=norm(d);render();});
+C.autoPull([AREA,"einkaeufe"],function(a,d){if(a===AREA){data=norm(d);render();}});
 })();
 </script>
 </body>

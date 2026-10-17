@@ -8,6 +8,7 @@ Einmalig einrichten mit Cockpit-Ablage-einrichten.bat (Doppelklick, im selben Or
 Befehle:
   cockpit-ablage://test      Verbindung pruefen
   cockpit-ablage://analyse   PDFs in 00_Eingang analysieren -> Vorschlaege fuers Cockpit
+                             (sicher erkannte Kassenbons werden dabei gleich abgelegt)
   cockpit-ablage://ablegen   im Cockpit freigegebene Dokumente ablegen
   cockpit-ablage://index     vorhandenes Archiv ins Dokumentenverzeichnis aufnehmen
   cockpit-ablage://konsole   klassische Ablage (ablage.py) im Konsolenfenster
@@ -19,6 +20,7 @@ Austausch mit dem Cockpit ueber den Ordner <Ablage>/_cockpit/:
   vorschlaege.json  Analyse-Ergebnisse je PDF im Eingang
   auftrag.json      vom Cockpit freigegebene Dokumente (wird nach dem Ablegen geloescht)
   index.json        Verzeichnis der abgelegten Dokumente (nur Metadaten, keine Inhalte)
+  einkaeufe.json    Kassenbons mit Laden, Summe, Zahlart und Artikeln (Einkaufs-Statistik)
   status.json       Stand des letzten Laufs
   protokoll.txt     Protokoll aller Ablagen
 
@@ -101,12 +103,49 @@ ZUSATZ = """
   Bei Abrechnungen mit Abschlaegen die Nachzahlung bzw. das Guthaben. Unklar -> null
 - "jahr": Jahr, auf das sich das Dokument inhaltlich bezieht (Leistungs-/Abrechnungszeitraum, Steuerjahr,
   Bescheinigungsjahr) als Zahl. Unklar -> Jahr des Dokumentdatums
+- "kassenbon": NUR wenn das Dokument ein Kassenbon / Kassenzettel / Bewirtungs- oder Tankquittung eines
+  Geschaefts ist (Supermarkt, Discounter, Drogerie, Baeckerei, Metzgerei, Baumarkt, Tankstelle, Apotheke,
+  Restaurant ...). Bei allen anderen Dokumenten (Rechnungen per Post/E-Mail, Vertraege, Bescheide ...) null.
+  Objekt mit:
+  "laden": kurzer Name des Geschaefts bzw. der Kette ohne Rechtsform und Filialzusatz, z.B. "REWE", "EDEKA",
+           "Aldi Sued", "Lidl", "dm", "Rossmann", "Baeckerei Mueller"
+  "ort": Ort der Filiale oder null
+  "datum": Kaufdatum "YYYY-MM-DD"; "zeit": Uhrzeit "HH:MM" oder null
+  "summe": zu zahlender Gesamtbetrag in Euro als Zahl (nach Rabatten, inkl. Pfand)
+  "zahlart": "bar" (Bar, Gegeben, Rueckgeld), "karte" (girocard, EC-Cash, Maestro, V PAY, Visa, Mastercard,
+             Kreditkarte, Kartenzahlung, kontaktlos, Apple Pay, Google Pay), "sonstiges" (Gutschein, App,
+             PayPal, Rechnung) oder "unbekannt"
+  "karte": Kartenart, falls erkennbar ("girocard", "Visa", "Mastercard", "Apple Pay" ...), sonst null
+  "artikel": ALLE Positionen in der Reihenfolge des Bons als Liste von Objekten
+     {"name": Artikelbezeichnung gut lesbar (Abkuerzungen des Bons ausschreiben, wenn eindeutig),
+      "menge": Stueckzahl bzw. Gewicht in kg als Zahl (Standard 1),
+      "preis": Zeilenbetrag in Euro als Zahl (Menge x Einzelpreis; Rabatte, Coupons und Pfandrueckgabe negativ),
+      "kategorie": GENAU eine aus: {KATEGORIEN}}
+     Pfand und Leergut -> "Pfand & Rabatte"; Rabatte/Coupons, die sich auf einen Artikel beziehen, ebenfalls.
+     Die Zeilenbetraege sollen zusammen die Summe ergeben. Keine Zwischensummen, MwSt-Zeilen oder Zahlungszeilen.
+- Fuer Kassenbons gilt ausserdem: "absender" = laden, "betreff" = "Einkauf" (Tankstelle: "Tanken",
+  Restaurant: "Bewirtung"), "datum" = Kaufdatum, "betrag" und "zahlbetrag" = summe.
+  Alltagseinkaeufe (Lebensmittel, Drogerie, Haushalt, Tanken, Gastronomie) -> archiv_bereich "Privat",
+  archiv_kategorie "Einkaeufe", nicht steuerrelevant. Kaufbelege fuer langlebige Anschaffungen mit Garantie
+  (Elektronik, Moebel, Geraete) weiter nach den Regeln oben (z.B. Quittungen_Garantien) - "kassenbon" trotzdem ausfuellen.
 
 # Konfidenz
 - "hoch": Alle Felder eindeutig erkannt, Kategorie klar
 - "mittel": Kleinere Unsicherheiten (z.B. Datum nur geschaetzt)
 - "niedrig": Grosse Unsicherheit, unleserlich, mehrdeutig oder unbekannter Dokumenttyp
 """
+
+# Warengruppen fuer Kassenbons. Die Reihenfolge ist fest (im Cockpit wird die Nummer gespeichert):
+# neue Gruppen nur hinten anfuegen, nie umsortieren.
+KAT_EINKAUF = [
+    "Obst & Gemüse", "Brot & Backwaren", "Milchprodukte & Eier", "Fleisch, Wurst & Fisch",
+    "Vorrat & Konserven", "Tiefkühl & Fertiggerichte", "Süßes & Snacks", "Getränke (alkoholfrei)",
+    "Alkohol", "Kaffee & Tee", "Drogerie & Hygiene", "Haushalt & Reinigung", "Baby & Kind", "Tier",
+    "Non-Food & Sonstiges", "Pfand & Rabatte", "Kraftstoff", "Gastronomie",
+]
+KAT_SONST = KAT_EINKAUF.index("Non-Food & Sonstiges")
+EINKAUF_KAT = "Einkaeufe"   # zusaetzliche Archiv-Kategorie (Privat) fuer Alltags-Kassenbons
+ZUSATZ = ZUSATZ.replace("{KATEGORIEN}", ", ".join(f'"{k}"' for k in KAT_EINKAUF))
 
 
 class Fehler(Exception):
@@ -121,10 +160,11 @@ def jetzt() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
-def schreibe_json(pfad: Path, obj):
+def schreibe_json(pfad: Path, obj, kompakt=False):
     pfad.parent.mkdir(parents=True, exist_ok=True)
     tmp = pfad.with_name(pfad.name + ".tmp")
-    tmp.write_text(json.dumps(obj, ensure_ascii=False, indent=1), encoding="utf-8")
+    text = json.dumps(obj, ensure_ascii=False, separators=(",", ":")) if kompakt else json.dumps(obj, ensure_ascii=False, indent=1)
+    tmp.write_text(text, encoding="utf-8")
     os.replace(tmp, pfad)
 
 
@@ -158,10 +198,14 @@ def protokoll(zeilen):
         pass
 
 
+def archiv_privat() -> list:
+    return list(A.ARCHIV_PRIVAT) + ([] if EINKAUF_KAT in A.ARCHIV_PRIVAT else [EINKAUF_KAT])
+
+
 def konfig() -> dict:
     return {
         "empfaenger": A.EMPFAENGER,
-        "archiv": {"Privat": A.ARCHIV_PRIVAT, "Geschaeftlich": A.ARCHIV_GESCHAEFTLICH},
+        "archiv": {"Privat": archiv_privat(), "Geschaeftlich": A.ARCHIV_GESCHAEFTLICH},
         "stb": {"Privat": A.STB_PRIVAT, "Geschaeftlich": A.STB_GESCHAEFTLICH},
         "modell": A.MODEL,
     }
@@ -194,8 +238,16 @@ def zahl(v):
 
 
 def iso_datum(v) -> str:
-    d = A.format_date(v or "")
-    return f"{d[:4]}-{d[4:6]}-{d[6:8]}" if len(d) == 8 else ""
+    s = str(v or "").strip()
+    m = re.match(r"(\d{1,2})\.(\d{1,2})\.(\d{4}|\d{2})\b", s)  # 14.10.2026 / 14.10.26 (Kassenbons)
+    d = f"{int(m.group(3)) % 100 + 2000 if len(m.group(3)) == 2 else int(m.group(3)):04d}{int(m.group(2)):02d}{int(m.group(1)):02d}" if m else A.format_date(s)
+    if len(d) != 8:
+        return ""
+    try:
+        datetime.strptime(d, "%Y%m%d")
+    except ValueError:
+        return ""
+    return f"{d[:4]}-{d[4:6]}-{d[6:8]}"
 
 
 def normalisiere(m) -> dict:
@@ -222,13 +274,110 @@ def normalisiere(m) -> dict:
     if not out["jahr"] and out["datum"]:
         out["jahr"] = int(out["datum"][:4])
     out["konfidenz"] = out["konfidenz"].lower()
+    bon = normalisiere_bon(m.get("kassenbon"), out)
+    out["kassenbon"] = bon
+    if bon:
+        if not out["datum"]:
+            out["datum"] = bon["datum"]
+            out["jahr"] = out["jahr"] or (int(bon["datum"][:4]) if bon["datum"] else None)
+        if out["betrag"] is None:
+            out["betrag"] = bon["summe"]
+        if out["zahlbetrag"] is None:
+            out["zahlbetrag"] = bon["summe"]
+        if not out["absender"]:
+            out["absender"] = A.clean_text(bon["laden"])
+    return out
+
+
+def einfach(s) -> str:
+    s = str(s or "").lower()
+    for a, b in (("ä", "ae"), ("ö", "oe"), ("ü", "ue"), ("ß", "ss")):
+        s = s.replace(a, b)
+    return re.sub(r"[^a-z0-9]+", " ", s).strip()
+
+
+def kat_nummer(v) -> int:
+    if isinstance(v, bool):
+        return KAT_SONST
+    if isinstance(v, float) and v.is_integer():
+        v = int(v)
+    if isinstance(v, int):
+        return v if 0 <= v < len(KAT_EINKAUF) else KAT_SONST
+    s = einfach(v)
+    if not s:
+        return KAT_SONST
+    namen = [einfach(k) for k in KAT_EINKAUF]
+    if s in namen:
+        return namen.index(s)
+    for i, k in enumerate(namen):  # z. B. "Getraenke" oder "Pfand"
+        if k.startswith(s) or s.split()[0] == k.split()[0]:
+            return i
+    return KAT_SONST
+
+
+def zahlart(v) -> str:
+    s = einfach(v)
+    if s in ("bar", "karte", "sonstiges", "unbekannt"):
+        return s
+    if re.search(r"(karte|\bgiro|\bec\b|maestro|v ?pay|visa|master|kredit|debit|kontaktlos|apple|google)", s):
+        return "karte"  # zuerst, wegen "EC-Cash"
+    if re.search(r"\b(bar\w*|cash|gegeben|rueckgeld)\b", s):
+        return "bar"
+    return "sonstiges" if s in ("gutschein", "app", "paypal", "rechnung") else "unbekannt"
+
+
+def normalisiere_bon(b, meta: dict):
+    """Kassenbon-Daten der KI (oder schon normalisiert aus dem Cockpit) in eine kompakte Form bringen.
+    Artikel: [Name, Zeilenbetrag, Warengruppe (Nummer in KAT_EINKAUF), Menge]."""
+    if not isinstance(b, dict):
+        return None
+    artikel = []
+    for a in b.get("artikel") or []:
+        if isinstance(a, (list, tuple)) and len(a) >= 2:
+            name, preis = a[0], zahl(a[1])
+            kat = a[2] if len(a) > 2 else None
+            menge = a[3] if len(a) > 3 else 1
+        elif isinstance(a, dict):
+            name = a.get("name")
+            preis = zahl(a.get("preis") if a.get("preis") is not None else a.get("betrag"))
+            kat, menge = a.get("kategorie"), a.get("menge")
+        else:
+            continue
+        name = re.sub(r"\s+", " ", str(name or "")).strip()[:60]
+        if not name or preis is None:
+            continue
+        mg = zahl(menge)
+        artikel.append([name, preis, kat_nummer(kat), mg if mg and mg > 0 else 1])
+    summe = zahl(b.get("summe"))
+    if summe is None and artikel:
+        summe = round(sum(x[1] for x in artikel), 2)
+    if summe is None:
+        return None
+    zeit = re.match(r"\s*(\d{1,2})[:.](\d{2})", str(b.get("zeit") or ""))
+    laden = re.sub(r"\s+", " ", str(b.get("laden") or "")).strip()[:40] or str(meta.get("absender") or "").replace("_", " ")
+    karte = b.get("karte")
+    ort = b.get("ort")
+    out = {
+        "laden": laden,
+        "ort": "" if A.is_empty(ort) else str(ort).strip()[:40],
+        "datum": iso_datum(b.get("datum")) or meta.get("datum") or "",
+        "zeit": f"{int(zeit.group(1)):02d}:{zeit.group(2)}" if zeit else "",
+        "summe": summe,
+        "zahlart": zahlart(b.get("zahlart")),
+        "karte": "" if A.is_empty(karte) else str(karte).strip()[:20],
+        "artikel": artikel,
+    }
+    if artikel:
+        diff = round(sum(x[1] for x in artikel) - summe, 2)
+        if abs(diff) > 0.05:
+            out["diff"] = diff  # Positionen ergeben nicht die Summe -> im Cockpit markiert
     return out
 
 
 def gueltig(meta: dict):
     if meta.get("archiv_bereich") not in ("Privat", "Geschaeftlich"):
         return False, f"Ungueltiger Bereich: {meta.get('archiv_bereich')}"
-    kats = A.ARCHIV_PRIVAT if meta["archiv_bereich"] == "Privat" else A.ARCHIV_GESCHAEFTLICH
+    kats = archiv_privat() if meta["archiv_bereich"] == "Privat" else A.ARCHIV_GESCHAEFTLICH
     if meta.get("archiv_kategorie") not in kats:
         return False, f"Ungueltige Kategorie: {meta.get('archiv_kategorie')}"
     if meta.get("steuerrelevant"):
@@ -241,7 +390,7 @@ def gueltig(meta: dict):
 def eintrag(meta: dict, ziel: Path, stb, quelle: str) -> dict:
     ra = rel(ziel)
     st = bool(meta.get("steuerrelevant"))
-    return {
+    e = {
         "id": hashlib.sha1(ra.encode("utf-8")).hexdigest()[:12],
         "datei": ziel.name, "archiv": ra, "stb": stb,
         "datum": meta.get("datum") or "", "empfaenger": meta.get("empfaenger") or "",
@@ -251,6 +400,9 @@ def eintrag(meta: dict, ziel: Path, stb, quelle: str) -> dict:
         "betrag": meta.get("betrag"), "zahlbetrag": meta.get("zahlbetrag"), "jahr": meta.get("jahr"),
         "abgelegt": jetzt(), "quelle": quelle,
     }
+    if meta.get("kassenbon"):
+        e["zahlart"] = meta["kassenbon"].get("zahlart") or "unbekannt"
+    return e
 
 
 def lade_index() -> dict:
@@ -274,6 +426,36 @@ def speichere_vorschlaege(dateien: dict):
     schreibe_json(KANAL / "vorschlaege.json", {"version": 1, "aktualisiert": jetzt(), "konfig": konfig(), "dateien": dateien})
 
 
+# Kassenbons: _cockpit/einkaeufe.json (Laden, Datum, Summe, Zahlart, Artikel) fuer die Einkaufs-Statistik im Cockpit
+def lade_einkaeufe() -> dict:
+    d = lies_json(KANAL / "einkaeufe.json", {})
+    return {b["id"]: b for b in d.get("bons", []) if isinstance(b, dict) and b.get("id")}
+
+
+def speichere_einkaeufe(m: dict):
+    liste = sorted(m.values(), key=lambda b: (b.get("datum") or "", b.get("zeit") or "", b.get("id")), reverse=True)
+    schreibe_json(KANAL / "einkaeufe.json", {"version": 1, "aktualisiert": jetzt(), "kategorien": KAT_EINKAUF, "bons": liste}, kompakt=True)
+
+
+def bon_doppelt(eink: dict, bon: dict):
+    """Derselbe Bon schon erfasst? (gleicher Laden, Tag, Uhrzeit und Betrag)"""
+    k = (einfach(bon.get("laden")), bon.get("datum"), bon.get("zeit") or "", bon.get("summe"))
+    for b in eink.values():
+        if (einfach(b.get("laden")), b.get("datum"), b.get("zeit") or "", b.get("summe")) == k:
+            return b
+    return None
+
+
+def bon_eintragen(eink: dict, meta: dict, e: dict):
+    bon = meta.get("kassenbon")
+    if not bon:
+        return
+    alt = bon_doppelt(eink, bon)
+    if alt and alt["id"] != e["id"]:
+        del eink[alt["id"]]
+    eink[e["id"]] = dict(bon, id=e["id"], archiv=e["archiv"], abgelegt=e["abgelegt"])
+
+
 # =============================================================================
 # Befehle
 # =============================================================================
@@ -295,7 +477,7 @@ def analysiere(client, pdf: Path) -> dict:
     daten = base64.standard_b64encode(pdf.read_bytes()).decode("utf-8")
     antwort = client.messages.create(
         model=A.MODEL,
-        max_tokens=1200,
+        max_tokens=4096,
         system=A.SYSTEM_PROMPT + ZUSATZ,
         messages=[{"role": "user", "content": [
             {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": daten}},
@@ -326,27 +508,68 @@ def cmd_analyse(id_):
     if not offen:
         return {"meldung": f"Nichts Neues - {len(pdfs)} PDF(s) waren schon analysiert.", "dateien": len(pdfs), "neu": 0, "fehler": 0}
     client = A.Anthropic()
-    fehler = 0
+    fehler, bons = 0, 0
+    idx, eink, log = None, None, [f"--- Kassenbons automatisch abgelegt {jetzt()} ---"]
     for i, (p, sig) in enumerate(offen, 1):
         print(f"  [{i:3}/{len(offen)}] {p.name[:52]:<52} ", end="", flush=True)
         try:
             meta = analysiere(client, p)
             ok, grund = gueltig(meta)
+            bon = meta.get("kassenbon")
+            if bon and ok:
+                if eink is None:
+                    idx, eink = lade_index(), lade_einkaeufe()
+                alt = bon_doppelt(eink, bon)
+                if alt:
+                    meta["doppelt"] = alt.get("archiv")
+                    meta["hinweise"] = (f"Dieser Kassenbon ist schon erfasst ({alt.get('archiv')}) - den Scan am besten loeschen. "
+                                        + meta.get("hinweise", "")).strip()
+                elif bon_sicher(meta):
+                    # sichere Kassenbons ohne Rueckfrage ablegen - sie erscheinen direkt in der Einkaufs-Statistik
+                    e = lege_ab(meta, p)
+                    idx[e["archiv"]] = e
+                    bon_eintragen(eink, meta, e)
+                    speichere_index(idx)
+                    speichere_einkaeufe(eink)
+                    log.append(f"[OK] {p.name} -> {e['archiv']} | Kassenbon {bon['laden']} {bon['summe']:.2f} EUR {bon['zahlart']}")
+                    bons += 1
+                    print("KASSENBON abgelegt")
+                    status(id_, "analyse", "laeuft", f"{i} von {len(offen)} analysiert", fortschritt={"i": i, "n": len(offen)})
+                    continue
             dateien[p.name] = dict(sig, meta=meta, analysiert=jetzt(), fehler=None, pruefen=None if ok else grund)
-            print("OK" if ok else "PRUEFEN")
+            print(("KASSENBON " if bon else "") + ("OK" if ok else "PRUEFEN"))
         except Exception as e:  # noqa: BLE001 - weiter mit dem naechsten Dokument
             fehler += 1
             dateien[p.name] = dict(sig, meta=None, analysiert=jetzt(), fehler=f"{type(e).__name__}: {e}"[:300], pruefen=None)
             print("FEHLER")
         speichere_vorschlaege(dateien)
         status(id_, "analyse", "laeuft", f"{i} von {len(offen)} analysiert", fortschritt={"i": i, "n": len(offen)})
-    return {"meldung": f"{len(offen) - fehler} Dokument(e) analysiert" + (f", {fehler} Fehler" if fehler else "") + ". Jetzt im Cockpit pruefen und freigeben.",
-            "dateien": len(pdfs), "neu": len(offen), "fehler": fehler}
+    speichere_vorschlaege(dateien)
+    if bons:
+        protokoll(log)
+    rest = len(offen) - fehler - bons
+    teile = []
+    if bons:
+        teile.append(f"{bons} Kassenbon(s) direkt abgelegt")
+    if rest:
+        teile.append(f"{rest} Dokument(e) analysiert - jetzt im Cockpit pruefen und freigeben")
+    if fehler:
+        teile.append(f"{fehler} Fehler")
+    return {"meldung": (", ".join(teile) or "Fertig") + ".", "dateien": len(pdfs), "neu": len(offen), "fehler": fehler, "kassenbons": bons}
+
+
+def bon_sicher(meta: dict) -> bool:
+    """Kassenbon ohne Rueckfrage ablegen? Nur bei sicherer Erkennung und ohne Steuerbezug."""
+    bon = meta.get("kassenbon") or {}
+    return (meta.get("konfidenz") in ("hoch", "mittel") and not meta.get("steuerrelevant")
+            and bool(bon.get("datum")) and bon.get("summe") is not None and bool(bon.get("laden")))
 
 
 def lege_ab(meta: dict, src: Path) -> dict:
     name = A.build_filename(meta)
     adir = A.ARCHIV / meta["archiv_bereich"] / meta["archiv_kategorie"]
+    if meta["archiv_kategorie"] == EINKAUF_KAT:  # viele Bons -> Unterordner je Jahr
+        adir = adir / str(meta.get("jahr") or (meta.get("datum") or "")[:4] or datetime.now().year)
     adir.mkdir(parents=True, exist_ok=True)
     ziel = A.ensure_unique(adir / name)
     shutil.move(str(src), str(ziel))
@@ -370,6 +593,7 @@ def cmd_ablegen(id_):
     if id_ and auftrag.get("id") and auftrag["id"] != id_:
         raise Fehler("Der Auftrag passt nicht zu diesem Aufruf - bitte im Cockpit erneut auf Ablegen tippen.")
     idx = lade_index()
+    eink = lade_einkaeufe()
     v = lade_vorschlaege()["dateien"]
     erg, ok_n = [], 0
     log = [f"--- Ablage aus dem Cockpit {jetzt()} ---"]
@@ -390,6 +614,7 @@ def cmd_ablegen(id_):
         try:
             e = lege_ab(meta, src)
             idx[e["archiv"]] = e
+            bon_eintragen(eink, meta, e)
             v.pop(name, None)
             ok_n += 1
             erg.append({"datei": name, "ok": True, "ziel": e["archiv"], "stb": e["stb"], "id": e["id"]})
@@ -400,6 +625,8 @@ def cmd_ablegen(id_):
             log.append(f"[FEHLER] {name}: {ex}")
             print("FEHLER")
     speichere_index(idx)
+    if any(d.get("meta", {}) and (d.get("meta") or {}).get("kassenbon") for d in auftrag["dokumente"]):
+        speichere_einkaeufe(eink)
     speichere_vorschlaege(v)
     try:
         (KANAL / "auftrag.json").unlink()
@@ -462,6 +689,13 @@ def cmd_index(id_):
     for k in weg:
         del idx[k]
     speichere_index(idx)
+    # Kassenbons, deren PDF es nicht mehr gibt, aus der Einkaufs-Statistik nehmen
+    eink = lade_einkaeufe()
+    alt = [k for k, b in eink.items() if b.get("archiv") not in gefunden]
+    if alt:
+        for k in alt:
+            del eink[k]
+        speichere_einkaeufe(eink)
     print(f"  {len(gefunden)} Dokument(e) im Archiv, {neu} neu aufgenommen, {len(weg)} nicht mehr vorhanden.")
     return {"meldung": f"Verzeichnis aktualisiert: {len(gefunden)} Dokumente ({neu} neu, {len(weg)} entfernt).",
             "gesamt": len(gefunden), "neu": neu, "entfernt": len(weg)}

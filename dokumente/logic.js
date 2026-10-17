@@ -68,9 +68,10 @@ function de(s){if(!s)return "–";var p=String(s).slice(0,10).split("-");return 
 function steuerJahr(e){var m=/^01_Steuerberater\/(\d{4})\//.exec(e.stb||"");if(m)return +m[1];return e.jahr||(e.datum?+e.datum.slice(0,4):null);}
 function stbDocs(y,idx){return (idx||index()).filter(function(e){return e.st&&steuerJahr(e)===+y;});}
 
-/* Buchung ↔ Beleg: gleicher Betrag (±1 Cent), Beleg bis 14 Tage nach / 90 Tage vor der Buchung, Absender im Buchungstext gibt Vorrang */
+/* Buchung ↔ Beleg: gleicher Betrag (±1 Cent), Beleg bis 14 Tage nach / 90 Tage vor der Buchung, Absender im Buchungstext gibt Vorrang.
+   Bar bezahlte Kassenbons tauchen im Konto nicht auf und bleiben außen vor. */
 function txMatcher(idx){
-  var by={};(idx||index()).forEach(function(e){if(!e.datum)return;[e.zahlbetrag,e.betrag].forEach(function(v){if(v==null||!+v)return;var c=Math.round(Math.abs(+v)*100);[c-1,c,c+1].forEach(function(k){(by[k]=by[k]||[]).push(e);});});});
+  var by={};(idx||index()).forEach(function(e){if(!e.datum||e.zahlart==="bar")return;[e.zahlbetrag,e.betrag].forEach(function(v){if(v==null||!+v)return;var c=Math.round(Math.abs(+v)*100);[c-1,c,c+1].forEach(function(k){(by[k]=by[k]||[]).push(e);});});});
   return function(t){var c=Math.round(Math.abs(+t.b||0)*100),l=by[c];if(!l)return null;var best=null,h=norm((t.p||"")+" "+(t.z||""));
     l.forEach(function(e){var dd=(d0(t.d)-d0(e.datum))/DAY;if(dd<-14||dd>90)return;var sc=50-Math.abs(dd)/3;
       if(norm(e.absender).split(" ").some(function(w){return w.length>3&&h.indexOf(w)>-1;}))sc+=100;if(!best||sc>best.sc)best={e:e,sc:sc};});
@@ -79,7 +80,7 @@ function txMatcher(idx){
 /* Hauskosten: Rechnungen eines Jahres zu den Kostenarten der Nebenkostenabrechnung */
 var HAUS_KW={grundsteuer:["grundsteuer"],wasser:["wasser","trinkwasser","frischwasser"],abwasser:["abwasser","kanal","schmutzwasser","entwaesserung"],niederschlag:["niederschlag","regenwasser"],
   heizung:["gas","erdgas","heizung","waerme"],muell:["abfall","muell","entsorgung"],schornstein:["kaminkehrer","schornstein"],gebaeudevers:["wohngebaeude","gebaeudeversicherung","gebaeude"],haftpflicht:["haftpflicht","grundbesitzer"]};
-function hausDocs(y,idx){return (idx||index()).filter(function(e){var j=e.jahr||(e.datum?+e.datum.slice(0,4):null);return e.bereich!=="Geschaeftlich"&&j===+y&&(e.betrag!=null||e.zahlbetrag!=null);});}
+function hausDocs(y,idx){return (idx||index()).filter(function(e){var j=e.jahr||(e.datum?+e.datum.slice(0,4):null);return e.bereich!=="Geschaeftlich"&&e.kategorie!=="Einkaeufe"&&j===+y&&(e.betrag!=null||e.zahlbetrag!=null);});}
 function hausVorschlag(y,key,idx){var kw=HAUS_KW[key];if(!kw)return [];return hausDocs(y,idx).filter(function(e){var h=" "+norm(e.absender+" "+e.betreff+" "+e.datei)+" ";
   return kw.some(function(w){return h.indexOf(w)>-1;});});}
 
