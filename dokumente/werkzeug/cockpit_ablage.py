@@ -42,6 +42,7 @@ from urllib.parse import parse_qs, urlparse
 
 HIER = Path(__file__).resolve().parent
 sys.path.insert(0, str(HIER))
+sys.dont_write_bytecode = True  # keinen __pycache__-Ordner neben den Skripten anlegen
 
 
 def warte(sekunden=None):
