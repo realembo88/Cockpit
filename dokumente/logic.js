@@ -55,7 +55,13 @@ var UML={"ä":"ae","ö":"oe","ü":"ue","Ä":"Ae","Ö":"Oe","Ü":"Ue","ß":"ss"},
 function clean(s){return String(s||"").replace(/[äöüÄÖÜß]/g,function(c){return UML[c];}).trim().replace(/\s+/g,"_").replace(/[^A-Za-z0-9_\-]/g,"");}
 function fname(m){var p=[],d=String(m.datum||"").replace(/-/g,"");if(/^\d{8}$/.test(d))p.push(d);var e=String(m.empfaenger||"").trim().toUpperCase();if(!LEER[e.toLowerCase()])p.push(e);
   if(m.steuerrelevant)p.push("ST");var a=clean(m.absender);if(a)p.push(a);var b=clean(m.betreff);if(b)p.push(b);if(!p.length)p.push("Dokument");return p.join("_")+".pdf";}
-function valid(m,k){k=k||{};if(m.archiv_bereich!=="Privat"&&m.archiv_bereich!=="Geschaeftlich")return "Bereich fehlt";
+/* TT.MM.JJJJ, TT.MM.JJ oder JJJJ-MM-TT → JJJJ-MM-TT; "" wenn ungültig oder Jahr unplausibel */
+function isoDatum(s){s=String(s||"").trim();var m=/^(\d{1,2})\.(\d{1,2})\.(\d{4}|\d{2})$/.exec(s),y,mo,d;
+  if(m){d=+m[1];mo=+m[2];y=m[3].length===2?2000+(+m[3]):+m[3];}else{m=/^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s);if(!m)return "";y=+m[1];mo=+m[2];d=+m[3];}
+  if(y<1990||y>2100)return "";var x=new Date(y,mo-1,d);if(x.getFullYear()!==y||x.getMonth()!==mo-1||x.getDate()!==d)return "";
+  return y+"-"+("0"+mo).slice(-2)+"-"+("0"+d).slice(-2);}
+function valid(m,k){k=k||{};if(m.datum&&!isoDatum(m.datum))return "Datum prüfen";if(m.kassenbon&&!m.datum)return "Kaufdatum eintragen";
+  if(m.archiv_bereich!=="Privat"&&m.archiv_bereich!=="Geschaeftlich")return "Bereich fehlt";
   var kats=((k.archiv||{})[m.archiv_bereich])||[];if(kats.length&&kats.indexOf(m.archiv_kategorie)<0)return "Kategorie wählen";if(!m.archiv_kategorie)return "Kategorie wählen";
   if(m.steuerrelevant){var arten=((k.stb||{})[m.archiv_bereich])||[];if(!m.stb_belegart||(arten.length&&arten.indexOf(m.stb_belegart)<0))return "Belegart für den Steuerberater wählen";}
   return "";}
@@ -92,7 +98,7 @@ function oeffnen(e){return root(true).then(function(r){if(!r)throw new Error("De
   return blobUrl(r,e.archiv);}).then(function(u){var w=window.open(u,"_blank");if(!w)location.href=u;setTimeout(function(){URL.revokeObjectURL(u);},60000);});}
 
 return {supported:supported,mobil:mobil,state:state,root:root,pick:pick,forget:forget,dir:dir,file:file,exists:exists,readJSON:readJSON,writeJSON:writeJSON,listPDFs:listPDFs,blobUrl:blobUrl,
-  newId:newId,start:start,poll:poll,clean:clean,fname:fname,valid:valid,stbJahr:stbJahr,index:index,norm:norm,titel:titel,de:de,steuerJahr:steuerJahr,stbDocs:stbDocs,
+  newId:newId,start:start,poll:poll,clean:clean,fname:fname,valid:valid,isoDatum:isoDatum,stbJahr:stbJahr,index:index,norm:norm,titel:titel,de:de,steuerJahr:steuerJahr,stbDocs:stbDocs,
   txMatcher:txMatcher,HAUS_KW:HAUS_KW,hausDocs:hausDocs,hausVorschlag:hausVorschlag,oeffnen:oeffnen};
 })();
 if(typeof window!=="undefined")window.DOKS=DOKS;

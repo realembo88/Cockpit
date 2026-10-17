@@ -183,7 +183,7 @@ function form(name,m){
       inp=function(key,val,type,ph){return '<input class="inp" '+(type?'type="'+type+'"':"")+' value="'+esc(val==null?"":val)+'" placeholder="'+(ph||"")+'" onchange="D2.set(\''+n+'\',\''+key+'\',this.value)">';},
       sel=function(key,list,cur,leer){return '<select class="sel" onchange="D2.set(\''+n+'\',\''+key+'\',this.value)">'+(leer?'<option value="">'+leer+"</option>":"")+list.map(function(x){return '<option'+(x===cur?" selected":"")+">"+esc(x)+"</option>";}).join("")+"</select>";};
   var emp=String(m.empfaenger||"").split("-").filter(Boolean),keys=Object.keys(k.empfaenger||{});
-  var h='<div class="box"><div class="g2">'+f("Datum",inp("datum",m.datum,"date"))+f("Steuerjahr / Bezugsjahr",inp("jahr",m.jahr,"number"))+"</div>"+
+  var h='<div class="box"><div class="g2">'+f("Datum",'<input class="inp" inputmode="decimal" value="'+esc(m.datum?D.de(m.datum):"")+'" placeholder="TT.MM.JJJJ" onchange="D2.set(\''+n+'\',\'datum\',this.value)">')+f("Steuerjahr / Bezugsjahr",inp("jahr",m.jahr,"number"))+"</div>"+
     '<div style="margin-top:8px"><div class="lbl">Empfänger</div><div class="chipset">'+keys.map(function(x){return '<button class="'+(emp.indexOf(x)>-1?"on":"")+'" title="'+esc(k.empfaenger[x])+'" onclick="D2.emp(\''+n+'\',\''+x+'\')">'+esc(x)+"</button>";}).join("")+"</div></div>"+
     '<div class="g2" style="margin-top:8px">'+f("Absender",inp("absender",String(m.absender||"").replace(/_/g," ")))+f("Betreff",inp("betreff",String(m.betreff||"").replace(/_/g," ")))+"</div>"+
     '<div class="g2" style="margin-top:8px">'+f("Bereich",sel("archiv_bereich",["Privat","Geschaeftlich"],m.archiv_bereich))+f("Archiv-Kategorie",sel("archiv_kategorie",(k.archiv||{})[m.archiv_bereich]||[],m.archiv_kategorie,"bitte wählen"))+"</div>"+
@@ -281,7 +281,9 @@ window.D2={
     else if(k==="jahr")m.jahr=v?+v:null;
     else if(k==="steuerrelevant"){m.steuerrelevant=!!v;if(v&&!m.stb_belegart){var a=(konfig().stb||{})[m.archiv_bereich]||[];m.stb_belegart=a[0]||null;}}
     else if(k==="archiv_bereich"){m.archiv_bereich=v;m.archiv_kategorie="";m.stb_belegart=m.steuerrelevant?(((konfig().stb||{})[v]||[])[0]||null):null;}
-    else if(k==="datum"){m.datum=v;if(v&&!m.jahr)m.jahr=+v.slice(0,4);if(m.kassenbon&&v)m.kassenbon.datum=v;}
+    else if(k==="datum"){var iso=D.isoDatum(v);if(v&&!iso){flash("⚠ Datum bitte als TT.MM.JJJJ eingeben, z. B. 17.10.2026",true);return;}
+      var alt=m.datum?+String(m.datum).slice(0,4):null;m.datum=iso;
+      if(iso&&(!m.jahr||m.jahr===alt||m.jahr<1990))m.jahr=+iso.slice(0,4);if(m.kassenbon)m.kassenbon.datum=iso;delete m.datum_unsicher;}
     else if(k==="zahlart"){if(m.kassenbon)m.kassenbon.zahlart=v;}
     else m[k]=v;
     e.frei=false;after();},

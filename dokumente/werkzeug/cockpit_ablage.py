@@ -237,27 +237,55 @@ def zahl(v):
         return None
 
 
-def iso_datum(v) -> str:
+def iso_datum(v, ref=None, info=None) -> str:
+    """Datum -> JJJJ-MM-TT. Unplausible Jahre (z. B. 0002) gelten als nicht erkannt.
+    Mit ref (Scan-Datum) wird ein fehlendes oder unlesbares Jahr ergaenzt: das letzte passende vor dem Scan."""
     s = str(v or "").strip()
-    m = re.match(r"(\d{1,2})\.(\d{1,2})\.(\d{4}|\d{2})\b", s)  # 14.10.2026 / 14.10.26 (Kassenbons)
-    d = f"{int(m.group(3)) % 100 + 2000 if len(m.group(3)) == 2 else int(m.group(3)):04d}{int(m.group(2)):02d}{int(m.group(1)):02d}" if m else A.format_date(s)
-    if len(d) != 8:
-        return ""
+    m = re.match(r"(\d{1,2})\.(\d{1,2})\.?(\d{4}|\d{2})?(?!\d)", s)  # 14.10.2026 / 14.10.26 / 14.10. (Kassenbons)
+    i = re.match(r"(\d{1,4})-(\d{1,2})-(\d{1,2})(?!\d)", s)  # 2026-10-17, auch kaputt wie 0002-10-17
+    if m:
+        t, mo, y = int(m.group(1)), int(m.group(2)), m.group(3)
+        y = (int(y) % 100 + 2000 if len(y) == 2 else int(y)) if y else None
+    elif i:
+        y, mo, t = int(i.group(1)), int(i.group(2)), int(i.group(3))
+    else:
+        d = A.format_date(s)
+        if len(d) != 8:
+            return ""
+        y, mo, t = int(d[:4]), int(d[4:6]), int(d[6:8])
+    if not y or not 1990 <= y <= 2100:
+        if ref is None:
+            return ""
+        y = ref.year
+        try:
+            if datetime(y, mo, t) > ref:
+                y -= 1
+        except ValueError:
+            return ""
+        if info is not None:
+            info.append("jahr")
     try:
-        datetime.strptime(d, "%Y%m%d")
+        datetime(y, mo, t)
     except ValueError:
         return ""
-    return f"{d[:4]}-{d[4:6]}-{d[6:8]}"
+    return f"{y:04d}-{mo:02d}-{t:02d}"
 
 
-def normalisiere(m) -> dict:
+def datum_ok(d) -> bool:
+    return bool(re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(d or ""))) and 1990 <= int(str(d)[:4]) <= 2100
+
+
+def normalisiere(m, ref=None) -> dict:
+    """ref: Scan-Datum (Aenderungszeit der PDF) - nur bei frisch analysierten Kassenbons fuer fehlende Daten."""
     m = dict(m or {})
+    ist_bon = isinstance(m.get("kassenbon"), dict)
+    info = []
     out = {}
     for k in ("empfaenger", "absender", "betreff", "archiv_bereich", "archiv_kategorie",
               "konfidenz", "hinweise", "steuer_begruendung"):
         v = m.get(k)
         out[k] = "" if A.is_empty(v) else str(v).strip()
-    out["datum"] = iso_datum(m.get("datum"))
+    out["datum"] = iso_datum(m.get("datum"), ref if ist_bon else None, info)
     out["empfaenger"] = out["empfaenger"].upper()
     out["absender"] = A.clean_text(out["absender"])
     out["betreff"] = A.clean_text(out["betreff"])
@@ -274,9 +302,12 @@ def normalisiere(m) -> dict:
     if not out["jahr"] and out["datum"]:
         out["jahr"] = int(out["datum"][:4])
     out["konfidenz"] = out["konfidenz"].lower()
-    bon = normalisiere_bon(m.get("kassenbon"), out)
+    bon = normalisiere_bon(m.get("kassenbon"), out, ref, info)
     out["kassenbon"] = bon
     if bon:
+        if not bon["datum"] and ref is not None:  # Kaufdatum gar nicht lesbar -> Scan-Datum
+            bon["datum"] = ref.strftime("%Y-%m-%d")
+            info.append("scan")
         if not out["datum"]:
             out["datum"] = bon["datum"]
             out["jahr"] = out["jahr"] or (int(bon["datum"][:4]) if bon["datum"] else None)
@@ -286,6 +317,13 @@ def normalisiere(m) -> dict:
             out["zahlbetrag"] = bon["summe"]
         if not out["absender"]:
             out["absender"] = A.clean_text(bon["laden"])
+        if info:  # Datum ergaenzt -> nicht automatisch ablegen, im Cockpit pruefen
+            d = bon["datum"]
+            out["datum"], out["jahr"] = d, int(d[:4])
+            text = (f"Kaufdatum nicht lesbar - Scan-Datum {d[8:]}.{d[5:7]}.{d[:4]} eingesetzt, bitte pruefen." if "scan" in info
+                    else f"Jahr auf dem Bon nicht lesbar - {d[:4]} angenommen, bitte pruefen.")
+            out["hinweise"] = (text + " " + out["hinweise"]).strip()
+            out["datum_unsicher"] = True
     return out
 
 
@@ -326,7 +364,7 @@ def zahlart(v) -> str:
     return "sonstiges" if s in ("gutschein", "app", "paypal", "rechnung") else "unbekannt"
 
 
-def normalisiere_bon(b, meta: dict):
+def normalisiere_bon(b, meta: dict, ref=None, info=None):
     """Kassenbon-Daten der KI (oder schon normalisiert aus dem Cockpit) in eine kompakte Form bringen.
     Artikel: [Name, Zeilenbetrag, Warengruppe (Nummer in KAT_EINKAUF), Menge]."""
     if not isinstance(b, dict):
@@ -360,7 +398,7 @@ def normalisiere_bon(b, meta: dict):
     out = {
         "laden": laden,
         "ort": "" if A.is_empty(ort) else str(ort).strip()[:40],
-        "datum": iso_datum(b.get("datum")) or meta.get("datum") or "",
+        "datum": iso_datum(b.get("datum"), ref, info) or meta.get("datum") or "",
         "zeit": f"{int(zeit.group(1)):02d}:{zeit.group(2)}" if zeit else "",
         "summe": summe,
         "zahlart": zahlart(b.get("zahlart")),
@@ -375,6 +413,10 @@ def normalisiere_bon(b, meta: dict):
 
 
 def gueltig(meta: dict):
+    if meta.get("datum") and not datum_ok(meta["datum"]):
+        return False, f"Datum pruefen: {meta.get('datum')}"
+    if meta.get("kassenbon") and not meta.get("datum"):
+        return False, "Kaufdatum fehlt"
     if meta.get("archiv_bereich") not in ("Privat", "Geschaeftlich"):
         return False, f"Ungueltiger Bereich: {meta.get('archiv_bereich')}"
     kats = archiv_privat() if meta["archiv_bereich"] == "Privat" else A.ARCHIV_GESCHAEFTLICH
@@ -484,7 +526,7 @@ def analysiere(client, pdf: Path) -> dict:
             {"type": "text", "text": "Analysiere dieses Dokument und antworte mit reinem JSON ohne Codefences."},
         ]}],
     )
-    return normalisiere(A.extract_json(antwort.content[0].text))
+    return normalisiere(A.extract_json(antwort.content[0].text), ref=datetime.fromtimestamp(pdf.stat().st_mtime))
 
 
 def cmd_analyse(id_):
@@ -561,7 +603,7 @@ def cmd_analyse(id_):
 def bon_sicher(meta: dict) -> bool:
     """Kassenbon ohne Rueckfrage ablegen? Nur bei sicherer Erkennung und ohne Steuerbezug."""
     bon = meta.get("kassenbon") or {}
-    return (meta.get("konfidenz") in ("hoch", "mittel") and not meta.get("steuerrelevant")
+    return (meta.get("konfidenz") in ("hoch", "mittel") and not meta.get("steuerrelevant") and not meta.get("datum_unsicher")
             and bool(bon.get("datum")) and bon.get("summe") is not None and bool(bon.get("laden")))
 
 
