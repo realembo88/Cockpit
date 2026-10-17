@@ -12,7 +12,10 @@ function hSet(h){return idb().then(function(db){return new Promise(function(res,
 function hDel(){return idb().then(function(db){return new Promise(function(res){var t=db.transaction(STORE,"readwrite");t.objectStore(STORE).delete(KEY);t.oncomplete=function(){res();};t.onerror=function(){res();};});});}
 /* für automatische Tests kann window.__DOKS_TEST_ROOT ein anderes Verzeichnis liefern */
 function testRoot(){return typeof window!=="undefined"&&window.__DOKS_TEST_ROOT?window.__DOKS_TEST_ROOT:null;}
-function supported(){return !!testRoot()||(typeof window!=="undefined"&&"showDirectoryPicker" in window);}
+/* Handy/Tablet: Chrome kann dort zwar Ordner öffnen, aber OneDrive-Ablage und Python gibt es nur am PC */
+function mobil(){if(typeof navigator==="undefined")return false;if(navigator.userAgentData&&navigator.userAgentData.mobile)return true;
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent||"");}
+function supported(){return !!testRoot()||(typeof window!=="undefined"&&"showDirectoryPicker" in window&&!mobil());}
 function handle(){return testRoot()?Promise.resolve(testRoot()):hGet().catch(function(){return null;});}
 /* Zustand: "granted" | "prompt" | "none" (noch nicht verbunden) | "unsupported" */
 function state(){if(!supported())return Promise.resolve({s:"unsupported"});
@@ -88,7 +91,7 @@ function hausVorschlag(y,key,idx){var kw=HAUS_KW[key];if(!kw)return [];return ha
 function oeffnen(e){return root(true).then(function(r){if(!r)throw new Error("Der Ablage-Ordner ist auf diesem Gerät nicht verbunden (Dokumente → Einrichtung).");
   return blobUrl(r,e.archiv);}).then(function(u){var w=window.open(u,"_blank");if(!w)location.href=u;setTimeout(function(){URL.revokeObjectURL(u);},60000);});}
 
-return {supported:supported,state:state,root:root,pick:pick,forget:forget,dir:dir,file:file,exists:exists,readJSON:readJSON,writeJSON:writeJSON,listPDFs:listPDFs,blobUrl:blobUrl,
+return {supported:supported,mobil:mobil,state:state,root:root,pick:pick,forget:forget,dir:dir,file:file,exists:exists,readJSON:readJSON,writeJSON:writeJSON,listPDFs:listPDFs,blobUrl:blobUrl,
   newId:newId,start:start,poll:poll,clean:clean,fname:fname,valid:valid,stbJahr:stbJahr,index:index,norm:norm,titel:titel,de:de,steuerJahr:steuerJahr,stbDocs:stbDocs,
   txMatcher:txMatcher,HAUS_KW:HAUS_KW,hausDocs:hausDocs,hausVorschlag:hausVorschlag,oeffnen:oeffnen};
 })();

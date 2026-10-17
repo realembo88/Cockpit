@@ -142,7 +142,10 @@ function render(){
   document.getElementById("main").innerHTML=h;
 }
 function connectHint(){
-  if(st.perm==="unsupported")return '<div class="panel"><b style="color:#7dd3fc">Ablegen geht am PC in Chrome.</b><div class="note" style="margin-top:6px">Dieser Browser kann nicht auf Ordner zugreifen. Das Archiv und die Verknüpfungen in Finanzen, Haus und Steuer siehst du trotzdem.</div></div>';
+  if(st.perm==="unsupported")return '<div class="panel"><b style="color:#7dd3fc">'+(D.mobil()?"Analysieren und Ablegen laufen am PC":"Ablegen geht am PC in Chrome")+"</b>"+
+    '<div class="note" style="margin-top:6px">'+(D.mobil()?"Der Ablage-Ordner ist im Chrome am PC verbunden – am Handy ist nichts einzurichten. Hier siehst du das Archiv und die Auswertungen in Finanzen, Haus und Steuer.":"Dieser Browser kann nicht auf Ordner zugreifen. Das Archiv und die Verknüpfungen in Finanzen, Haus und Steuer siehst du trotzdem.")+"</div>"+
+    (data.konfig?'<div class="note" style="margin-top:6px">'+(data.eingang?"Beim letzten Abgleich am PC lagen <b>"+data.eingang+" PDF(s)</b> im Eingang.":"Beim letzten Abgleich am PC war der Eingang leer.")+(data.upd?" Stand "+new Date(data.upd).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})+".":"")+"</div>":"")+
+    '<div class="acts"><button class="mini" onclick="D2.tab(\'archiv\')">🗂 Archiv</button><a class="mini" style="text-decoration:none;display:inline-block" href="../finanzen/index.html#einkauf">🧾 Einkäufe</a></div></div>';
   if(st.perm==="prompt")return '<div class="panel"><b style="color:#7dd3fc">Zugriff auf „'+esc(st.rootName)+'“ erlauben</b><div class="note" style="margin:6px 0 10px">Chrome fragt nach jedem Neustart einmal nach – mit „Bei jedem Besuch zulassen“ entfällt das.</div><button class="btn" style="background:#0ea5e9" onclick="D2.allow()">Zugriff erlauben</button></div>';
   if(st.perm==="none")return '<div class="panel"><b style="color:#7dd3fc">Noch kein Ablage-Ordner verbunden</b><div class="note" style="margin:6px 0 10px">Einmalig einrichten: Skripte ablegen, Link-Typ registrieren, Ordner verbinden.</div><button class="btn" style="background:#0ea5e9" onclick="D2.tab(\'einr\')">Zur Einrichtung</button></div>';
   return "";
@@ -221,6 +224,9 @@ function vArchiv(){
 /* ---------- Einrichtung ---------- */
 function vEinr(){
   var ok1=st.perm!=="none"&&st.perm!=="unsupported",t=st.test;
+  if(st.perm==="unsupported"&&D.mobil())return '<div class="panel"><h3>Am Handy nichts zu tun</h3><div class="note" style="font-size:12px">Die Einrichtung gilt nur für den Chrome am PC, in dem der Ablage-Ordner verbunden ist – dort läuft auch das Python-Skript. '+
+    (data.konfig?'Dein PC ist eingerichtet'+(data.aktualisiert?" – das Archiv-Verzeichnis kam zuletzt am "+D.de(data.aktualisiert)+" "+String(data.aktualisiert).slice(11,16)+" vom PC":"")+".":"Öffne Dokumente am PC in Chrome und folge dort den Schritten unter Einrichtung.")+
+    "</div></div>"+'<div class="note">Kassenbons scannst du am Handy mit der OneDrive-App in den Ordner 00_Eingang; ausgewertet und abgelegt werden sie am PC über „🔍 Analysieren“.</div>';
   var h='<div class="panel"><h3>Einmalig am PC einrichten</h3>'+
     '<div class="step"><div class="n">1</div><div class="t">Die beiden Dateien herunterladen und in den Ordner legen, in dem deine <code>ablage.py</code> liegt:<div><a class="dl" href="werkzeug/cockpit_ablage.py" download>⬇ cockpit_ablage.py</a> &nbsp; <a class="dl" href="werkzeug/Cockpit-Ablage-einrichten.bat" download>⬇ Cockpit-Ablage-einrichten.bat</a><br>Chrome warnt bei .bat-Dateien – „Behalten“ wählen.</div></div></div>'+
     '<div class="step"><div class="n">2</div><div class="t">Doppelklick auf <code>Cockpit-Ablage-einrichten.bat</code>.<div>Richtet den Link-Typ <code>cockpit-ablage://</code> nur für deinen Windows-Benutzer ein, fragt bei Bedarf nach dem Ablage-Ordner und dem API-Schlüssel und macht am Ende einen Selbsttest. Das Fenster bleibt offen, bis du eine Taste drückst. Meldet Windows „Der Computer wurde durch Windows geschützt“: „Weitere Informationen“ → „Trotzdem ausführen“.</div></div></div>'+
