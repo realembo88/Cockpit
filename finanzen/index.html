@@ -150,8 +150,9 @@ C.registerMerge(AREA,merge);
 
 var data=norm(C.getLocal(AREA,blank));
 var thisYear=new Date().getFullYear();
-var st={ek:{mon:"",za:"alle",kat:null,art:"sum",open:null,limit:30},tab:location.hash==="#einkauf"?"einkauf":"uebersicht",dm:null,dty:{aus:true,ein:false,neu:false},year:thisYear,ber:"alle",flash:null,q:"",fcat:"",fmon:"",sort:"datum",limit:80,edit:null,pending:null,pendingInfo:[]};
+var st={ek:{mon:"",za:"alle",kat:null,art:"sum",open:null,limit:30},tab:(function(){var h=(location.hash||"").slice(1);return ["uebersicht","monate","tage","fix","einkauf","buchungen","import","regeln"].indexOf(h)>-1?h:h==="unkat"?"buchungen":"uebersicht";})(),dm:null,dty:{aus:true,ein:false,neu:false},year:thisYear,ber:"alle",flash:null,q:"",fcat:"",fmon:"",sort:"datum",limit:80,edit:null,pending:null,pendingInfo:[]};
 (function(){var ys=years();if(ys.length&&ys.indexOf(thisYear)<0)st.year=ys[ys.length-1];})();
+if(location.hash==="#unkat"){st.fcat=F.UNKAT;st.sort="datum";}
 
 function years(){var s={};data.tx.forEach(function(t){s[+t.d.slice(0,4)]=1;});return Object.keys(s).map(Number).sort();}
 function kontenFilter(ber){if(ber==="alle")return null;var o={},any=false;Object.keys(data.konten).forEach(function(k){if(data.konten[k].bereich===ber){o[k]=1;any=true;}});return any?o:{__none:1};}
@@ -488,6 +489,21 @@ function bonRow(b,m){
   return h+'</div><div class="a">'+C.eur(b.summe)+"</div></div>";
 }
 
+/* ---------- Kontoauszüge automatisch aus dem Eingang (am PC mit verbundenem Ablage-Ordner) ---------- */
+var kiLauf=false;
+function kontoEingang(ask){if(!window.DOKS||!DOKS.supported()||kiLauf)return Promise.resolve(null);
+  return (ask?DOKS.root(true):DOKS.state().then(function(s){return s.s==="granted"?s.h:null;})).then(function(r){
+    if(!r){if(ask)flash("⚠ Der Ablage-Ordner ist auf diesem Gerät nicht verbunden (Dokumente → Einrichtung).",true);return null;}
+    kiLauf=true;return DOKS.kontoImport(r,data).then(function(res){kiLauf=false;st.kiInfo=res||{leer:true};
+      if(!res){if(ask)flash("Keine Kontoauszüge im Eingang.");else if(st.tab==="import")render();return null;}
+      if(res.neu||res.dateien.length)persist();
+      var msg=[];
+      if(res.dateien.length)msg.push("✓ "+res.dateien.length+(res.dateien.length===1?" Kontoauszug":" Kontoauszüge")+" aus dem Eingang übernommen: "+res.neu+" neue Buchungen"+(res.dup?" ("+res.dup+" schon vorhanden)":""));
+      if(res.unbekannt.length)msg.push("⚠ "+res.unbekannt.join(", ")+" gehört zu einem neuen Konto – einmal unter „Import“ von Hand zuordnen");
+      if(res.fehler.length)msg.push("⚠ "+res.fehler.join("; "));
+      if(msg.length)flash(msg.join(" · "),!!(res.unbekannt.length||res.fehler.length));else render();
+      return res;});}).catch(function(e){kiLauf=false;flash("⚠ Eingang: "+(e.message||e),true);});}
+
 /* ---------- Import ---------- */
 function vImport(){
   var h="";
@@ -506,6 +522,11 @@ function vImport(){
     if(st.pendingInfo.length)h+='<div class="panel" style="border-color:#ff980066">'+st.pendingInfo.map(function(x){return '<div class="small" style="color:#ffb74d">⚠ '+C.esc(x)+"</div>";}).join("")+"</div>";
     return h;
   }
+  if(window.DOKS&&DOKS.supported()){var ki=st.kiInfo;
+    h+='<div class="panel" style="border-color:#38bdf866"><h3>📥 Automatisch aus dem Eingang</h3><div class="note" style="margin-bottom:10px">CSV-Exporte einfach in den Ordner <b>00_Eingang</b> legen. Beim Öffnen von Finanzen hier am PC werden sie übernommen und danach unter 02_Archiv/…/Kontoumsaetze abgelegt. Dateien eines neuen Kontos ordnest du einmal unten von Hand zu, danach geht auch dieses Konto automatisch.</div>'+
+      (ki&&ki.dateien&&ki.dateien.length?ki.dateien.map(function(x){return '<div class="kv"><span>'+C.esc(x.name)+'<br><span class="small">→ '+C.esc(x.ziel)+"</span></span><span>"+x.neu+" neu</span></div>";}).join(""):"")+
+      (ki&&ki.unbekannt&&ki.unbekannt.length?'<div class="small" style="color:#ffb74d;margin:6px 0">Neues Konto, bitte unten von Hand importieren: '+C.esc(ki.unbekannt.join(", "))+"</div>":"")+
+      '<button class="btn ghost" onclick="F2.eingang()">🔄 Eingang jetzt prüfen</button></div>';}
   h+='<div class="panel"><h3>⬆ Kontoauszüge importieren</h3><div class="note" style="margin-bottom:12px">CSV-Exporte von <b>ING</b> (Umsatzanzeige) und <b>N26</b> (Kontoauszug als CSV). Mehrere Dateien auf einmal sind möglich. Überlappende Zeiträume sind kein Problem, doppelte Buchungen werden erkannt.</div>'+
     '<label class="btn" style="display:inline-block;cursor:pointer">📁 CSV-Dateien wählen<input type="file" accept=".csv,text/csv,text/comma-separated-values" multiple onchange="F2.files(this)"></label></div>';
   h+='<div class="panel"><h3>So bekommst du die Exporte</h3><div class="note"><b>ING:</b> Banking → Konto → Umsätze → Zeitraum wählen → „Exportieren“ bzw. Download-Symbol → CSV.<br><b>N26:</b> App → Profil/Konto → Kontoauszüge → „CSV exportieren“ → Zeitraum wählen (auch im Browser unter app.n26.com möglich).<br>Die Datei am besten direkt hochladen, ohne sie vorher in Excel zu öffnen und zu speichern. Falls doch, wird auch das erkannt.</div></div>';
@@ -697,16 +718,7 @@ function applyDedupe(res){
 }
 function ensureRules(){if(!data.rules)data.rules=clone(F.DEFAULT_RULES);}
 /* ---------- Fixkosten ---------- */
-function fixAll(){
-  var R=rules(),ref=data.tx.reduce(function(m,t){return t.d>m?t.d:m;},"0000"),fx=data.fix||{};
-  var det=F.recurring(data.tx,R,{ref:ref}).map(function(x){var o=fx[x.key]||{};x.src="auto";x.status=o.s||"neu";if(o.name)x.name=o.name;x.grp=o.grp||x.cat;
-    var k=data.konten[x.konto];x.ber=k?k.bereich:"privat";return x;});
-  var man=Object.keys(data.fixMan||{}).map(function(i){return data.fixMan[i];}).filter(function(m){return m&&!m.del;}).map(function(m){
-    var nx=m.next||"";if(nx){var today=new Date().toISOString().slice(0,10);while(nx<today)nx=F.addMonths(nx,m.rh);}
-    return {key:m.id,src:"man",name:m.name,grp:m.grp||"Sonstige Fixkosten",rh:m.rh,rhName:(F.RHY.filter(function(r){return r.m===m.rh;})[0]||{name:m.rh+"-monatlich"}).name,amount:m.amount,monthly:Math.round(m.amount/m.rh*100)/100,
-      next:nx,last:null,active:true,status:"ok",ber:m.ber||"privat",pays:[]};});
-  return {ref:ref,list:det.concat(man)};
-}
+function fixAll(){return F.fixkosten(data);}
 function fixGroups(){var s={};rules().forEach(function(r){if(!r.neutral)s[r.name]=1;});s["Sonstige Fixkosten"]=1;return Object.keys(s);}
 function vFix(){
   var A=fixAll(),ber=st.ber,inB=function(x){return ber==="alle"||x.ber===ber;};
@@ -763,6 +775,7 @@ function fxForm(){var f=st.fxNew;
     '<div class="row2"><button class="btn" onclick="F2.fxAdd()">Hinzufügen</button><button class="btn ghost" style="flex:0 0 auto" onclick="F2.fxCancel()">Abbrechen</button></div></div>';}
 
 window.F2={
+  eingang:function(){kontoEingang(true);},
   ekMon:function(v){st.ek.mon=v;st.ek.limit=30;st.ek.kat=null;render();},
   ekZa:function(v){st.ek.za=v;st.ek.limit=30;render();},
   ekKat:function(k){st.ek.kat=st.ek.kat===k?null:k;render();},
@@ -900,6 +913,8 @@ window.addEventListener('cockpit:priv',function(){if(!document.body.classList.co
 window.__finCheck={checkData:checkData,findTransfers:findTransfers};
 render();
 C.autoPull([AREA,"dokumente","einkaeufe"],function(a,d){if(a===AREA)data=norm(d);if(a==="einkaeufe")eink=EINK.norm(d);render();});
+/* nach dem ersten Abgleich: Kontoauszüge aus dem Eingang übernehmen (nur am PC mit erlaubtem Ordnerzugriff) */
+if(window.DOKS&&DOKS.supported())C.pull(AREA).then(function(r){if(r&&r.changed&&r.data)data=norm(r.data);return kontoEingang(false);});
 })();
 </script>
 </body>

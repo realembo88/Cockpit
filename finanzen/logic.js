@@ -205,6 +205,42 @@ function recurring(txs,rules,opt){
   return out.sort(function(a,b){return b.monthly-a.monthly;});
 }
 
+/* ---------- Automatischer Import (Kontoauszüge aus dem Eingang) ----------
+   Übernimmt nur in bekannte Konten (oder Dateien, deren Buchungen zu mind. 30 % schon in einem Konto stehen).
+   Gelöschte Buchungen bleiben gelöscht. Neue Konten bleiben „unbekannt“ und werden einmal von Hand zugeordnet. */
+function normTxt(x){return String(x||"").toLowerCase().replace(/[^a-z0-9]/g,"");}
+function fp(t){return t.d+"|"+t.b.toFixed(2)+"|"+normTxt(t.p).slice(0,24)+"|"+normTxt(t.z).slice(0,40);}
+function autoImport(d,blocks,file){
+  d.konten=d.konten||{};d.tx=d.tx||[];d.deleted=d.deleted||[];d.imports=d.imports||[];
+  var ids={},del={},known={};d.tx.forEach(function(t){ids[t.id]=1;var f=fp(t);(known[f]=known[f]||{})[t.k]=1;});d.deleted.forEach(function(x){del[x]=1;});
+  var res={neu:0,dup:0,konten:[],unbekannt:[],bereich:null};
+  blocks.forEach(function(b){assignIds(b,b.key);var target=null;
+    if(d.konten[b.key])target=b.key;
+    else{var hits={};b.txs.forEach(function(t){var m=known[fp(t)];if(m)Object.keys(m).forEach(function(k){hits[k]=(hits[k]||0)+1;});});
+      var best=null,bn=0;Object.keys(hits).forEach(function(k){if(hits[k]>bn){bn=hits[k];best=k;}});if(best&&d.konten[best]&&bn/b.txs.length>=0.3)target=best;}
+    if(!target){res.unbekannt.push(b);return;}
+    if(target!==b.key)assignIds(b,target);
+    var ko=d.konten[target];if(b.saldo&&(!ko.saldo||b.saldo.d>=ko.saldo.d))ko.saldo=b.saldo;
+    var neu=0;b.txs.forEach(function(t){if(ids[t.id]||del[t.id]){res.dup++;return;}ids[t.id]=1;d.tx.push(t);neu++;});
+    res.neu+=neu;res.konten.push(ko.name||target);if(!res.bereich)res.bereich=ko.bereich||"privat";
+    d.imports.push({ts:Date.now(),file:file,konto:ko.name||target,neu:neu,dup:b.txs.length-neu,auto:true});});
+  if(res.neu)d.tx.sort(function(a,b){return a.d.localeCompare(b.d);});
+  d.imports=d.imports.slice(-50);
+  return res;
+}
+
+/* Bestätigte Fixkosten (erkannt + manuell) – auch für Verträge und Startseite */
+function fixkosten(d,opt){opt=opt||{};d=d||{};var tx=d.tx||[],R=d.rules||DEFAULT_RULES,fx=d.fix||{};setPartnerMap(d.pmap,d.tmap);
+  var ref=tx.reduce(function(m,t){return t.d>m?t.d:m;},"0000"),today=opt.today||new Date().toISOString().slice(0,10);
+  var det=recurring(tx,R,{ref:ref}).map(function(x){var o=fx[x.key]||{};x.src="auto";x.status=o.s||"neu";if(o.name)x.name=o.name;x.grp=o.grp||x.cat;
+    var k=(d.konten||{})[x.konto];x.ber=k?k.bereich:"privat";return x;});
+  var man=Object.keys(d.fixMan||{}).map(function(i){return d.fixMan[i];}).filter(function(m){return m&&!m.del;}).map(function(m){
+    var nx=m.next||"";if(nx){while(nx<today)nx=addMonths(nx,m.rh);}
+    return {key:m.id,src:"man",name:m.name,grp:m.grp||"Sonstige Fixkosten",rh:m.rh,rhName:(RHY.filter(function(r){return r.m===m.rh;})[0]||{name:m.rh+"-monatlich"}).name,amount:m.amount,monthly:Math.round(m.amount/m.rh*100)/100,
+      next:nx,last:null,active:true,status:"ok",ber:m.ber||"privat",pays:[]};});
+  return {ref:ref,list:det.concat(man)};
+}
+
 /* ---------- Auswertung ---------- */
 function isNeutral(cat,rules){for(var i=0;i<rules.length;i++)if(rules[i].name===cat)return !!rules[i].neutral;return false;}
 function report(txs,rules,opt){
@@ -220,5 +256,5 @@ function report(txs,rules,opt){
 function sum(a){return a.reduce(function(s,v){return s+v;},0);}
 
 return {MON:MON,UNKAT:UNKAT,DEFAULT_RULES:DEFAULT_RULES,kwRe:kwRe,matchRule:matchRule,category:category,parseFile:parseFile,parseCSV:parseCSV,
-  decode:decode,assignIds:assignIds,recurring:recurring,addMonths:addMonths,dDiff:dDiff,RHY:RHY,setPartnerMap:setPartnerMap,partnerKey:partnerKey,typeKey:typeKey,report:report,sum:sum,isNeutral:isNeutral,hash:hash};
+  decode:decode,assignIds:assignIds,recurring:recurring,addMonths:addMonths,dDiff:dDiff,RHY:RHY,setPartnerMap:setPartnerMap,partnerKey:partnerKey,typeKey:typeKey,report:report,sum:sum,isNeutral:isNeutral,hash:hash,fixkosten:fixkosten,autoImport:autoImport,fp:fp};
 })();

@@ -40,6 +40,32 @@ function writeJSON(r,path,obj){var s=split(path);return dir(r,s.dirs,true).then(
 function listPDFs(r){return dir(r,["00_Eingang"],false).then(async function(d){var out=[];
   for await (var e of d.values()){if(e.kind==="file"&&/\.pdf$/i.test(e.name)){var f=await e.getFile();out.push({name:e.name,size:f.size,mod:f.lastModified});}}
   return out.sort(function(a,b){return a.name.localeCompare(b.name);});});}
+function listCSVs(r){return dir(r,["00_Eingang"],false).then(async function(d){var out=[];
+  for await (var e of d.values()){if(e.kind==="file"&&/\.csv$/i.test(e.name))out.push({name:e.name,h:e});}
+  return out.sort(function(a,b){return a.name.localeCompare(b.name);});});}
+function heute8(){var x=new Date();return x.getFullYear()+("0"+(x.getMonth()+1)).slice(-2)+("0"+x.getDate()).slice(-2);}
+/* Datei verschieben (kopieren + im Eingang löschen); vorhandene Namen bekommen _1, _2 … */
+function verschiebe(r,von,nachDir,nachName){return file(r,von).then(function(f){return f.arrayBuffer();}).then(function(buf){
+    return dir(r,nachDir,true).then(async function(d){var n=nachName,i=1;
+      for(;;){try{await d.getFileHandle(n);n=nachName.replace(/(\.[^.]+)$/,"_"+(i++)+"$1");}catch(e){break;}}
+      var fh=await d.getFileHandle(n,{create:true}),w=await fh.createWritable();await w.write(buf);await w.close();return n;});})
+  .then(function(n){var s=split(von);return dir(r,s.dirs,false).then(function(d){return d.removeEntry(s.name);}).then(function(){return nachDir.join("/")+"/"+n;});});}
+/* Kontoauszüge (CSV von ING/N26) aus dem Eingang in die Finanzdaten fin übernehmen und archivieren.
+   Braucht FIN (finanzen/logic.js). → Promise<null | {dateien, neu, dup, unbekannt, fehler}> */
+function kontoImport(r,fin){if(!window.FIN)return Promise.resolve(null);
+  return listCSVs(r).catch(function(){return [];}).then(async function(list){if(!list.length)return null;
+    var res={dateien:[],neu:0,dup:0,unbekannt:[],fehler:[]};
+    for(var i=0;i<list.length;i++){var x=list[i];
+      try{var f=await x.h.getFile(),blocks=window.FIN.parseFile(await f.arrayBuffer(),x.name);
+        if(!blocks){res.fehler.push(x.name+": kein ING- oder N26-Export");continue;}
+        blocks.forEach(function(b){b.file=x.name;});
+        var r1=window.FIN.autoImport(fin,blocks,x.name);res.neu+=r1.neu;res.dup+=r1.dup;
+        if(r1.unbekannt.length){res.unbekannt.push(x.name);continue;} /* bleibt im Eingang, bis das Konto einmal zugeordnet ist */
+        var ziel=r1.bereich==="geschaeft"?["02_Archiv","Geschaeftlich","Bank_Geschaeft","Kontoumsaetze"]:["02_Archiv","Privat","Banken_Finanzen","Kontoumsaetze"];
+        var pfad=await verschiebe(r,"00_Eingang/"+x.name,ziel,heute8()+"_"+x.name);
+        res.dateien.push({name:x.name,ziel:pfad,neu:r1.neu,konten:r1.konten});
+      }catch(e){res.fehler.push(x.name+": "+(e.message||e));}}
+    return res;});}
 function blobUrl(r,path){return file(r,path).then(function(f){return URL.createObjectURL(f.slice(0,f.size,"application/pdf"));});}
 
 /* ---------- Python starten und auf das Ergebnis warten ---------- */
@@ -97,7 +123,7 @@ function hausVorschlag(y,key,idx){var kw=HAUS_KW[key];if(!kw)return [];return ha
 function oeffnen(e){return root(true).then(function(r){if(!r)throw new Error("Der Ablage-Ordner ist auf diesem Gerät nicht verbunden (Dokumente → Einrichtung).");
   return blobUrl(r,e.archiv);}).then(function(u){var w=window.open(u,"_blank");if(!w)location.href=u;setTimeout(function(){URL.revokeObjectURL(u);},60000);});}
 
-return {supported:supported,mobil:mobil,state:state,root:root,pick:pick,forget:forget,dir:dir,file:file,exists:exists,readJSON:readJSON,writeJSON:writeJSON,listPDFs:listPDFs,blobUrl:blobUrl,
+return {listCSVs:listCSVs,verschiebe:verschiebe,kontoImport:kontoImport,supported:supported,mobil:mobil,state:state,root:root,pick:pick,forget:forget,dir:dir,file:file,exists:exists,readJSON:readJSON,writeJSON:writeJSON,listPDFs:listPDFs,blobUrl:blobUrl,
   newId:newId,start:start,poll:poll,clean:clean,fname:fname,valid:valid,isoDatum:isoDatum,stbJahr:stbJahr,index:index,norm:norm,titel:titel,de:de,steuerJahr:steuerJahr,stbDocs:stbDocs,
   txMatcher:txMatcher,HAUS_KW:HAUS_KW,hausDocs:hausDocs,hausVorschlag:hausVorschlag,oeffnen:oeffnen};
 })();

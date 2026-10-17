@@ -2,11 +2,11 @@
    Hält die App-Dateien auf dem Gerät vor, damit alles auch ohne Internet startet.
    Daten werden hier NICHT gespeichert – die liegen im Browser-Speicher der jeweiligen Seite.
    Bei neuer Version: VERSION erhöhen. */
-var VERSION="cockpit-2026-10-17c";
+var VERSION="cockpit-2026-10-17d";
 var CORE=[
   "./","index.html","einstellungen.html","manifest.webmanifest",
   "assets/cockpit.js","assets/style.css","assets/wallbox.js","assets/icon.svg","assets/icon-192.png","assets/icon-512.png",
-  "energie/index.html","auto/index.html","edelmetall/index.html","finanzen/index.html","finanzen/logic.js","finanzen/einkauf.js","ferienwohnung/index.html","haus/index.html","haus/logic.js","steuer/index.html","steuer/logic.js","dokumente/index.html","dokumente/logic.js",
+  "energie/index.html","auto/index.html","edelmetall/index.html","finanzen/index.html","finanzen/logic.js","finanzen/einkauf.js","ferienwohnung/index.html","haus/index.html","haus/logic.js","steuer/index.html","steuer/logic.js","dokumente/index.html","dokumente/logic.js","vertraege/index.html","vertraege/logic.js",
   "training/index.html","training/app.js","training/hiit.js",
   "sport/","sport/index.html","sport/manifest.webmanifest"
 ];

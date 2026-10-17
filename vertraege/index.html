@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0e1a">
+<title>Cockpit · Verträge & Fristen</title>
+<link rel="manifest" href="../manifest.webmanifest">
+<link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/style.css">
+<style>
+.filt{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px;}
+.pill{border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:20px;padding:6px 12px;font-size:12px;cursor:pointer;}
+.pill.on{background:#f59e0b;border-color:#f59e0b;color:#111;font-weight:700;}
+.mini{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;white-space:nowrap;}
+.mini.ok{border-color:#22c55e;color:#4ade80;} .mini.warn{border-color:#f59e0b;color:#fbbf24;}
+.row{display:flex;justify-content:space-between;gap:10px;padding:11px 2px;border-top:1px solid #152038;align-items:flex-start;}
+.row:first-child{border-top:none;}
+.row .l{min-width:0;flex:1;} .row .l b{color:#fff;font-size:13px;font-weight:600;}
+.row .s{font-size:11px;color:var(--muted);margin-top:3px;line-height:1.5;}
+.row .r{text-align:right;white-space:nowrap;font-size:13px;font-variant-numeric:tabular-nums;}
+.acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;}
+.when{display:inline-block;font-size:11px;border-radius:8px;padding:1px 7px;margin-left:4px;vertical-align:middle;background:#f59e0b22;color:#fbbf24;}
+.when.rot{background:#ef444426;color:#f87171;} .when.gr{background:#22c55e1f;color:#4ade80;} .when.grau{background:#64748b26;color:#94a3b8;}
+.chip{display:inline-block;font-size:10.5px;border-radius:8px;padding:1px 7px;margin-right:4px;background:#1e293b;color:#94a3b8;}
+.up{color:#ff8a80;} .dn{color:#69f0ae;}
+.box{border:1px solid var(--border);border-radius:12px;padding:12px;margin:8px 0 4px;background:var(--panel2);}
+.inp,.sel,textarea.inp{width:100%;background:var(--field);border:1px solid var(--border);border-radius:8px;padding:9px 10px;color:#fff;font-size:14px;font-family:inherit;}
+.inp:focus,.sel:focus{outline:none;border-color:#f59e0b;}
+.lbl{font-size:11px;color:var(--muted);margin:0 0 4px;}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
+.mt{margin-top:10px;}
+.note{font-size:11px;color:var(--muted);line-height:1.6;}
+.prev{font-size:12px;color:#fde68a;background:#f59e0b14;border-radius:8px;padding:8px 10px;margin-top:10px;line-height:1.5;}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 10px;}
+.chips button{border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:14px;padding:4px 10px;font-size:11px;cursor:pointer;}
+details summary{cursor:pointer;}
+.btn:disabled{opacity:.45;}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div id="top"></div>
+<nav class="tabs" id="tabs"></nav>
+<div class="content" id="main"></div>
+</div>
+<script src="../assets/cockpit.js"></script>
+<script src="../finanzen/logic.js"></script>
+<script src="../dokumente/logic.js"></script>
+<script src="logic.js"></script>
+<script>
+(function(){
+"use strict";
+var C=window.Cockpit,V=window.VERTR,AREA="vertraege";
+C.registerMerge(AREA,V.merge);
+var data=V.norm(C.getLocal(AREA,V.blank));
+var st={tab:"termine",open:null,fOpen:null,neuF:null,flash:null,spaeter:false};
+(function(){var h=location.hash||"";if(h==="#fristen")st.tab="termine";else if(h.indexOf("#v-")===0){st.tab="vertraege";st.open=h.slice(3);}else if(h==="#vertraege")st.tab="vertraege";})();
+
+function persist(){data._summary=V.summary(data);C.save(AREA,data);}
+function flash(t,warn){st.flash={t:t,warn:!!warn};render();clearTimeout(flash.tm);flash.tm=setTimeout(function(){st.flash=null;render();},warn?5000:2600);}
+function esc(s){return C.esc(s);}
+function jsq(s){return String(s).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;");}
+function kpi(i,l,v){return '<div class="kpi"><div class="ico">'+i+'</div><div class="val">'+v+'</div><div class="lab">'+l+"</div></div>";}
+function haus(){return C.getLocal("haus",null);}
+function fin(){return C.getLocal("finanzen",null);}
+function fixListe(){var f=fin();if(!f||!window.FIN)return [];try{return FIN.fixkosten(f).list;}catch(e){return [];}}
+function fixByKey(){var o={};fixListe().forEach(function(x){o[x.key]=x;});return o;}
+function whenChip(n,faellig){if(n==null)return "";var cls=n<0?"rot":faellig?"":n<=90?"grau":"grau";return '<span class="when '+cls+'">'+esc(V.wann(n))+"</span>";}
+
+/* ---------- Rahmen ---------- */
+function render(){
+  document.getElementById("top").innerHTML=C.topbar({title:"Verträge & Fristen",icon:"📑",sub:"Kündigungstermine · Fristen · Erinnerungen",accent:"#f59e0b",accent2:"#d97706"});C.paintStatus();
+  var tabs=[["termine","📅 Termine"],["vertraege","📑 Verträge"]];
+  document.getElementById("tabs").innerHTML=tabs.map(function(t){return '<button class="tab'+(st.tab===t[0]?" on":"")+'" onclick="V2.tab(\''+t[0]+'\')">'+t[1]+"</button>";}).join("");
+  var h="";if(st.flash)h+='<div class="flash'+(st.flash.warn?" warn":"")+'">'+esc(st.flash.t)+"</div>";
+  h+=(st.tab==="termine"?vTermine:vVertraege)();
+  document.getElementById("main").innerHTML=h;
+}
+
+/* ---------- Termine ---------- */
+function vTermine(){
+  var t=V.heute(),all=V.termine(data,{haus:haus(),t:t});
+  var faellig=all.filter(function(e){return e.faellig;}),bald=all.filter(function(e){return !e.faellig&&!e.erledigt&&e.tage<=90;}),spaet=all.filter(function(e){return !e.faellig&&(e.erledigt||e.tage>90);});
+  var h='<div class="grid2" style="margin-bottom:14px">'+kpi("⏰","jetzt fällig",faellig.length)+kpi("📆","nächste 90 Tage",bald.length)+"</div>";
+  h+='<div class="panel"><h3>⏰ Jetzt dran</h3>'+(faellig.length?faellig.map(terminRow).join(""):'<div class="note">Nichts fällig. 👍</div>')+"</div>";
+  if(bald.length)h+='<div class="panel"><h3>📆 Demnächst</h3>'+bald.map(terminRow).join("")+"</div>";
+  h+=st.neuF?'<div class="panel"><h3>Neue Frist</h3>'+fristForm(st.neuF,true)+"</div>":'<button class="btn ghost full" style="margin-bottom:14px" onclick="V2.neuFrist()">＋ Frist oder Termin hinzufügen</button>';
+  if(spaet.length)h+='<details class="panel"'+(st.spaeter?" open":"")+' ontoggle="V2.spaeter(this.open)"><summary class="small muted">Später ('+spaet.length+")</summary>"+spaet.map(terminRow).join("")+"</details>";
+  h+='<div class="note">Hier landen Kündigungstermine aus deinen Verträgen, eigene Fristen (z. B. TÜV, Kurtaxe) und automatisch die Nebenkostenabrechnungen aus „Haus“ (12 Monate nach Ende des Abrechnungsjahres). Was fällig ist, erscheint auch auf der Startseite und in der Wochenvorschau aufs Handy.</div>';
+  return h;
+}
+function terminRow(e){
+  var ic=e.typ==="kuendigung"?"✂️":e.typ==="auto"?"🏘️":"📌",id=jsq(e.id);
+  var h='<div class="row"><div class="l"><b>'+ic+" "+esc(e.titel)+"</b>"+whenChip(e.tage,e.faellig)+'<div class="s">'+V.deKurz(e.datum)+" "+e.datum.slice(0,4)+(e.info?" · "+esc(e.info):"")+"</div>";
+  if(e.typ==="kuendigung")h+='<div class="acts">'+(e.erledigt?'<span class="chip">behalten – Erinnerung erst wieder im nächsten Zeitraum</span>':'<button class="mini ok" onclick="V2.gekuendigt(\''+id+'\')">✓ gekündigt</button><button class="mini" onclick="V2.behalten(\''+id+'\')">behalten</button>')+'<button class="mini" onclick="V2.oeffne(\''+id+'\')">Vertrag</button></div>';
+  else if(e.typ==="auto")h+='<div class="acts"><button class="mini ok" onclick="V2.autoOk(\''+id+'\')">✓ erledigt</button><a class="mini" style="text-decoration:none" href="../'+e.href+'">Haus öffnen</a></div>';
+  else{h+='<div class="acts"><button class="mini ok" onclick="V2.fristOk(\''+id+'\')">✓ erledigt</button><button class="mini" onclick="V2.fristEdit(\''+id+'\')">✏️ ändern</button></div>';
+    if(st.fOpen===e.id)h+=fristForm(data.fristen[e.id],false);}
+  return h+"</div></div>";
+}
+function fristForm(f,neu){var id=neu?"__neu":jsq(f.id);
+  var inp=function(k,v,ph){return '<input class="inp" value="'+esc(v==null?"":v)+'" placeholder="'+(ph||"")+'" onchange="V2.fSet(\''+id+'\',\''+k+'\',this.value)">';};
+  var h='<div class="box">'+(neu?'<div class="lbl">Vorlagen</div><div class="chips">'+V.FRIST_VORLAGEN.map(function(x,i){return '<button onclick="V2.fVorlage('+i+')">'+esc(x.titel)+"</button>";}).join("")+"</div>":"")+
+    '<div class="lbl">Was?</div>'+inp("titel",f.titel,"z. B. HU / TÜV Volvo")+
+    '<div class="g2 mt"><div><div class="lbl">Datum (nächstes Mal)</div>'+inp("datum",f.datum?V.de(V.naechste(f)||f.datum):"","TT.MM.JJJJ")+'</div><div><div class="lbl">Wiederholung</div><select class="sel" onchange="V2.fSet(\''+id+'\',\'wdh\',this.value)">'+
+      [[0,"einmalig"]].concat(V.RHYTHMUS).map(function(r){return '<option value="'+r[0]+'"'+(+f.wdh===r[0]?" selected":"")+">"+r[1]+"</option>";}).join("")+"</select></div></div>"+
+    '<div class="g2 mt"><div><div class="lbl">Erinnern … Tage vorher</div>'+inp("vorlauf",f.vorlauf!=null?f.vorlauf:14)+'</div><div><div class="lbl">Notiz</div>'+inp("notiz",f.notiz,"optional")+"</div></div>"+
+    '<div class="acts" style="margin-top:12px">'+(neu?'<button class="btn" style="background:#f59e0b;color:#111;padding:9px 14px;font-size:13px" onclick="V2.fSpeichern()">Speichern</button><button class="mini" onclick="V2.neuFrist(true)">Abbrechen</button>':
+      '<button class="mini" onclick="V2.fristEdit(null)">Fertig</button><button class="mini" style="color:#f87171" onclick="V2.fDel(\''+id+'\')">Löschen</button>')+"</div></div>";
+  return h;
+}
+
+/* ---------- Verträge ---------- */
+function vVertraege(){
+  var t=V.heute(),list=V.aktiv(data.vertraege),fx=fixByKey(),akt=list.filter(function(v){return v.status!=="beendet"&&v.status!=="gekuendigt";});
+  var mon=akt.reduce(function(s,v){return s+V.monatlich(v);},0),offen=akt.filter(function(v){return V.termin(v,t).art==="unbekannt";}).length;
+  var h='<div class="grid2" style="margin-bottom:14px">'+kpi("📑","laufende Verträge",akt.length)+kpi("💶","Kosten pro Monat",C.eur(mon,0))+"</div>";
+  if(offen)h+='<div class="note" style="margin:-6px 0 12px;color:#fbbf24">Bei '+offen+" Vertr"+(offen===1?"ag":"ägen")+" fehlt noch „Läuft bis“ – dann kann das Cockpit den Kündigungstermin ausrechnen.</div>";
+  var vs=V.vorschlaege(data,fixListe());
+  if(vs.length)h+='<div class="panel" style="border-color:#f59e0b66"><h3>✨ Aus deinen Fixkosten ('+vs.length+')</h3><div class="note" style="margin-bottom:6px">Bestätigte regelmäßige Abbuchungen aus Finanzen, die noch nicht als Vertrag erfasst sind. „Erfassen“ übernimmt Name, Betrag und Rhythmus – Laufzeit und Kündigungsfrist trägst du einmal nach.</div>'+
+    vs.slice(0,st.alleVs?999:8).map(function(x){return '<div class="row"><div class="l"><b>'+esc(x.name)+'</b><div class="s">'+esc(x.rhName||"")+" · "+esc(x.grp||x.cat||"")+'</div></div><div class="r">'+C.eur(x.amount)+'<div class="acts" style="justify-content:flex-end"><button class="mini ok" onclick="V2.ausFix(\''+jsq(x.key)+'\')">Erfassen</button><button class="mini" onclick="V2.ignFix(\''+jsq(x.key)+'\')">✕</button></div></div></div>';}).join("")+
+    (vs.length>8&&!st.alleVs?'<button class="btn ghost full" style="margin-top:8px" onclick="V2.alleVs()">Alle '+vs.length+" zeigen</button>":"")+"</div>";
+  h+='<button class="btn ghost full" style="margin-bottom:14px" onclick="V2.neuV()">＋ Vertrag hinzufügen</button>';
+  var by={};akt.forEach(function(v){(by[v.gruppe||"Sonstiges"]=by[v.gruppe||"Sonstiges"]||[]).push(v);});
+  V.GRUPPEN.concat(Object.keys(by).filter(function(g){return V.GRUPPEN.indexOf(g)<0;})).forEach(function(g){if(!by[g])return;
+    var sum=by[g].reduce(function(s,v){return s+V.monatlich(v);},0);
+    h+='<div class="panel"><h3>'+esc(g)+' <span class="small muted">· '+C.eur(sum,0)+" / Monat</span></h3>"+by[g].sort(function(a,b){return String(a.name).localeCompare(String(b.name));}).map(function(v){return vRow(v,fx,t);}).join("")+"</div>";});
+  if(!akt.length&&!vs.length)h+='<div class="empty"><div class="big">📑</div>Noch keine Verträge.<br><span class="small">Sobald in Finanzen Fixkosten bestätigt sind, erscheinen sie hier als Vorschläge.</span></div>';
+  var ende=list.filter(function(v){return v.status==="beendet"||v.status==="gekuendigt";});
+  if(ende.length)h+='<details class="panel"><summary class="small muted">Gekündigt / beendet ('+ende.length+")</summary>"+ende.map(function(v){return vRow(v,fx,t);}).join("")+"</details>";
+  return h;
+}
+function terminText(v,t){var r=V.termin(v,t);
+  if(r.art==="unbekannt")return '<span style="color:#fbbf24">⚠ Laufzeit eintragen</span>';
+  if(r.art==="jederzeit")return "jederzeit kündbar · Frist "+esc(V.fristText(v));
+  if(r.art==="gekuendigt")return "gekündigt"+(r.ende?" zum "+V.de(r.ende):"");
+  if(r.art==="beendet")return "beendet"+(r.ende?" am "+V.de(r.ende):"");
+  return "kündigen bis <b style=\"color:#fde68a\">"+V.de(r.bis)+"</b> (zum "+V.de(r.ende)+")";}
+function preisInfo(v,fx){var x=v.fixKey&&fx[v.fixKey];if(!x||!x.change)return "";var t=V.heute();if(x.change.d<V.plusM(t,-12))return "";
+  var up=x.change.to>x.change.from;return '<div class="s '+(up?"up":"dn")+'">'+(up?"↑ teurer":"↓ günstiger")+" seit "+V.de(x.change.d)+": "+C.eur(x.change.from)+" → "+C.eur(x.change.to)+"</div>";}
+function vRow(v,fx,t){var op=st.open===v.id,id=jsq(v.id);
+  var h='<div class="row" id="v-'+esc(v.id)+'"><div class="l"><b style="cursor:pointer" onclick="V2.open(\''+id+'\')">'+esc(v.name||"Vertrag")+'</b><div class="s">'+(v.betrag?C.eur(v.betrag)+" "+esc(V.rhText(v.rh))+" · ":"")+terminText(v,t)+"</div>"+preisInfo(v,fx)+
+    '</div><div class="r"><button class="mini" onclick="V2.open(\''+id+'\')">'+(op?"Schließen":"✏️")+"</button></div></div>";
+  return h+(op?vForm(v,fx,t):"");}
+function vForm(v,fx,t){var id=jsq(v.id),r=V.termin(v,t);
+  var inp=function(k,val,ph){return '<input class="inp" value="'+esc(val==null?"":val)+'" placeholder="'+(ph||"")+'" onchange="V2.set(\''+id+'\',\''+k+'\',this.value)">';},
+      sel=function(k,list,cur){return '<select class="sel" onchange="V2.set(\''+id+'\',\''+k+'\',this.value)">'+list.map(function(o){return '<option value="'+esc(o[0])+'"'+(String(o[0])===String(cur)?" selected":"")+">"+esc(o[1])+"</option>";}).join("")+"</select>";};
+  var vl=V.VORLAGEN.filter(function(x){return x.id===v.vorlage;})[0];
+  var h='<div class="box"><div class="g2"><div><div class="lbl">Name</div>'+inp("name",v.name)+'</div><div><div class="lbl">Bereich</div>'+sel("gruppe",V.GRUPPEN.map(function(g){return [g,g];}),v.gruppe||"Sonstiges")+"</div></div>"+
+    '<div class="g2 mt"><div><div class="lbl">Betrag (€)</div>'+inp("betrag",v.betrag!=null?String(v.betrag).replace(".",","):"","z. B. 12,99")+'</div><div><div class="lbl">Rhythmus</div>'+sel("rh",V.RHYTHMUS,v.rh||1)+"</div></div>"+
+    '<div class="mt"><div class="lbl">Kündigungsregel</div>'+sel("vorlage",[["","bitte wählen …"]].concat(V.VORLAGEN.map(function(x){return [x.id,x.name];})),v.vorlage||"")+(vl&&vl.hint?'<div class="note" style="margin-top:4px">'+esc(vl.hint)+"</div>":"")+"</div>"+
+    '<div class="g2 mt"><div><div class="lbl">Läuft bis (Ablauf / Mindestlaufzeit)</div>'+inp("bis",v.bis?V.de(v.bis):"","TT.MM.JJJJ")+'</div><div><div class="lbl">Verlängert sich um</div>'+sel("verl",[[0,"– danach jederzeit kündbar"],[1,"1 Monat"],[3,"3 Monate"],[6,"6 Monate"],[12,"1 Jahr"],[24,"2 Jahre"]],v.verl||0)+"</div></div>"+
+      '<div class="g2 mt"><div><div class="lbl">Kündigungsfrist</div><input class="inp" value="'+esc(v.frist!=null?v.frist:"")+'" placeholder="z. B. 3" onchange="V2.set(\''+id+'\',\'frist\',this.value)"></div><div><div class="lbl">&nbsp;</div>'+sel("einh",[["M","Monate"],["W","Wochen"],["T","Tage"]],v.einh||"M")+"</div></div>";
+  if(r.art==="fest")h+='<div class="prev">Spätestens kündigen am <b>'+V.de(r.bis)+"</b> – zum "+V.de(r.ende)+(+v.verl?", sonst läuft er bis "+V.de(V.plusM(r.ende,+v.verl)):", danach jederzeit kündbar")+".</div>";
+  else if(r.art==="jederzeit")h+='<div class="prev">Jederzeit kündbar – heute gekündigt endet er am '+V.de(r.ende)+".</div>";
+  h+='<div class="g2 mt"><div><label class="note" style="display:flex;gap:8px;align-items:center;font-size:13px;color:#e2e8f0"><input type="checkbox" '+(v.erinnern!==false?"checked ":"")+'onchange="V2.set(\''+id+'\',\'erinnern\',this.checked)"> rechtzeitig erinnern</label></div><div><div class="lbl">… Tage vor der Frist</div>'+inp("vorlauf",v.vorlauf!=null?v.vorlauf:30)+"</div></div>"+
+    '<div class="g2 mt"><div><div class="lbl">Status</div>'+sel("status",[["aktiv","läuft"],["gekuendigt","gekündigt"],["beendet","beendet"]],v.status||"aktiv")+"</div>"+(v.status==="gekuendigt"||v.status==="beendet"?'<div><div class="lbl">'+(v.status==="gekuendigt"?"endet am":"beendet am")+"</div>"+inp("endeAm",v.endeAm?V.de(v.endeAm):"","TT.MM.JJJJ")+"</div>":"<div></div>")+"</div>";
+  var x=v.fixKey&&fx[v.fixKey];if(x)h+='<div class="note mt">Verknüpft mit Fixkosten „'+esc(x.name)+"“ · zuletzt "+C.eur(x.amount)+(x.last?" am "+V.de(x.last):"")+"</div>";
+  var docs=dokumente(v);if(docs.length)h+='<div class="mt"><div class="lbl">Dokumente</div>'+docs.map(function(e){return '<div class="row" style="padding:6px 0"><div class="l"><span style="font-size:12px;color:#cbd5e1">📎 '+esc(DOKS.titel(e))+'</span><div class="s">'+DOKS.de(e.datum)+" · "+esc(e.kategorie)+'</div></div><div class="r"><button class="mini" onclick="V2.doc(\''+jsq(e.id)+'\')">Öffnen</button></div></div>';}).join("")+"</div>";
+  h+='<div class="mt"><div class="lbl">Notiz (z. B. Kundennummer, Ansprechpartner)</div><textarea class="inp" rows="2" onchange="V2.set(\''+id+'\',\'notiz\',this.value)">'+esc(v.notiz||"")+"</textarea></div>"+
+    '<div class="acts" style="margin-top:12px"><button class="mini" onclick="V2.open(null)">Fertig</button><button class="mini" style="color:#f87171" onclick="V2.del(\''+id+'\')">Löschen</button></div></div>';
+  return h;
+}
+/* Dokumente zum Vertrag: erstes markantes Wort des Namens (meist die Marke) als ganzes Wort im Absender */
+var STOP=" deutsche deutscher der die das und von fuer gmbh mbh ag kg se co eg ev evang stadt gemeinde bank sparkasse zweigniederlassung gesellschaft versicherung versicherungen versicherungs krankenversicherung krankenv lebensversicherung service services online ";
+function dokumente(v){if(!window.DOKS)return [];var w=DOKS.norm(v.suchwort||v.name).split(" ").filter(function(x){return x.length>=3&&STOP.indexOf(" "+x+" ")<0;})[0];if(!w)return [];
+  return DOKS.index().filter(function(e){if(["Vertraege","Versicherungen","Energie_PV","Mobilitaet","Wohnen","Banken_Finanzen","Vertraege_Versicherungen_Geschaeft","Kind_Schule_Kita"].indexOf(e.kategorie)<0)return false;
+    return (" "+DOKS.norm(e.absender+" "+e.betreff)+" ").indexOf(" "+w+" ")>-1;}).sort(function(a,b){return String(b.datum).localeCompare(String(a.datum));}).slice(0,5);}
+
+function v(id){return data.vertraege[id];}
+window.V2={
+  tab:function(t){st.tab=t;st.open=null;st.fOpen=null;render();window.scrollTo(0,0);},
+  spaeter:function(o){st.spaeter=o;},
+  open:function(id){st.open=st.open===id?null:id;render();if(st.open){var el=document.getElementById("v-"+id);if(el)el.scrollIntoView({block:"start"});}},
+  oeffne:function(id){st.tab="vertraege";st.open=id;render();var el=document.getElementById("v-"+id);if(el)el.scrollIntoView({block:"start"});},
+  alleVs:function(){st.alleVs=true;render();},
+  neuV:function(){var id=V.neueId("v");data.vertraege[id]={id:id,name:"Neuer Vertrag",gruppe:"Sonstiges",rh:1,status:"aktiv",erinnern:true,t:Date.now()};persist();st.open=id;render();},
+  ausFix:function(key){var x=fixListe().filter(function(f){return f.key===key;})[0];if(!x)return;var g=V.gruppeAus(x.grp+" "+x.cat+" "+x.name),vl=V.vorlageFuer(g),tpl=V.VORLAGEN.filter(function(y){return y.id===vl;})[0]||{};
+    var id=V.neueId("v");data.vertraege[id]={id:id,name:x.name,gruppe:g,betrag:Math.round(x.amount*100)/100,rh:x.rh||1,fixKey:key,status:"aktiv",vorlage:vl,verl:tpl.verl!=null?tpl.verl:0,frist:tpl.frist!=null?tpl.frist:1,einh:tpl.einh||"M",erinnern:tpl.erinnern!==false,t:Date.now()};
+    persist();st.open=id;render();var el=document.getElementById("v-"+id);if(el)el.scrollIntoView({block:"start"});},
+  ignFix:function(key){data.ignFix[key]={t:Date.now()};persist();render();},
+  set:function(id,k,val){var x=v(id);if(!x)return;
+    if(k==="betrag"){var n=C.parseNum(val);x.betrag=val===""||isNaN(n)?null:Math.round(n*100)/100;}
+    else if(k==="bis"||k==="endeAm"){var d=V.parse(val);if(val&&!d){flash("⚠ Datum bitte als TT.MM.JJJJ eingeben",true);return;}x[k]=d;}
+    else if(k==="rh"||k==="verl")x[k]=+val;
+    else if(k==="frist"||k==="vorlauf"){var m=parseInt(val,10);x[k]=isNaN(m)?null:Math.max(0,m);}
+    else if(k==="erinnern")x.erinnern=!!val;
+    else if(k==="vorlage"){x.vorlage=val;var tpl=V.VORLAGEN.filter(function(y){return y.id===val;})[0];if(tpl&&tpl.verl!=null){x.verl=tpl.verl;x.frist=tpl.frist;x.einh=tpl.einh;if(tpl.erinnern===false)x.erinnern=false;if(tpl.gruppe&&(!x.gruppe||x.gruppe==="Sonstiges"))x.gruppe=tpl.gruppe;}}
+    else if(k==="status"){x.status=val;if(val==="aktiv")delete x.endeAm;else if(!x.endeAm){var r=V.termin(Object.assign({},x,{status:"aktiv"}),V.heute());x.endeAm=r.ende||"";}}
+    else x[k]=String(val).trim();
+    x.t=Date.now();persist();render();},
+  del:function(id){if(!confirm("Vertrag löschen?"))return;data.vertraege[id]={id:id,del:true,t:Date.now()};st.open=null;persist();render();},
+  gekuendigt:function(id){var x=v(id);if(!x)return;var r=V.termin(x,V.heute());x.status="gekuendigt";x.endeAm=r.ende||"";x.t=Date.now();persist();flash("✓ Als gekündigt markiert – endet am "+V.de(x.endeAm));},
+  behalten:function(id){var x=v(id);if(!x)return;var r=V.termin(x,V.heute());x.behalten=r.bis;x.t=Date.now();persist();flash("✓ Bleibt – Erinnerung wieder vor dem nächsten Termin");},
+  autoOk:function(id){data.auto[id]={erledigt:true,t:Date.now()};persist();flash("✓ Erledigt");},
+  neuFrist:function(ab){st.neuF=ab?null:{titel:"",datum:"",wdh:0,vorlauf:14,notiz:""};render();},
+  fVorlage:function(i){var x=V.FRIST_VORLAGEN[i];if(!st.neuF)return;st.neuF.titel=x.titel;st.neuF.wdh=x.wdh;st.neuF.vorlauf=x.vorlauf;render();},
+  fSet:function(id,k,val){var f=id==="__neu"?st.neuF:data.fristen[id];if(!f)return;
+    if(k==="datum"){var d=V.parse(val);if(val&&!d){flash("⚠ Datum bitte als TT.MM.JJJJ eingeben",true);return;}f.datum=d;delete f.erledigt;}
+    else if(k==="wdh")f.wdh=+val;else if(k==="vorlauf"){var m=parseInt(val,10);f.vorlauf=isNaN(m)?14:Math.max(0,m);}else f[k]=String(val).trim();
+    if(id!=="__neu"){f.t=Date.now();persist();}render();},
+  fSpeichern:function(){var f=st.neuF;if(!f||!f.titel||!f.datum){flash("⚠ Bitte Titel und Datum eintragen",true);return;}var id=V.neueId("f");data.fristen[id]=Object.assign({id:id,t:Date.now()},f);st.neuF=null;persist();flash("✓ Frist gespeichert");},
+  fristEdit:function(id){st.fOpen=st.fOpen===id?null:id;render();},
+  fristOk:function(id){var f=data.fristen[id];if(!f)return;var D=V.naechste(f);f.erledigt=D;f.t=Date.now();persist();var n=V.naechste(f);flash("✓ Erledigt"+(n?" – nächstes Mal am "+V.de(n):""));},
+  fDel:function(id){if(!confirm("Frist löschen?"))return;data.fristen[id]={id:id,del:true,t:Date.now()};st.fOpen=null;persist();render();},
+  doc:function(id){var e=DOKS.index().filter(function(x){return x.id===id;})[0];if(!e)return;DOKS.oeffnen(e).catch(function(err){flash("⚠ "+(err.message||err),true);});}
+};
+window.addEventListener("cockpit:priv",render);
+render();
+C.autoPull([AREA,"finanzen","haus","dokumente"],function(a,d){if(a===AREA)data=V.norm(d);render();});
+})();
+</script>
+</body>
+</html>

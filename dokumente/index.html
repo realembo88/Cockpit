@@ -106,7 +106,8 @@ function konfig(){return (st.vor&&st.vor.konfig)||data.konfig||{empfaenger:{},ar
 function init(){D.state().then(function(s){st.perm=s.s;st.root=s.s==="granted"?s.h:null;st.rootName=s.h?s.h.name:"";render();if(st.root)reload();});}
 function reload(){if(!st.root)return Promise.resolve();
   return Promise.all([D.readJSON(st.root,"_cockpit/vorschlaege.json"),D.readJSON(st.root,"_cockpit/index.json"),D.listPDFs(st.root).catch(function(){return null;}),
-      D.readJSON(st.root,"_cockpit/einkaeufe.json").catch(function(){return null;})]).then(function(a){
+      D.readJSON(st.root,"_cockpit/einkaeufe.json").catch(function(){return null;}),D.listCSVs(st.root).catch(function(){return [];})]).then(function(a){
+    st.csv=a[4]||[];if((data.kontoCsv||0)!==st.csv.length){data.kontoCsv=st.csv.length;var ch2=true;}
     /* Kassenbons für die Einkaufs-Statistik (Finanzen → Einkäufe) übernehmen */
     var ek=EINK.fromFile(C.getLocal("einkaeufe",null),a[3]);if(ek)C.save("einkaeufe",ek);
     st.vor=a[0]||{dateien:{},konfig:null};st.pdfs=a[2];
@@ -116,7 +117,7 @@ function reload(){if(!st.root)return Promise.resolve();
     var n=st.pdfs?st.pdfs.length:null;if(n!==data.eingang){data.eingang=n;changed=true;}
     /* Bearbeitungen für Dateien, die nicht mehr im Eingang liegen, aufräumen */
     if(st.pdfs){var names={};st.pdfs.forEach(function(p){names[p.name]=1;});Object.keys(st.edit).forEach(function(k2){if(!names[k2])delete st.edit[k2];});saveEdits();}
-    if(changed)persist();render();}).catch(function(e){flash("⚠ Ordner konnte nicht gelesen werden: "+(e.message||e),true);});}
+    if(changed||ch2)persist();render();}).catch(function(e){flash("⚠ Ordner konnte nicht gelesen werden: "+(e.message||e),true);});}
 
 /* ---------- Python-Lauf ---------- */
 function run(cmd,label,ms){if(!st.root){flash("⚠ Zuerst den Ablage-Ordner verbinden",true);return Promise.resolve(null);}
@@ -158,6 +159,7 @@ function vEingang(){
   if(st.pdfs==null)return h+'<div class="empty">Lese den Eingang …</div>';
   var neu=st.pdfs.filter(function(p){var e=st.vor.dateien[p.name];return !e||!e.meta||e.fehler||e.groesse!==p.size;}).length;
   h+='<div class="filt"><button class="btn" style="background:#0ea5e9;flex:1" onclick="D2.analyse()"'+(st.run?" disabled":"")+'>🔍 Analysieren'+(neu?" ("+neu+" neu)":"")+'</button><button class="mini" onclick="D2.reload()" aria-label="Neu einlesen">↻</button></div>';
+  if(st.csv&&st.csv.length)h+='<div class="panel" style="border-color:#e040fb66"><b style="color:#f0a6ff">🏦 '+st.csv.length+(st.csv.length===1?" Kontoauszug":" Kontoauszüge")+' (CSV) im Eingang</b><div class="note" style="margin:6px 0 10px">Werden beim Öffnen von Finanzen automatisch übernommen und archiviert.</div><a class="mini" style="text-decoration:none;display:inline-block" href="../finanzen/index.html#import">💶 Finanzen öffnen</a></div>';
   if(!st.pdfs.length)return h+'<div class="empty"><div class="big">📭</div>Der Eingang ist leer.<br><span class="small">Scans landen in 00_Eingang – danach hier „Analysieren“.</span></div>';
   var k=konfig(),frei=0,sicher=0;
   st.pdfs.forEach(function(p){var e=st.vor.dateien[p.name]||{},m=meta(p.name),ed=st.edit[p.name]||{},err=m?D.valid(m,k):"",o=st.open[p.name];

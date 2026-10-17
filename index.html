@@ -11,6 +11,22 @@
 <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="assets/icon-192.png">
 <link rel="stylesheet" href="assets/style.css">
+<style>
+#heute{padding:12px 16px 0;}
+.hp{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:14px 16px;}
+.hp h2{margin:0 0 8px;font-size:14px;color:#fde68a;font-weight:700;display:flex;justify-content:space-between;align-items:baseline;}
+.hp h2 span{font-size:11px;color:var(--muted);font-weight:400;}
+.hi{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid #152038;text-decoration:none;color:inherit;}
+.hi:first-of-type{border-top:none;}
+.hi .ic{font-size:17px;line-height:1.2;flex:0 0 22px;text-align:center;}
+.hi .tx{flex:1;min-width:0;}
+.hi .tx b{display:block;color:#fff;font-size:13px;font-weight:600;overflow-wrap:anywhere;}
+.hi .tx span{display:block;font-size:11px;color:var(--muted);margin-top:2px;}
+.hi .go{color:var(--muted);font-size:16px;align-self:center;}
+.hi.rot .tx span{color:#f87171;}
+.hp .leer{font-size:13px;color:#4ade80;padding:4px 0;}
+.hp .mehr{display:block;text-align:center;font-size:12px;color:var(--muted);margin-top:6px;cursor:pointer;background:none;border:none;width:100%;}
+</style>
 </head>
 <body>
 <div class="wrap">
@@ -21,10 +37,13 @@
   </header>
   <div class="hero"><h1 id="greet">Hallo Markus</h1><p id="sub">Alle Bereiche auf einen Blick</p></div>
   <div id="setupHint"></div>
+  <div id="heute"></div>
   <nav class="tiles" id="tiles"></nav>
   <div class="content" id="extra"></div>
 </div>
 <script src="assets/cockpit.js"></script>
+<script src="finanzen/logic.js"></script>
+<script src="vertraege/logic.js"></script>
 <script>
 (function(){
 "use strict";
@@ -39,6 +58,7 @@ var AREAS=[
   {id:"haus",name:"Haus",icon:"🏘️",color:"#fb923c",href:"haus/index.html"},
   {id:"steuer",name:"Steuer",icon:"🧾",color:"#a78bfa",href:"steuer/index.html"},
   {id:"dokumente",name:"Dokumente",icon:"📂",color:"#38bdf8",href:"dokumente/index.html"},
+  {id:"vertraege",name:"Verträge & Fristen",icon:"📑",color:"#f59e0b",href:"vertraege/index.html"},
   {id:"training",name:"Training",icon:"🏋️",color:"#f43f5e",href:"training/index.html"}
 ];
 
@@ -46,6 +66,7 @@ var AREAS=[
 function summary(area){
   var d=C.getLocal(area.id,null);
   if(area.id==="auto"&&d)return autoSummary(d);
+  if(area.id==="vertraege"&&d&&window.VERTR)return VERTR.summary(d,C.getLocal("haus",null));
   if(d&&d._summary)return d._summary;
   return {k:"—",s:d?"Daten vorhanden":"Noch keine Daten"};
 }
@@ -58,7 +79,50 @@ function autoSummary(d){
   return {k:C.int(totKm)+" km",s:"Kosten "+C.eur(totCost,0)};
 }
 
+/* ---------- Heute & demnächst: was aus allen Bereichen ansteht ---------- */
+var V=window.VERTR,offenAlle=false;
+C.registerMerge("vertraege",V.merge);
+function heuteListe(){
+  var t=V.heute(),out=[];
+  function add(ic,txt,sub,prio,href,rot){out.push({ic:ic,txt:txt,sub:sub,prio:prio,href:href,rot:!!rot});}
+  /* Fristen, Kündigungstermine, Nebenkostenabrechnungen */
+  try{V.termine(C.getLocal("vertraege",null),{haus:C.getLocal("haus",null),t:t}).forEach(function(e){if(!e.faellig)return;
+    add(e.typ==="kuendigung"?"✂️":e.typ==="auto"?"🏘️":"📌",e.titel,V.wann(e.tage)+" · "+V.de(e.datum)+(e.typ==="kuendigung"&&e.ende?" (zum "+V.de(e.ende)+")":""),e.tage,e.href,e.tage<0);});}catch(x){}
+  /* Ferienwohnung: An- und Abreisen der nächsten Tage (ohne Gästenamen) */
+  var fw=C.getLocal("ferienwohnung",null);
+  if(fw&&fw.bookings)Object.keys(fw.bookings).forEach(function(k){var b=fw.bookings[k];if(!b||b.cancelled||b.blocked||!b.arr)return;
+    var na=V.tage(t,b.arr),nd=b.dep?V.tage(t,b.dep):99,g=(+b.adults||0)+(+b.children||0),n=b.dep?V.tage(b.arr,b.dep):0;
+    if(na>=0&&na<=3)add("🧳","Anreise "+(na===0?"heute":na===1?"morgen":V.deKurz(b.arr)),(g?g+" Gäste · ":"")+n+" Nächte",na,"ferienwohnung/index.html");
+    if(nd>=0&&nd<=1)add("🧹","Abreise "+(nd===0?"heute":"morgen")+" – Reinigung",V.deKurz(b.dep),nd,"ferienwohnung/index.html");});
+  /* Dokumente im Eingang (Stand des letzten Abgleichs am PC) */
+  var dok=C.getLocal("dokumente",null);
+  if(dok&&dok.kontoCsv>0)add("🏦",dok.kontoCsv+(dok.kontoCsv===1?" Kontoauszug":" Kontoauszüge")+" im Eingang","am PC Finanzen öffnen – wird automatisch übernommen",5,"finanzen/index.html#import");
+  if(dok&&dok.eingang>0)add("📥",dok.eingang+(dok.eingang===1?" Dokument":" Dokumente")+" im Eingang","am PC unter Dokumente analysieren und ablegen",6,"dokumente/index.html");
+  /* Finanzen: veraltete Buchungen, fehlende Kategorien, Preiserhöhungen */
+  var fin=C.getLocal("finanzen",null);
+  if(fin&&Array.isArray(fin.tx)&&fin.tx.length&&window.FIN){try{
+    var R=fin.rules||FIN.DEFAULT_RULES;FIN.setPartnerMap(fin.pmap,fin.tmap);
+    var neu=fin.tx.reduce(function(m,x){return x.d>m?x.d:m;},"0000"),alt=V.tage(neu,t);
+    if(alt>14)add("🏦","Kontoauszüge holen","neueste Buchung vom "+V.de(neu)+" ("+alt+" Tage alt)",9,"finanzen/index.html#import");
+    var ab=V.plusT(t,-90),unk=fin.tx.filter(function(x){return x.d>=ab&&FIN.category(x,R)===FIN.UNKAT;}).length;
+    if(unk)add("🏷️",unk+" Buchungen ohne Kategorie","letzte 90 Tage – einmal zuordnen",12,"finanzen/index.html#unkat");
+    var seit=V.plusT(t,-45);
+    FIN.fixkosten(fin).list.forEach(function(x){if(x.status!=="ok"||!x.active||!x.change||x.change.to<=x.change.from||x.change.d<seit)return;
+      var wechsel=/versicher|energie|strom|gas|telekom|telefon|internet|mobilfunk|abo|stream/i.test((x.grp||"")+" "+(x.cat||""));
+      add("📈","Teurer: "+x.name,C.eur(x.change.from)+" → "+C.eur(x.change.to)+" seit "+V.de(x.change.d)+(wechsel?" – Wechsel prüfen?":""),10,"vertraege/index.html#vertraege");});
+  }catch(x){}}
+  return out.sort(function(a,b){return a.prio-b.prio;});
+}
+function heuteHtml(){var l=heuteListe(),max=offenAlle?99:6;
+  var h='<div class="hp"><h2>📌 Heute & demnächst'+(l.length?"<span>"+l.length+" Punkt"+(l.length===1?"":"e")+"</span>":"")+"</h2>";
+  if(!l.length)return h+'<div class="leer">✓ Nichts Dringendes – alles erledigt.</div></div>';
+  h+=l.slice(0,max).map(function(e){return '<a class="hi'+(e.rot?" rot":"")+'" href="'+C.esc(e.href)+'"><div class="ic">'+e.ic+'</div><div class="tx"><b>'+C.esc(e.txt)+"</b><span>"+C.esc(e.sub)+'</span></div><div class="go">›</div></a>';}).join("");
+  if(l.length>max)h+='<button class="mehr" onclick="window.__heuteAlle()">+ '+(l.length-max)+" weitere anzeigen</button>";
+  return h+"</div>";}
+window.__heuteAlle=function(){offenAlle=true;render();};
+
 function render(){
+  try{document.getElementById("heute").innerHTML=heuteHtml();}catch(e){document.getElementById("heute").innerHTML="";}
   var h=new Date().getHours();
   document.getElementById("greet").textContent=(h<11?"Guten Morgen":h<18?"Hallo":"Guten Abend")+", Markus";
   document.getElementById("sub").textContent=new Date().toLocaleDateString("de-DE",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
