@@ -101,7 +101,7 @@ function heuteListe(){
   /* Finanzen: veraltete Buchungen, fehlende Kategorien, Preiserhöhungen */
   var fin=C.getLocal("finanzen",null);
   if(fin&&Array.isArray(fin.tx)&&fin.tx.length&&window.FIN){try{
-    var R=fin.rules||FIN.DEFAULT_RULES;FIN.setPartnerMap(fin.pmap,fin.tmap);
+    var R=fin.rules||FIN.DEFAULT_RULES;FIN.setPartnerMap(fin.pmap,fin.tmap,fin.zmap);
     var neu=fin.tx.reduce(function(m,x){return x.d>m?x.d:m;},"0000"),alt=V.tage(neu,t);
     if(alt>14)add("🏦","Kontoauszüge holen","neueste Buchung vom "+V.de(neu)+" ("+alt+" Tage alt)",9,"finanzen/index.html#import");
     var ab=V.plusT(t,-90),unk=fin.tx.filter(function(x){return x.d>=ab&&FIN.category(x,R)===FIN.UNKAT;}).length;

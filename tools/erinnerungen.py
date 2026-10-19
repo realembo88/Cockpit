@@ -203,9 +203,19 @@ def partner_key(p):
     return re.sub(r"\s+", " ", str(p or "").lower()).strip()
 
 
-def kategorie(t, regeln, pmap, tmap):
+def kompakt(s):
+    return re.sub(r"\s+", "", str(s or "").lower())
+
+
+def kategorie(t, regeln, pmap, tmap, zmap=None):
     if t.get("cat"):
         return t["cat"]
+    if zmap and t.get("z"):  # Regeln aus dem Verwendungszweck (laengstes Stichwort zuerst)
+        z = kompakt(t["z"])
+        for k, x in sorted(((k, x) for k, x in zmap.items() if isinstance(x, dict) and not x.get("del") and x.get("c") and kompakt(k)),
+                           key=lambda kv: -len(kompakt(kv[0]))):
+            if kompakt(k) in z:
+                return x["c"]
     if t.get("p") and pmap.get(partner_key(t["p"])):
         return pmap[partner_key(t["p"])]
     if not t.get("p") and t.get("t") and tmap.get(partner_key(t["t"])):
@@ -274,7 +284,7 @@ def woche(ordner, t):
             sonst.append(f"🏦 Kontoauszüge holen – neueste Buchung vom {de(neu)}")
         regeln = fin.get("rules") or standard_regeln()
         von = plus_t(t, -90)
-        unk = sum(1 for x in fin["tx"] if x["d"] >= von and kategorie(x, regeln, fin.get("pmap") or {}, fin.get("tmap") or {}) == UNKAT)
+        unk = sum(1 for x in fin["tx"] if x["d"] >= von and kategorie(x, regeln, fin.get("pmap") or {}, fin.get("tmap") or {}, fin.get("zmap")) == UNKAT)
         if unk:
             sonst.append(f"🏷️ {unk} Buchungen ohne Kategorie (letzte 90 Tage)")
     if sonst:
@@ -308,7 +318,7 @@ def monat(ordner, t):
         for x in fin["tx"]:
             if not x["d"].startswith(pfx):
                 continue
-            c = kategorie(x, regeln, pmap, tmap)
+            c = kategorie(x, regeln, pmap, tmap, fin.get("zmap"))
             if c in neutral:
                 continue
             b = (konten.get(x.get("k")) or {}).get("bereich") or "privat"
@@ -327,7 +337,7 @@ def monat(ordner, t):
         top = sorted(kat.items(), key=lambda kv: kv[1])[:5]
         if top:
             zeilen.append("Größte Ausgaben: " + ", ".join(f"{k} {eur(-v)}" for k, v in top))
-        unk = sum(1 for x in fin["tx"] if x["d"].startswith(pfx) and kategorie(x, regeln, pmap, tmap) == UNKAT)
+        unk = sum(1 for x in fin["tx"] if x["d"].startswith(pfx) and kategorie(x, regeln, pmap, tmap, fin.get("zmap")) == UNKAT)
         if unk:
             zeilen.append(f"🏷️ {unk} Buchungen ohne Kategorie")
         neu = max(x["d"] for x in fin["tx"])

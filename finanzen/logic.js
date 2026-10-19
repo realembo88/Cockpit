@@ -49,13 +49,24 @@ function matchRule(t,rules){
     for(var j=0;j<r.words.length;j++){var re=kwRe(r.words[j]);if(re&&re.test(h))return r.name;}}
   return UNKAT;
 }
-var PMAP={},TMAP={};
-function setPartnerMap(m,tm){PMAP=m||{};TMAP=tm||{};}
+var PMAP={},TMAP={},ZMAP=[];
+function setPartnerMap(m,tm,zm){PMAP=m||{};TMAP=tm||{};ZMAP=zweckListe(zm);}
+/* Regeln aus dem Verwendungszweck: {stichwort: {c: Kategorie, t, del}}. Haben Vorrang vor Empfänger und Kategorien-Regeln –
+   für Zahlungsdienste wie PayPal, bei denen der eigentliche Händler nur im Verwendungszweck steht.
+   Leerzeichen zählen nicht (ING bricht lange Texte mitten im Wort um: „Ein kauf“). */
+function kompakt(s){return String(s||"").toLowerCase().replace(/\s+/g,"");}
+function zweckListe(zm){var l=[];Object.keys(zm||{}).forEach(function(k){var x=zm[k];if(x&&!x.del&&x.c&&kompakt(k))l.push({k:k,m:kompakt(k),c:x.c});});return l.sort(function(a,b){return b.m.length-a.m.length;});}
+function zweckRegel(t){if(!ZMAP.length||!t.z)return null;var z=kompakt(t.z);for(var i=0;i<ZMAP.length;i++)if(z.indexOf(ZMAP[i].m)>-1)return ZMAP[i];return null;}
+var STOPZ=" ihr ihre einkauf bei zahlung fuer für von der die das und mit sepa lastschrift kartenzahlung referenz mandat gmbh mbh sarl s.a.r.l. sca cie online abo payment purchase order bestellung rechnung kunde kundennr vom www ";
+/* Vorschlag fürs Stichwort: bei PayPal & Co. der Händler hinter „/.“, sonst das erste markante Wort */
+function zweckVorschlag(z){z=String(z||"");var m=/\/\.\s*([^,]+)/.exec(z),src=m?m[1]:z;
+  var w=src.toLowerCase().split(/[^a-zäöüß0-9.&\-]+/).filter(function(x){x=x.replace(/^[.\-]+|[.\-]+$/g,"");return x.length>=3&&!/\d{3,}/.test(x)&&STOPZ.indexOf(" "+x+" ")<0;});
+  var v=(w[0]||"").replace(/^www\./,"").replace(/^[.\-]+|[.\-]+$/g,"");return v.length>=3?v:"";}
 function partnerKey(p){return String(p||"").toLowerCase().replace(/\s+/g," ").trim();}
 /* Allgemeine Buchungsarten taugen nicht als Regel – sie kommen bei ganz unterschiedlichen Zahlungen vor */
 var GENERIC_TYPES=/^(lastschrift|überweisung|ueberweisung|gutschrift|dauerauftrag|dauerauftrag\/terminueberweisung|kartenzahlung|abbuchung|einzahlung|auszahlung|entgelt|zinsen|debit transfer|credit transfer|presentment|direct debit|mastercard payment|income|outgoing transfer|incoming transfer|gutschrift\/dauerauftrag)$/;
 function typeKey(t){var k=partnerKey(t);return k&&!GENERIC_TYPES.test(k)?k:"";}
-function category(t,rules){return t.cat||(t.p&&PMAP[partnerKey(t.p)])||(!t.p&&t.t&&TMAP[partnerKey(t.t)])||matchRule(t,rules);}
+function category(t,rules){var zr;return t.cat||((zr=zweckRegel(t))&&zr.c)||(t.p&&PMAP[partnerKey(t.p)])||(!t.p&&t.t&&TMAP[partnerKey(t.t)])||matchRule(t,rules);}
 
 /* ---------- Hilfen ---------- */
 function hash(s){var h1=0x811c9dc5,h2=0x01000193;for(var i=0;i<s.length;i++){var c=s.charCodeAt(i);h1=Math.imul(h1^c,16777619);h2=Math.imul(h2^c,2246822519);}
@@ -230,7 +241,7 @@ function autoImport(d,blocks,file){
 }
 
 /* Bestätigte Fixkosten (erkannt + manuell) – auch für Verträge und Startseite */
-function fixkosten(d,opt){opt=opt||{};d=d||{};var tx=d.tx||[],R=d.rules||DEFAULT_RULES,fx=d.fix||{};setPartnerMap(d.pmap,d.tmap);
+function fixkosten(d,opt){opt=opt||{};d=d||{};var tx=d.tx||[],R=d.rules||DEFAULT_RULES,fx=d.fix||{};setPartnerMap(d.pmap,d.tmap,d.zmap);
   var ref=tx.reduce(function(m,t){return t.d>m?t.d:m;},"0000"),today=opt.today||new Date().toISOString().slice(0,10);
   var det=recurring(tx,R,{ref:ref}).map(function(x){var o=fx[x.key]||{};x.src="auto";x.status=o.s||"neu";if(o.name)x.name=o.name;x.grp=o.grp||x.cat;
     var k=(d.konten||{})[x.konto];x.ber=k?k.bereich:"privat";return x;});
@@ -256,5 +267,5 @@ function report(txs,rules,opt){
 function sum(a){return a.reduce(function(s,v){return s+v;},0);}
 
 return {MON:MON,UNKAT:UNKAT,DEFAULT_RULES:DEFAULT_RULES,kwRe:kwRe,matchRule:matchRule,category:category,parseFile:parseFile,parseCSV:parseCSV,
-  decode:decode,assignIds:assignIds,recurring:recurring,addMonths:addMonths,dDiff:dDiff,RHY:RHY,setPartnerMap:setPartnerMap,partnerKey:partnerKey,typeKey:typeKey,report:report,sum:sum,isNeutral:isNeutral,hash:hash,fixkosten:fixkosten,autoImport:autoImport,fp:fp};
+  decode:decode,assignIds:assignIds,recurring:recurring,addMonths:addMonths,dDiff:dDiff,RHY:RHY,setPartnerMap:setPartnerMap,partnerKey:partnerKey,typeKey:typeKey,report:report,sum:sum,isNeutral:isNeutral,hash:hash,zweckRegel:zweckRegel,zweckVorschlag:zweckVorschlag,kompakt:kompakt,fixkosten:fixkosten,autoImport:autoImport,fp:fp};
 })();

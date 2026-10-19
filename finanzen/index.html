@@ -127,7 +127,7 @@ code{background:var(--field);padding:1px 5px;border-radius:4px;font-size:11px;}
 var C=window.Cockpit,F=window.FIN,AREA="finanzen";
 
 function blank(){return {konten:{},rules:null,pmap:{},tmap:{},tx:[],deleted:[],imports:[]};}
-function norm(d){d=d&&typeof d==="object"?d:blank();if(!d.konten)d.konten={};if(!Array.isArray(d.tx))d.tx=[];if(!Array.isArray(d.deleted))d.deleted=[];if(!Array.isArray(d.imports))d.imports=[];if(!Array.isArray(d.rules))d.rules=null;if(!d.pmap||typeof d.pmap!=="object")d.pmap={};if(!d.tmap||typeof d.tmap!=="object")d.tmap={};return d;}
+function norm(d){d=d&&typeof d==="object"?d:blank();if(!d.konten)d.konten={};if(!Array.isArray(d.tx))d.tx=[];if(!Array.isArray(d.deleted))d.deleted=[];if(!Array.isArray(d.imports))d.imports=[];if(!Array.isArray(d.rules))d.rules=null;if(!d.pmap||typeof d.pmap!=="object")d.pmap={};if(!d.tmap||typeof d.tmap!=="object")d.tmap={};if(!d.zmap||typeof d.zmap!=="object"||Array.isArray(d.zmap))d.zmap={};return d;}
 function rules(){return data.rules||F.DEFAULT_RULES;}
 function clone(x){return JSON.parse(JSON.stringify(x));}
 
@@ -142,7 +142,7 @@ function merge(l,r,lU,rU){
     if((t.nt||0)>=(a.nt||0)){if(t.note)o.note=t.note;else delete o.note;if(t.nt)o.nt=t.nt;}
     by[t.id]=o;});
   var imp={};r.imports.concat(l.imports).forEach(function(i){imp[i.ts+"|"+i.file]=i;});
-  var out={konten:Object.assign({},lU>=rU?r.konten:l.konten,newer.konten),rules:newer.rules,pmap:Object.assign({},lU>=rU?r.pmap:l.pmap,newer.pmap),tmap:Object.assign({},lU>=rU?r.tmap:l.tmap,newer.tmap),
+  var out={konten:Object.assign({},lU>=rU?r.konten:l.konten,newer.konten),rules:newer.rules,pmap:Object.assign({},lU>=rU?r.pmap:l.pmap,newer.pmap),tmap:Object.assign({},lU>=rU?r.tmap:l.tmap,newer.tmap),zmap:byT(l.zmap,r.zmap),
     eur:newer.eur||(lU>=rU?r.eur:l.eur),tx:order.map(function(id){return by[id];}),deleted:Object.keys(del),fix:byT(l.fix,r.fix),fixMan:byT(l.fixMan,r.fixMan),imports:Object.keys(imp).map(function(k){return imp[k];}).sort(function(a,b){return a.ts-b.ts;}).slice(-50)};
   out._summary=summaryFor(out);return out;
 }
@@ -158,19 +158,19 @@ function years(){var s={};data.tx.forEach(function(t){s[+t.d.slice(0,4)]=1;});re
 function kontenFilter(ber){if(ber==="alle")return null;var o={},any=false;Object.keys(data.konten).forEach(function(k){if(data.konten[k].bereich===ber){o[k]=1;any=true;}});return any?o:{__none:1};}
 function summaryFor(d){
   if(!d.tx.length)return {k:"—",s:"Noch keine Buchungen"};
-  F.setPartnerMap(d.pmap,d.tmap);var R=d.rules||F.DEFAULT_RULES,y=thisYear,has=d.tx.some(function(t){return t.d.slice(0,4)===String(y);});
+  F.setPartnerMap(d.pmap,d.tmap,d.zmap);var R=d.rules||F.DEFAULT_RULES,y=thisYear,has=d.tx.some(function(t){return t.d.slice(0,4)===String(y);});
   if(!has)y=+d.tx.reduce(function(m,t){return t.d>m?t.d:m;},"0000").slice(0,4);
   var r=F.report(d.tx,R,{year:y}),s=F.sum(r.ein)+F.sum(r.aus),mi=new Date().getMonth();
   var unk=d.tx.filter(function(t){return F.category(t,R)===F.UNKAT;}).length;
   return {k:(s>=0?"+":"−")+C.eurRaw(Math.abs(s),0),s:"Saldo "+y+(y===thisYear?" · Ausgaben "+F.MON[mi]+" "+C.eurRaw(Math.abs(r.aus[mi]),0):"")+(unk?" · "+unk+" offen":"")};
 }
-function persist(){data._summary=summaryFor(data);F.setPartnerMap(data.pmap,data.tmap);C.save(AREA,data);}
+function persist(){data._summary=summaryFor(data);F.setPartnerMap(data.pmap,data.tmap,data.zmap);C.save(AREA,data);}
 function flash(t,warn){st.flash={t:t,warn:!!warn};render();clearTimeout(flash.tm);flash.tm=setTimeout(function(){st.flash=null;render();},warn?4500:2600);}
 function sEur(v,d){return '<span class="'+(v>=0?"pos":"neg")+'">'+(C.priv()?"":(v>=0?"+":"−"))+C.eur(Math.abs(v),d)+"</span>";}
 
 /* ---------- Rahmen ---------- */
 function render(){
-  F.setPartnerMap(data.pmap,data.tmap);
+  F.setPartnerMap(data.pmap,data.tmap,data.zmap);
   document.getElementById("top").innerHTML=C.topbar({title:"Finanzen",icon:"💶",sub:"ING · N26 · Privat & Geschäft",accent:"#e040fb",accent2:"#7c4dff"});
   C.paintStatus();
   var tabs=[["uebersicht","📊 Übersicht"],["monate","🗓 Monate"],["tage","📅 Tage"],["fix","🔁 Fixkosten"],["einkauf","🧾 Einkäufe"],["buchungen","📋 Buchungen"],["import","⬆ Import"],["regeln","⚙️ Regeln & Konten"]];
@@ -398,12 +398,17 @@ function txRow(t){
       (function(){
         if(!t.cat)return '<div class="note" style="margin-top:6px">Wähle eine Kategorie – danach kannst du sie als Regel für ähnliche Buchungen merken.</div>';
         var h='<div class="small" style="margin-top:8px;color:#69f0ae">✓ Diese Buchung ist gespeichert.</div>';
+        /* Regel aus dem Verwendungszweck – bei Zahlungsdiensten (PayPal, Klarna …) die richtige Wahl */
+        var dienst=t.p&&/paypal|amazon|amzn|klarna|ebay|sumup|stripe|adyen|mollie|giropay|apple|google/i.test(t.p);
+        var zr=t.z?'<div style="margin-top:8px"><div class="note">'+(dienst?"<b>Empfohlen:</b> ":"")+'Regel aus dem Verwendungszweck – alle Buchungen, deren Verwendungszweck dieses Stichwort enthält:</div>'+
+          '<div class="addkw"><input id="zk'+t.id+'" value="'+C.esc(F.zweckVorschlag(t.z))+'" placeholder="Stichwort, z. B. exaring" onkeydown="if(event.key===\'Enter\')F2.learnZ(\''+t.id+'\')"><button class="btn" style="padding:8px 12px;font-size:12px" onclick="F2.learnZ(\''+t.id+'\')">Als Regel merken</button></div></div>':"";
+        if(dienst)h+=zr;
         if(t.p){
           if(/paypal|amazon|amzn|klarna|ebay|sumup|stripe/i.test(t.p))h+='<div class="note" style="color:#ffb74d">Achtung: „'+C.esc(t.p)+'“ ist ein Zahlungsdienst, über den viele verschiedene Käufe laufen. Eine Regel für diesen Empfänger würde alle diese Käufe in dieselbe Kategorie stecken.</div>';
-          return h+'<button class="btn" style="margin-top:6px;padding:7px 12px;font-size:12px" onclick="F2.learn(\''+t.id+'\')">Als Regel merken: alle von „'+C.esc(t.p.length>28?t.p.slice(0,28)+"…":t.p)+'“</button> ';
+          return h+'<button class="btn'+(dienst?" ghost":"")+'" style="margin-top:6px;padding:7px 12px;font-size:12px" onclick="F2.learn(\''+t.id+'\')">Als Regel merken: alle von „'+C.esc(t.p.length>28?t.p.slice(0,28)+"…":t.p)+'“</button> '+(dienst?"":zr);
         }
-        if(F.typeKey(t.t))return h+'<button class="btn" style="margin-top:6px;padding:7px 12px;font-size:12px" onclick="F2.learnType(\''+t.id+'\')">Als Regel merken: alle mit Buchungsart „'+C.esc(t.t)+'“</button> ';
-        return h+'<div class="note">Diese Buchung hat keinen Empfänger und nur eine allgemeine Buchungsart. Für eine Regel trage unter „Regeln & Konten“ ein Schlüsselwort aus dem Verwendungszweck ein.</div>';
+        if(F.typeKey(t.t))return h+'<button class="btn" style="margin-top:6px;padding:7px 12px;font-size:12px" onclick="F2.learnType(\''+t.id+'\')">Als Regel merken: alle mit Buchungsart „'+C.esc(t.t)+'“</button> '+zr;
+        return h+(zr||'<div class="note">Diese Buchung hat weder Empfänger noch Verwendungszweck für eine Regel.</div>');
       })()+
       '<button class="btn ghost" style="margin-top:6px;padding:7px 12px;font-size:12px" onclick="F2.edit(null)">Fertig</button></div>';
   }else{h+='<button class="cat'+(c===F.UNKAT?" u":"")+(t.cat?" m":"")+'" onclick="F2.edit(\''+t.id+'\')">'+C.esc(c)+"</button>";
@@ -567,6 +572,10 @@ function vRules(){
       r.words.map(function(w,j){return '<span class="kw">'+C.esc(w)+'<button onclick="F2.rmKw('+i+","+j+')" aria-label="entfernen">✕</button></span>';}).join("")+
       '<div class="addkw"><input id="kw'+i+'" placeholder="Schlüsselwort hinzufügen" onkeydown="if(event.key===\'Enter\')F2.addKw('+i+')"><button class="btn" style="padding:8px 12px;font-size:13px" onclick="F2.addKw('+i+')">＋</button></div></div>';});
   h+='<button class="btn ghost full" onclick="F2.resetRules()">Auf Standardregeln zurücksetzen</button></div>';
+  var zk=Object.keys(data.zmap).filter(function(k){var x=data.zmap[k];return x&&!x.del&&x.c;}).sort();
+  h+='<div class="panel"><h3>🔎 Regeln aus dem Verwendungszweck</h3><div class="note" style="margin-bottom:10px">Entstehen über „Als Regel merken“ bei einer Buchung – gedacht für PayPal & Co., wo der Händler nur im Verwendungszweck steht. Haben <b>Vorrang</b> vor Empfänger-Zuordnungen und Kategorien-Regeln; Leerzeichen spielen keine Rolle.</div>'+
+    (zk.length?zk.map(function(k){var m=F.kompakt(k),n=data.tx.filter(function(x){return F.kompakt(x.z).indexOf(m)>-1;}).length;
+      return '<div class="kv"><span style="overflow-wrap:anywhere">enthält „'+C.esc(k)+'“ <span class="small muted">· '+n+' Buchungen</span></span><span style="white-space:nowrap">'+C.esc(data.zmap[k].c)+' <button class="pill" style="padding:2px 8px" onclick="F2.rmZ(\''+C.esc(k).replace(/'/g,"\\'")+'\')">✕</button></span></div>';}).join(""):'<div class="note">Noch keine – bei einer Buchung die Kategorie wählen und „Als Regel merken“ unter dem Verwendungszweck nutzen.</div>')+"</div>";
   var pk=Object.keys(data.pmap).sort();
   h+='<div class="panel"><h3>👤 Empfänger-Zuordnungen</h3><div class="note" style="margin-bottom:10px">Entstehen über „Als Regel merken“ bei einer Buchung und haben <b>Vorrang</b> vor allen Kategorien-Regeln.</div>'+
     (function(){var tk=Object.keys(data.tmap).sort();return tk.length?'<div class="small muted" style="margin:6px 0 4px">Nach Buchungsart (bei Buchungen ohne Empfänger):</div>'+tk.map(function(k){return '<div class="kv"><span style="overflow-wrap:anywhere">'+C.esc(k)+'</span><span style="white-space:nowrap">'+C.esc(data.tmap[k])+' <button class="pill" style="padding:2px 8px" onclick="F2.rmT(\''+C.esc(k).replace(/'/g,"\\'")+'\')">✕</button></span></div>';}).join("")+'<div class="small muted" style="margin:10px 0 4px">Nach Empfänger:</div>':"";})()+
@@ -829,6 +838,14 @@ window.F2={
     var n=data.tx.filter(function(x){return !x.p&&F.partnerKey(x.t)===k;}).length;
     st.edit=null;persist();flash("✓ Alle Buchungen mit Buchungsart „"+t.t+"“ → "+c+(n>1?" ("+n+" Buchungen)":""));},
   rmT:function(k){delete data.tmap[k];persist();render();},
+  learnZ:function(id){var t=data.tx.filter(function(x){return x.id===id;})[0],el=document.getElementById("zk"+id);if(!t||!t.cat||!el)return;
+    var k=String(el.value||"").trim().toLowerCase().replace(/\s+/g," "),m=F.kompakt(k);if(m.length<3){flash("⚠ Bitte ein Stichwort mit mindestens 3 Zeichen",true);return;}
+    if(F.kompakt(t.z).indexOf(m)<0){flash("⚠ „"+k+"“ kommt im Verwendungszweck dieser Buchung nicht vor",true);return;}
+    var c=t.cat;data.zmap[k]={c:c,t:Date.now()};
+    /* Einzelzuordnungen derselben Kategorie sind jetzt überflüssig */
+    var n=0;data.tx.forEach(function(x){if(F.kompakt(x.z).indexOf(m)<0)return;n++;if(x.cat===c){delete x.cat;x.ct=Date.now();}});
+    st.edit=null;persist();flash("✓ Verwendungszweck enthält „"+k+"“ → "+c+" ("+n+(n===1?" Buchung)":" Buchungen)"));},
+  rmZ:function(k){data.zmap[k]={del:true,t:Date.now()};persist();render();},
   files:function(inp){var fs=[].slice.call(inp.files||[]);inp.value="";if(!fs.length)return;
     var blocks=[],info=[];
     Promise.all(fs.map(function(f){return f.arrayBuffer().then(function(buf){var r=F.parseFile(buf,f.name);

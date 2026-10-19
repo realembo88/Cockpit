@@ -137,7 +137,7 @@ function persName(k){var p=data.personen.filter(function(x){return x.k===k;})[0]
 
 /* Daten der anderen Bereiche */
 function ctx(){
-  var f=C.getLocal("finanzen",null)||{},R=Array.isArray(f.rules)?f.rules:FIN.DEFAULT_RULES;FIN.setPartnerMap(f.pmap||{},f.tmap||{});
+  var f=C.getLocal("finanzen",null)||{},R=Array.isArray(f.rules)?f.rules:FIN.DEFAULT_RULES;FIN.setPartnerMap(f.pmap||{},f.tmap||{},f.zmap||{});
   var h=C.getLocal("haus",null),fw=C.getLocal("ferienwohnung",null);
   return {fin:{tx:Array.isArray(f.tx)?f.tx:[],rules:R,konten:f.konten||{}},F:FIN,haus:h,HS:window.HAUS,
     bookings:fw&&fw.bookings?Object.keys(fw.bookings).map(function(k){return fw.bookings[k];}):[],apt:h&&h.einst?h.einst.apt:null,en:C.getLocal("energie",null)};
