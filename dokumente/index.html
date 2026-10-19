@@ -106,7 +106,9 @@ function konfig(){return (st.vor&&st.vor.konfig)||data.konfig||{empfaenger:{},ar
 function init(){D.state().then(function(s){st.perm=s.s;st.root=s.s==="granted"?s.h:null;st.rootName=s.h?s.h.name:"";render();if(st.root)reload();});}
 function reload(){if(!st.root)return Promise.resolve();
   return Promise.all([D.readJSON(st.root,"_cockpit/vorschlaege.json"),D.readJSON(st.root,"_cockpit/index.json"),D.listPDFs(st.root).catch(function(){return null;}),
-      D.readJSON(st.root,"_cockpit/einkaeufe.json").catch(function(){return null;}),D.listCSVs(st.root).catch(function(){return [];})]).then(function(a){
+      D.readJSON(st.root,"_cockpit/einkaeufe.json").catch(function(){return null;}),D.listCSVs(st.root).catch(function(){return [];}),D.readJSON(st.root,"_cockpit/laeden.json").catch(function(){return null;})]).then(function(a){
+    /* eigene Ladennamen fürs Python-Skript bereitstellen (gelten dann auch für neue Bons und Dateinamen) */
+    var al=EINK.aliase(C.getLocal("einkaeufe",null));if(JSON.stringify(al)!==JSON.stringify((a[5]&&a[5].aliase)||{}))D.writeJSON(st.root,"_cockpit/laeden.json",{version:1,aliase:al}).catch(function(){});
     st.csv=a[4]||[];if((data.kontoCsv||0)!==st.csv.length){data.kontoCsv=st.csv.length;var ch2=true;}
     /* Kassenbons für die Einkaufs-Statistik (Finanzen → Einkäufe) übernehmen */
     var ek=EINK.fromFile(C.getLocal("einkaeufe",null),a[3]);if(ek)C.save("einkaeufe",ek);

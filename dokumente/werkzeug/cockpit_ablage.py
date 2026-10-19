@@ -21,6 +21,7 @@ Austausch mit dem Cockpit ueber den Ordner <Ablage>/_cockpit/:
   auftrag.json      vom Cockpit freigegebene Dokumente (wird nach dem Ablegen geloescht)
   index.json        Verzeichnis der abgelegten Dokumente (nur Metadaten, keine Inhalte)
   einkaeufe.json    Kassenbons mit Laden, Summe, Zahlart und Artikeln (Einkaufs-Statistik)
+  laeden.json       eigene Ladennamen aus dem Cockpit (gelesener Name -> Name)
   status.json       Stand des letzten Laufs
   protokoll.txt     Protokoll aller Ablagen
 
@@ -316,8 +317,8 @@ def normalisiere(m, ref=None) -> dict:
             out["betrag"] = bon["summe"]
         if out["zahlbetrag"] is None:
             out["zahlbetrag"] = bon["summe"]
-        if not out["absender"]:
-            out["absender"] = A.clean_text(bon["laden"])
+        if not out["absender"] or einfach(bon["laden"]) != einfach((m.get("kassenbon") or {}).get("laden")):
+            out["absender"] = A.clean_text(bon["laden"])  # eigener Ladenname aus dem Cockpit gilt auch fuer den Dateinamen
         if info:  # Datum ergaenzt -> nicht automatisch ablegen, im Cockpit pruefen
             d = bon["datum"]
             out["datum"], out["jahr"] = d, int(d[:4])
@@ -365,6 +366,22 @@ def zahlart(v) -> str:
     return "sonstiges" if s in ("gutschein", "app", "paypal", "rechnung") else "unbekannt"
 
 
+_ALIASE = None
+
+
+def laden_aliase() -> dict:
+    """Eigene Ladennamen aus dem Cockpit (_cockpit/laeden.json): vereinfachter gelesener Name -> Name."""
+    global _ALIASE
+    if _ALIASE is None:
+        d = lies_json(KANAL / "laeden.json", {})
+        _ALIASE = {einfach(k): str(v).strip() for k, v in (d.get("aliase") or {}).items() if str(v).strip()}
+    return _ALIASE
+
+
+def laden_name(name) -> str:
+    return laden_aliase().get(einfach(name), name)
+
+
 def normalisiere_bon(b, meta: dict, ref=None, info=None):
     """Kassenbon-Daten der KI (oder schon normalisiert aus dem Cockpit) in eine kompakte Form bringen.
     Artikel: [Name, Zeilenbetrag, Warengruppe (Nummer in KAT_EINKAUF), Menge]."""
@@ -393,7 +410,7 @@ def normalisiere_bon(b, meta: dict, ref=None, info=None):
     if summe is None:
         return None
     zeit = re.match(r"\s*(\d{1,2})[:.](\d{2})", str(b.get("zeit") or ""))
-    laden = re.sub(r"\s+", " ", str(b.get("laden") or "")).strip()[:40] or str(meta.get("absender") or "").replace("_", " ")
+    laden = laden_name(re.sub(r"\s+", " ", str(b.get("laden") or "")).strip()[:40] or str(meta.get("absender") or "").replace("_", " "))
     karte = b.get("karte")
     ort = b.get("ort")
     out = {
@@ -482,9 +499,9 @@ def speichere_einkaeufe(m: dict):
 
 def bon_doppelt(eink: dict, bon: dict):
     """Derselbe Bon schon erfasst? (gleicher Laden, Tag, Uhrzeit und Betrag)"""
-    k = (einfach(bon.get("laden")), bon.get("datum"), bon.get("zeit") or "", bon.get("summe"))
+    k = (einfach(laden_name(bon.get("laden"))), bon.get("datum"), bon.get("zeit") or "", bon.get("summe"))
     for b in eink.values():
-        if (einfach(b.get("laden")), b.get("datum"), b.get("zeit") or "", b.get("summe")) == k:
+        if (einfach(laden_name(b.get("laden"))), b.get("datum"), b.get("zeit") or "", b.get("summe")) == k:
             return b
     return None
 

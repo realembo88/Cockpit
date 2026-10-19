@@ -14,22 +14,26 @@ var ZA={karte:"Karte",bar:"Bar",sonstiges:"Sonstiges",unbekannt:"unbekannt"};
 var ICON={karte:"💳",bar:"💵",sonstiges:"🎟",unbekannt:"❔"};
 var DAY=864e5;
 
-function blank(){return {aktualisiert:"",kategorien:null,bons:[],korr:{}};}
-function norm(d){d=d&&typeof d==="object"?d:blank();if(!Array.isArray(d.bons))d.bons=[];if(!d.korr||typeof d.korr!=="object"||Array.isArray(d.korr))d.korr={};return d;}
+function blank(){return {aktualisiert:"",kategorien:null,bons:[],korr:{},laeden:{}};}
+function norm(d){d=d&&typeof d==="object"?d:blank();if(!Array.isArray(d.bons))d.bons=[];
+  ["korr","laeden"].forEach(function(k){if(!d[k]||typeof d[k]!=="object"||Array.isArray(d[k]))d[k]={};});return d;}
+function byT(a,b){var o={};Object.keys(Object.assign({},a,b)).forEach(function(id){var x=a[id],y=b[id];o[id]=!x?y:!y?x:((x.t||0)>=(y.t||0)?x:y);});return o;}
 function clone(x){return JSON.parse(JSON.stringify(x));}
-/* Bons vom neueren Python-Stand, Korrekturen je Bon die jüngere */
-function merge(l,r){l=norm(clone(l));r=norm(clone(r));var n=String(l.aktualisiert||"")>=String(r.aktualisiert||"")?l:r,k={};
-  Object.keys(Object.assign({},l.korr,r.korr)).forEach(function(id){var a=l.korr[id],b=r.korr[id];k[id]=!a?b:!b?a:((a.t||0)>=(b.t||0)?a:b);});
-  return {aktualisiert:n.aktualisiert||"",kategorien:n.kategorien||null,bons:n.bons,korr:k};}
+/* Bons vom neueren Python-Stand, Korrekturen je Bon und Ladennamen: jeweils die jüngere Änderung */
+function merge(l,r){l=norm(clone(l));r=norm(clone(r));var n=String(l.aktualisiert||"")>=String(r.aktualisiert||"")?l:r;
+  return {aktualisiert:n.aktualisiert||"",kategorien:n.kategorien||null,bons:n.bons,korr:byT(l.korr,r.korr),laeden:byT(l.laeden,r.laeden)};}
 /* Datei aus der Ablage übernehmen – null, wenn sich nichts geändert hat */
 function fromFile(cur,f){cur=norm(cur);if(!f||!Array.isArray(f.bons))return null;if(String(f.aktualisiert||"")===String(cur.aktualisiert||""))return null;
-  return {aktualisiert:String(f.aktualisiert||""),kategorien:Array.isArray(f.kategorien)?f.kategorien:null,bons:f.bons,korr:cur.korr};}
+  return {aktualisiert:String(f.aktualisiert||""),kategorien:Array.isArray(f.kategorien)?f.kategorien:null,bons:f.bons,korr:cur.korr,laeden:cur.laeden};}
+/* Eigene Ladennamen: {gelesener Name (vereinfacht) → Name}. Gilt für alle Bons dieses Ladens, auch künftige. */
+function aliase(d){d=norm(d);var o={};Object.keys(d.laeden).forEach(function(k){var x=d.laeden[k];if(x&&!x.del&&x.name)o[k]=x.name;});return o;}
+function ladenName(d,orig){var a=aliase(d)[fold(orig)];return a||orig;}
 function kats(d){return (d&&Array.isArray(d.kategorien)&&d.kategorien.length?d.kategorien:KAT);}
 function katName(d,i){var k=kats(d);return k[i]||KAT[i]||"Sonstiges";}
 
 /* Bons mit Korrekturen; aus=true → nicht mitzählen */
-function bons(d){d=norm(d);return d.bons.filter(function(b){return b&&b.id&&b.datum&&typeof b.summe==="number";}).map(function(b){var k=d.korr[b.id]||{};
-  return Object.assign({},b,{zahlart:k.zahlart||b.zahlart||"unbekannt",zk:!!k.zahlart,aus:!!k.aus,artikel:Array.isArray(b.artikel)?b.artikel:[]});})
+function bons(d){d=norm(d);var al=aliase(d);return d.bons.filter(function(b){return b&&b.id&&b.datum&&typeof b.summe==="number";}).map(function(b){var k=d.korr[b.id]||{},a=al[fold(b.laden)];
+  return Object.assign({},b,{laden:a||b.laden,ladenOrig:b.laden,ladenNeu:!!a,zahlart:k.zahlart||b.zahlart||"unbekannt",zk:!!k.zahlart,aus:!!k.aus,artikel:Array.isArray(b.artikel)?b.artikel:[]});})
   .sort(function(a,b){return (b.datum+(b.zeit||"")).localeCompare(a.datum+(a.zeit||""));});}
 
 function dDiff(a,b){return Math.round((new Date(b+"T12:00:00")-new Date(a+"T12:00:00"))/DAY);}
@@ -58,7 +62,7 @@ function stats(list,m,d){
     r.n++;r.sum+=b.summe;r.za[z]+=b.summe;r.zn[z]++;
     (r.mon[z==="karte"||z==="bar"?z:"rest"])[mi]+=b.summe;
     if(z==="karte"){r.karteN++;if(m&&m[b.id])r.konto++;}
-    var ln=String(b.laden||"Unbekannt").trim(),lk=fold(ln)||"?",L=r.laden[lk]=r.laden[lk]||{name:ln,sum:0,n:0,karte:0,bar:0};L.sum+=b.summe;L.n++;if(z==="karte")L.karte+=b.summe;if(z==="bar")L.bar+=b.summe;
+    var ln=String(b.laden||"Unbekannt").trim(),lk=fold(ln)||"?",L=r.laden[lk]=r.laden[lk]||{key:lk,name:ln,sum:0,n:0,karte:0,bar:0,orig:{}};L.sum+=b.summe;L.n++;L.orig[b.ladenOrig||ln]=1;if(z==="karte")L.karte+=b.summe;if(z==="bar")L.bar+=b.summe;
     b.artikel.forEach(function(a){var name=String(a[0]||""),p=+a[1]||0,k=+a[2];if(isNaN(k)||k<0)k=14;
       if(k===PFAND){r.pfand+=p;return;}
       r.kat[k]=(r.kat[k]||0)+p;
@@ -78,7 +82,7 @@ function artikelVon(list,k){var o={};list.forEach(function(b){if(b.aus)return;b.
 /* Bargeld: Abhebungen laut Konto (Kategorie „Bargeld“ o. ä.) im Zeitraum */
 function abhebungen(txs,catOf,pfx){var s=0,n=0;(txs||[]).forEach(function(t){if(!(t.b<0)||t.d.indexOf(pfx)!==0)return;if(/bargeld|geldautomat|atm\b/i.test(catOf(t))){s-=t.b;n++;}});return {sum:s,n:n};}
 
-return {KAT:KAT,PFAND:PFAND,ZA:ZA,ICON:ICON,blank:blank,norm:norm,merge:merge,fromFile:fromFile,kats:kats,katName:katName,bons:bons,
+return {KAT:KAT,PFAND:PFAND,ZA:ZA,ICON:ICON,blank:blank,norm:norm,merge:merge,fromFile:fromFile,kats:kats,katName:katName,bons:bons,aliase:aliase,ladenName:ladenName,
   match:match,eff:eff,stats:stats,artikelVon:artikelVon,abhebungen:abhebungen,fold:fold,dDiff:dDiff};
 })();
 if(typeof window!=="undefined")window.EINK=EINK;
