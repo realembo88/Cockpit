@@ -102,7 +102,7 @@ def aktiv(o):
 def termin(v, t):
     if v.get("vorlage") == "nk":
         return None  # nicht kuendbar (Steuer, Gebuehr) - keine Erinnerung
-    if v.get("status") in ("gekuendigt", "beendet") or not v.get("bis"):
+    if v.get("status") in ("gekuendigt", "beendet") or v.get("jederzeit") or not v.get("bis"):
         return None
     E, verl, f, e, i = v["bis"], int(v.get("verl") or 0), v.get("frist"), v.get("einh") or "M", 0
     while minus_frist(E, f, e) < t and i < 600:
@@ -112,6 +112,8 @@ def termin(v, t):
         else:
             return None  # jederzeit kuendbar - keine Frist
     kb = minus_frist(E, f, e)
+    if i > 0 and verl <= 1:
+        return None  # Mindestlaufzeit vorbei, verlaengert sich monatlich - praktisch jederzeit kuendbar
     return {"ende": E, "bis": kb, "tage": tage(t, kb)}
 
 

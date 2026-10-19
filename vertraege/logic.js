@@ -58,13 +58,18 @@ function termin(v,t){t=t||heute();
   if(v.vorlage==="nk"&&v.status!=="beendet")return {art:"nicht"};
   if(v.status==="gekuendigt")return {art:"gekuendigt",ende:v.endeAm||""};
   if(v.status==="beendet")return {art:"beendet",ende:v.endeAm||""};
+  var f=+v.frist||0,e=v.einh||"M";
+  if(v.jederzeit)return {art:"jederzeit",ende:plusFrist(t,f,e),bis:t,tage:0};  /* keine Mindestlaufzeit (mehr) */
   if(!v.bis)return {art:"unbekannt"};
-  var E=v.bis,verl=+v.verl||0,f=+v.frist||0,e=v.einh||"M",i=0;
+  var E=v.bis,verl=+v.verl||0,i=0;
   while(minusFrist(E,f,e)<t&&i<600){
     if(verl>0){E=plusM(E,verl);i++;}
     else return {art:"jederzeit",ende:plusFrist(t,f,e),bis:t,tage:0};
   }
-  var kb=minusFrist(E,f,e);return {art:"fest",ende:E,bis:kb,tage:tage(t,kb)};
+  var kb=minusFrist(E,f,e);
+  /* Mindestlaufzeit vorbei und verlängert sich nur noch monatlich: praktisch jederzeit kündbar – keine wandernde Erinnerung */
+  if(i>0&&verl<=1)return {art:"jederzeit",ende:E,bis:kb,tage:tage(t,kb)};
+  return {art:"fest",ende:E,bis:kb,tage:tage(t,kb)};
 }
 function fristText(v){var f=+v.frist||0,e=v.einh||"M";if(!f)return "ohne Frist";return f+" "+(e==="T"?(f===1?"Tag":"Tage"):e==="W"?(f===1?"Woche":"Wochen"):(f===1?"Monat":"Monate"));}
 function rhText(rh){var r=RHYTHMUS.filter(function(x){return x[0]===+rh;})[0];return r?r[1]:(rh?rh+"-monatlich":"");}

@@ -143,7 +143,7 @@ function vVertraege(){
 function terminText(v,t){var r=V.termin(v,t);
   if(r.art==="unbekannt")return '<span style="color:#fbbf24">⚠ Laufzeit eintragen</span>';
   if(r.art==="nicht")return "nicht kündbar";
-  if(r.art==="jederzeit")return "jederzeit kündbar · Frist "+esc(V.fristText(v));
+  if(r.art==="jederzeit")return "jederzeit kündbar · Frist "+esc(V.fristText(v))+(r.ende?" · nächstmöglich zum "+V.de(r.ende):"");
   if(r.art==="gekuendigt")return "gekündigt"+(r.ende?" zum "+V.de(r.ende):"");
   if(r.art==="beendet")return "beendet"+(r.ende?" am "+V.de(r.ende):"");
   return "kündigen bis <b style=\"color:#fde68a\">"+V.de(r.bis)+"</b> (zum "+V.de(r.ende)+")";}
@@ -161,11 +161,12 @@ function vForm(v,fx,t){var id=jsq(v.id),r=V.termin(v,t);
     '<div class="g2 mt"><div><div class="lbl">Vertrags- bzw. Versicherungsnr.</div>'+inp("vnr",v.vnr,"optional")+'</div><div><div class="lbl">Kundennummer</div>'+inp("kdnr",v.kdnr,"optional")+"</div></div>"+nrVorschlag(v,fx)+
     '<div class="g2 mt"><div><div class="lbl">Betrag (€)</div>'+inp("betrag",v.betrag!=null?String(v.betrag).replace(".",","):"","z. B. 12,99")+'</div><div><div class="lbl">Rhythmus</div>'+sel("rh",V.RHYTHMUS,v.rh||1)+"</div></div>"+
     '<div class="mt"><div class="lbl">Kündigungsregel</div>'+sel("vorlage",[["","bitte wählen …"]].concat(V.VORLAGEN.map(function(x){return [x.id,x.name];})),v.vorlage||"")+(vl&&vl.hint?'<div class="note" style="margin-top:4px">'+esc(vl.hint)+"</div>":"")+"</div>"+
-    (v.vorlage==="nk"?"":'<div class="g2 mt"><div><div class="lbl">Läuft bis (Ablauf / Mindestlaufzeit)</div>'+inp("bis",v.bis?V.de(v.bis):"","TT.MM.JJJJ")+'</div><div><div class="lbl">Verlängert sich um</div>'+sel("verl",[[0,"– danach jederzeit kündbar"],[1,"1 Monat"],[3,"3 Monate"],[6,"6 Monate"],[12,"1 Jahr"],[24,"2 Jahre"]],v.verl||0)+"</div></div>"+
+    (v.vorlage==="nk"?"":'<label class="note mt" style="display:flex;gap:8px;align-items:center;font-size:13px;color:#e2e8f0"><input type="checkbox" '+(v.jederzeit?"checked ":"")+'onchange="V2.set(\''+id+'\',\'jederzeit\',this.checked)"> Keine Mindestlaufzeit (mehr) – jederzeit kündbar</label>'+
+      (v.jederzeit?"":'<div class="g2 mt"><div><div class="lbl">Läuft bis (Ablauf / Mindestlaufzeit)</div>'+inp("bis",v.bis?V.de(v.bis):"","TT.MM.JJJJ")+'</div><div><div class="lbl">Verlängert sich um</div>'+sel("verl",[[0,"– danach jederzeit kündbar"],[1,"1 Monat"],[3,"3 Monate"],[6,"6 Monate"],[12,"1 Jahr"],[24,"2 Jahre"]],v.verl||0)+"</div></div>")+
       '<div class="g2 mt"><div><div class="lbl">Kündigungsfrist</div><input class="inp" value="'+esc(v.frist!=null?v.frist:"")+'" placeholder="z. B. 3" onchange="V2.set(\''+id+'\',\'frist\',this.value)"></div><div><div class="lbl">&nbsp;</div>'+sel("einh",[["M","Monate"],["W","Wochen"],["T","Tage"]],v.einh||"M")+"</div></div>");
   if(r.art==="fest")h+='<div class="prev">Spätestens kündigen am <b>'+V.de(r.bis)+"</b> – zum "+V.de(r.ende)+(+v.verl?", sonst läuft er bis "+V.de(V.plusM(r.ende,+v.verl)):", danach jederzeit kündbar")+".</div>";
-  else if(r.art==="jederzeit")h+='<div class="prev">Jederzeit kündbar – heute gekündigt endet er am '+V.de(r.ende)+".</div>";
-  if(v.vorlage!=="nk")h+='<div class="g2 mt"><div><label class="note" style="display:flex;gap:8px;align-items:center;font-size:13px;color:#e2e8f0"><input type="checkbox" '+(v.erinnern!==false?"checked ":"")+'onchange="V2.set(\''+id+'\',\'erinnern\',this.checked)"> rechtzeitig erinnern</label></div><div><div class="lbl">… Tage vor der Frist</div>'+inp("vorlauf",v.vorlauf!=null?v.vorlauf:30)+"</div></div>";
+  else if(r.art==="jederzeit")h+='<div class="prev">Jederzeit kündbar – heute gekündigt endet er am '+V.de(r.ende)+". Keine Erinnerung nötig.</div>";
+  if(v.vorlage!=="nk"&&!v.jederzeit)h+='<div class="g2 mt"><div><label class="note" style="display:flex;gap:8px;align-items:center;font-size:13px;color:#e2e8f0"><input type="checkbox" '+(v.erinnern!==false?"checked ":"")+'onchange="V2.set(\''+id+'\',\'erinnern\',this.checked)"> rechtzeitig erinnern</label></div><div><div class="lbl">… Tage vor der Frist</div>'+inp("vorlauf",v.vorlauf!=null?v.vorlauf:30)+"</div></div>";
   h+='<div class="g2 mt"><div><div class="lbl">Status</div>'+sel("status",[["aktiv","läuft"],["gekuendigt","gekündigt"],["beendet","beendet"]],v.status||"aktiv")+"</div>"+(v.status==="gekuendigt"||v.status==="beendet"?'<div><div class="lbl">'+(v.status==="gekuendigt"?"endet am":"beendet am")+"</div>"+inp("endeAm",v.endeAm?V.de(v.endeAm):"","TT.MM.JJJJ")+"</div>":"<div></div>")+"</div>";
   var x=v.fixKey&&fx[v.fixKey];if(x)h+='<div class="note mt">Verknüpft mit Fixkosten „'+esc(x.name)+"“ · zuletzt "+C.eur(x.amount)+(x.last?" am "+V.de(x.last):"")+"</div>";
   h+=docBlock(v);
@@ -225,6 +226,7 @@ window.V2={
     else if(k==="rh"||k==="verl")x[k]=+val;
     else if(k==="frist"||k==="vorlauf"){var m=parseInt(val,10);x[k]=isNaN(m)?null:Math.max(0,m);}
     else if(k==="erinnern")x.erinnern=!!val;
+    else if(k==="jederzeit"){x.jederzeit=!!val;if(!val)delete x.jederzeit;}
     else if(k==="vorlage"){x.vorlage=val;var tpl=V.VORLAGEN.filter(function(y){return y.id===val;})[0];if(tpl&&tpl.verl!=null){x.verl=tpl.verl;x.frist=tpl.frist;x.einh=tpl.einh;}if(tpl&&tpl.erinnern===false)x.erinnern=false;if(tpl&&tpl.gruppe&&(val==="nk"||!x.gruppe||x.gruppe==="Sonstiges"))x.gruppe=tpl.gruppe;}
     else if(k==="status"){x.status=val;if(val==="aktiv")delete x.endeAm;else if(!x.endeAm){var r=V.termin(Object.assign({},x,{status:"aktiv"}),V.heute());x.endeAm=r.ende||"";}}
     else x[k]=String(val).trim();
