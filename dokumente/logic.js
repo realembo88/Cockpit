@@ -65,6 +65,7 @@ function kontoImport(r,fin){if(!window.FIN)return Promise.resolve(null);
         var pfad=await verschiebe(r,"00_Eingang/"+x.name,ziel,heute8()+"_"+x.name);
         res.dateien.push({name:x.name,ziel:pfad,neu:r1.neu,konten:r1.konten});
       }catch(e){res.fehler.push(x.name+": "+(e.message||e));}}
+    res.rest=list.length-res.dateien.length; /* bleiben im Eingang (neues Konto, Fehler) */
     return res;});}
 function blobUrl(r,path){return file(r,path).then(function(f){return URL.createObjectURL(f.slice(0,f.size,"application/pdf"));});}
 

@@ -426,8 +426,13 @@ def woche(ordner, t):
         if dok.get("eingang"):
             n = dok["eingang"]
             sonst.append(f"📥 {n} {'Dokument' if n == 1 else 'Dokumente'} im Eingang (am PC analysieren)")
-        if dok.get("kontoCsv"):
-            n = dok["kontoCsv"]
+        n = dok.get("kontoCsv") or 0
+        ke = (fin or {}).get("kontoEingang") or {}
+        if ke.get("ts") and ke["ts"] >= (dok.get("upd") or 0):  # Finanzen hat den Eingang danach übernommen
+            n = ke.get("n") or 0
+        elif n and dok.get("upd"):  # ältere Stände: danach automatisch übernommene Dateien abziehen
+            n = max(0, n - len({i.get("file") for i in ((fin or {}).get("imports") or []) if i.get("auto") and (i.get("ts") or 0) > dok["upd"]}))
+        if n:
             sonst.append(f"🏦 {n} {'Kontoauszug' if n == 1 else 'Kontoauszüge'} im Eingang (Finanzen am PC öffnen)")
     if fin and fin.get("tx"):
         neu = max(x["d"] for x in fin["tx"])

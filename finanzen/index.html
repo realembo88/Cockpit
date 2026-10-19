@@ -143,7 +143,7 @@ function merge(l,r,lU,rU){
     by[t.id]=o;});
   var imp={};r.imports.concat(l.imports).forEach(function(i){imp[i.ts+"|"+i.file]=i;});
   var out={konten:Object.assign({},lU>=rU?r.konten:l.konten,newer.konten),rules:newer.rules,pmap:Object.assign({},lU>=rU?r.pmap:l.pmap,newer.pmap),tmap:Object.assign({},lU>=rU?r.tmap:l.tmap,newer.tmap),zmap:byT(l.zmap,r.zmap),
-    eur:newer.eur||(lU>=rU?r.eur:l.eur),tx:order.map(function(id){return by[id];}),deleted:Object.keys(del),fix:byT(l.fix,r.fix),fixMan:byT(l.fixMan,r.fixMan),imports:Object.keys(imp).map(function(k){return imp[k];}).sort(function(a,b){return a.ts-b.ts;}).slice(-50)};
+    eur:newer.eur||(lU>=rU?r.eur:l.eur),tx:order.map(function(id){return by[id];}),deleted:Object.keys(del),fix:byT(l.fix,r.fix),fixMan:byT(l.fixMan,r.fixMan),kontoEingang:((l.kontoEingang||{}).ts||0)>=((r.kontoEingang||{}).ts||0)?l.kontoEingang:r.kontoEingang,imports:Object.keys(imp).map(function(k){return imp[k];}).sort(function(a,b){return a.ts-b.ts;}).slice(-50)};
   out._summary=summaryFor(out);return out;
 }
 C.registerMerge(AREA,merge);
@@ -511,8 +511,10 @@ function kontoEingang(ask){if(!window.DOKS||!DOKS.supported()||kiLauf)return Pro
   return (ask?DOKS.root(true):DOKS.state().then(function(s){return s.s==="granted"?s.h:null;})).then(function(r){
     if(!r){if(ask)flash("⚠ Der Ablage-Ordner ist auf diesem Gerät nicht verbunden (Dokumente → Einrichtung).",true);return null;}
     kiLauf=true;return DOKS.kontoImport(r,data).then(function(res){kiLauf=false;st.kiInfo=res||{leer:true};
-      if(!res){if(ask)flash("Keine Kontoauszüge im Eingang.");else if(st.tab==="import")render();return null;}
-      if(res.neu||res.dateien.length)persist();
+      /* Stand des Eingangs festhalten – die Startseite zählt sonst noch die eben übernommenen Dateien */
+      var rest=res?res.rest||0:0,ke=data.kontoEingang,neuStand=!ke||ke.n!==rest||!!(res&&res.dateien.length);if(neuStand)data.kontoEingang={n:rest,ts:Date.now()};
+      if(!res){if(neuStand)persist();if(ask)flash("Keine Kontoauszüge im Eingang.");else if(st.tab==="import")render();return null;}
+      if(res.neu||res.dateien.length||neuStand)persist();
       var msg=[];
       if(res.dateien.length)msg.push("✓ "+res.dateien.length+(res.dateien.length===1?" Kontoauszug":" Kontoauszüge")+" aus dem Eingang übernommen: "+res.neu+" neue Buchungen"+(res.dup?" ("+res.dup+" schon vorhanden)":""));
       if(res.unbekannt.length)msg.push("⚠ "+res.unbekannt.join(", ")+" gehört zu einem neuen Konto – einmal unter „Import“ von Hand zuordnen");

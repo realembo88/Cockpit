@@ -107,7 +107,11 @@ function heuteListe(){
     if(nd>=0&&nd<=1)add("🧹","Abreise "+(nd===0?"heute":"morgen")+" – Reinigung",V.deKurz(b.dep),nd,"ferienwohnung/index.html");});
   /* Dokumente im Eingang (Stand des letzten Abgleichs am PC) */
   var dok=C.getLocal("dokumente",null);
-  if(dok&&dok.kontoCsv>0)add("🏦",dok.kontoCsv+(dok.kontoCsv===1?" Kontoauszug":" Kontoauszüge")+" im Eingang","am PC Finanzen öffnen – wird automatisch übernommen",5,"finanzen/index.html#import");
+  /* Kontoauszüge im Eingang: der jüngere Stand zählt – Dokumente zählt sie, Finanzen übernimmt sie */
+  var finE=C.getLocal("finanzen",null),ke=finE&&finE.kontoEingang,kc=dok&&dok.kontoCsv>0?dok.kontoCsv:0;
+  if(ke&&ke.ts&&ke.ts>=((dok&&dok.upd)||0))kc=ke.n||0;
+  else if(kc&&finE&&Array.isArray(finE.imports)&&dok.upd){var nach={};finE.imports.forEach(function(i){if(i&&i.auto&&i.ts>dok.upd)nach[i.file]=1;});kc=Math.max(0,kc-Object.keys(nach).length);}
+  if(kc>0)add("🏦",kc+(kc===1?" Kontoauszug":" Kontoauszüge")+" im Eingang","am PC Finanzen öffnen – wird automatisch übernommen",5,"finanzen/index.html#import");
   if(dok&&dok.eingang>0)add("📥",dok.eingang+(dok.eingang===1?" Dokument":" Dokumente")+" im Eingang","am PC unter Dokumente analysieren und ablegen",6,"dokumente/index.html");
   /* Finanzen: veraltete Buchungen, fehlende Kategorien, Preiserhöhungen */
   if(fin&&Array.isArray(fin.tx)&&fin.tx.length&&window.FIN){try{
