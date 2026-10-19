@@ -10,13 +10,13 @@
 <link rel="stylesheet" href="../assets/style.css">
 <style>
 .pill{border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:20px;padding:6px 12px;font-size:12px;cursor:pointer;}
-.pill.on{background:#a855f7;border-color:#a855f7;color:#fff;font-weight:700;}
+.pill.on{background:#14b8a6;border-color:#14b8a6;color:#04201c;font-weight:700;}
 .filt{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
 .mini{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;white-space:nowrap;font-family:inherit;}
 .mini.ok{border-color:#22c55e;color:#4ade80;}
 .note{font-size:11px;color:var(--muted);line-height:1.6;}
 .inp,.sel{width:100%;background:var(--field);border:1px solid var(--border);border-radius:8px;padding:9px 10px;color:#fff;font-size:14px;font-family:inherit;}
-.inp:focus,.sel:focus{outline:none;border-color:#a855f7;}
+.inp:focus,.sel:focus{outline:none;border-color:#14b8a6;}
 .lbl{font-size:11px;color:var(--muted);margin:0 0 4px;}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
 /* Serien-Karte */
@@ -43,8 +43,8 @@
 .tb{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;}
 .tb button{background:#111a30;border:1px solid #2a3a5e;border-radius:12px;color:#fff;padding:12px 8px;font-size:14px;font-family:inherit;cursor:pointer;text-align:left;}
 .tb button small{display:block;color:var(--muted);font-size:10.5px;margin-top:3px;}
-.tb button.on{border-color:#a855f7;background:#a855f71f;}
-.box{border:1px solid #a855f766;border-radius:12px;padding:12px;margin:10px 0;background:#a855f70d;}
+.tb button.on{border-color:#14b8a6;background:#14b8a61f;}
+.box{border:1px solid #14b8a666;border-radius:12px;padding:12px;margin:10px 0;background:#14b8a60d;}
 /* Tabellen */
 table.mt{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums;}
 table.mt th{color:var(--muted);font-weight:500;text-align:center;padding:6px 4px;border-bottom:1px solid var(--border);overflow-wrap:anywhere;}
@@ -60,7 +60,7 @@ table.mt td i{display:inline-block;min-width:26px;border-radius:6px;padding:2px 
 .kz b{display:block;font-size:17px;color:#fff;}
 .kz span{font-size:11px;color:var(--muted);}
 /* Feier */
-.feier{border-radius:12px;padding:12px 14px;margin-bottom:14px;background:linear-gradient(135deg,#7c3aed33,#22c55e22);border:1px solid #a855f7;color:#f3e8ff;font-size:14px;}
+.feier{border-radius:12px;padding:12px 14px;margin-bottom:14px;background:linear-gradient(135deg,#f59e0b26,#22c55e26);border:1px solid #f59e0b;color:#fef3c7;font-size:14px;}
 .konf{position:fixed;top:-30px;font-size:22px;pointer-events:none;z-index:60;animation:fall 2.6s ease-in forwards;}
 @keyframes fall{to{transform:translateY(105vh) rotate(540deg);opacity:.2;}}
 </style>
@@ -92,11 +92,11 @@ function thema(id){return data.themen[id];}
 
 /* ---------- Rahmen ---------- */
 function render(){
-  document.getElementById("top").innerHTML=C.topbar({title:"ThingCounter",icon:"🎯",sub:"Serien · Rekorde · Auswertung",accent:"#a855f7",accent2:"#7c3aed",eye:false});C.paintStatus();
+  document.getElementById("top").innerHTML=C.topbar({title:"ThingCounter",icon:"🎯",sub:"Serien · Rekorde · Auswertung",accent:"#14b8a6",accent2:"#0d9488",eye:false});C.paintStatus();
   var tabs=[["start","🎯 Serien"],["monate","📅 Monate"],["auswertung","📊 Auswertung"],["verlauf","🕘 Verlauf"],["einst","⚙️"]];
   document.getElementById("tabs").innerHTML=tabs.map(function(t){return '<button class="tab'+(st.tab===t[0]?" on":"")+'" onclick="Z2.tab(\''+t[0]+'\')">'+t[1]+"</button>";}).join("");
   var h="";if(st.flash)h+='<div class="flash'+(st.flash.warn?" warn":"")+'">'+esc(st.flash.t)+(st.undo?' · <a href="#" style="color:#fff" onclick="Z2.undo();return false">Rückgängig</a>':"")+"</div>";
-  if(!Z.themenListe(data).length&&st.tab!=="einst")h+='<div class="empty"><div class="big">🎯</div>Noch keine Zähler.<br><span class="small">Unter ⚙️ eine Datei einlesen (Export aus „How Long Since“ oder Startdatei) oder Zähler anlegen.</span><br><button class="btn" style="margin-top:14px;background:#a855f7" onclick="Z2.tab(\'einst\')">Einrichten</button></div>';
+  if(!Z.themenListe(data).length&&st.tab!=="einst")h+='<div class="empty"><div class="big">🎯</div>Noch keine Zähler.<br><span class="small">Unter ⚙️ eine Datei einlesen (Export aus „How Long Since“ oder Startdatei) oder Zähler anlegen.</span><br><button class="btn" style="margin-top:14px;background:#14b8a6" onclick="Z2.tab(\'einst\')">Einrichten</button></div>';
   else h+=({start:vStart,monate:vMonate,auswertung:vAuswertung,verlauf:vVerlauf,einst:vEinst}[st.tab])();
   document.getElementById("main").innerHTML=h;
 }
@@ -109,7 +109,7 @@ function ring(r){var R=46,U=2*Math.PI*R,q=r.neuerRekord?1:Math.max(0,Math.min(1,
 function verlaufChart(r){var l=r.abst.filter(function(a){return a.ms>=6*36e5;}).slice(-18),W=340,H=90,pB=14,n=l.length+1;if(n<2)return "";
   var mx=Math.max(r.rekord,r.aktuell||0)||1,bw=Math.min(16,(W-10)/n*0.7),pT=12,s='<svg viewBox="0 0 '+W+" "+H+'" width="100%" role="img" style="margin-top:10px;max-width:560px;display:block">';
   var y=function(ms){return pT+(H-pB-pT)*(1-ms/mx);},cx=function(i){return 5+(W-10)*(i+.5)/n;};
-  s+='<line x1="0" x2="'+W+'" y1="'+y(r.rekord)+'" y2="'+y(r.rekord)+'" stroke="#a855f7" stroke-dasharray="4 3" opacity=".7"/><text x="'+(W-2)+'" y="'+(y(r.rekord)-3)+'" fill="#c4b5fd" font-size="9" text-anchor="end">Rekord '+Z.tageText(r.rekord)+" T</text>";
+  s+='<line x1="0" x2="'+W+'" y1="'+y(r.rekord)+'" y2="'+y(r.rekord)+'" stroke="#22c55e" stroke-dasharray="4 3" opacity=".8"/><text x="'+(W-2)+'" y="'+(y(r.rekord)-3)+'" fill="#86efac" font-size="9" text-anchor="end">Rekord '+Z.tageText(r.rekord)+" T</text>";
   l.forEach(function(a,i){var hh=(H-pB)-y(a.ms);s+='<rect x="'+(cx(i)-bw/2)+'" y="'+y(a.ms)+'" width="'+bw+'" height="'+Math.max(1,hh)+'" rx="3" fill="'+Z.farbe(a.ms,r.rekord)+'" opacity=".85"><title>'+esc(Z.dauerText(a.ms)+" bis "+wann(a.bis))+"</title></rect>";});
   var a=r.aktuell||0,hh2=(H-pB)-y(a);s+='<rect x="'+(cx(n-1)-bw/2)+'" y="'+y(a)+'" width="'+bw+'" height="'+Math.max(1,hh2)+'" rx="3" fill="'+r.farbe+'" stroke="#fff" stroke-width="1.5"><title>läuft: '+esc(Z.dauerText(a))+"</title></rect>";
   s+='<text x="'+cx(n-1)+'" y="'+(H-2)+'" fill="#cbd5e1" font-size="9" text-anchor="middle">jetzt</text><text x="'+cx(0)+'" y="'+(H-2)+'" fill="#5c7aaa" font-size="9" text-anchor="middle">früher</text>';
@@ -118,7 +118,7 @@ function serienKarte(s){var r=Z.serie(data,s,Date.now()),d=r.aktuell==null?null:
   var stat=r.aktuell==null?'<span class="stat">noch kein Eintrag</span>':r.neuerRekord?'<span class="stat rek">🏆 Neuer Rekord – '+Z.dauerText(r.aktuell-r.rekord)+" über der bisherigen Bestzeit</span>":
     r.rekord?'<span class="stat">noch '+Z.dauerText(r.bisRekord)+" bis zum Rekord</span>":"";
   var h='<div class="sc" style="--f:'+r.farbe+'"><div class="top"><div class="ring">'+ring(r)+'<div class="mid"><div class="d">'+(d==null?"–":Z.tageText(r.aktuell))+'</div><div class="u">'+(d!=null&&d<1?esc(Z.dauerText(r.aktuell)):"Tage")+"</div></div></div>"+
-    '<div class="inf"><b>'+esc(s.name)+'</b><div class="s">'+(r.letzte?"zuletzt "+esc(wann(r.letzte)):"")+(r.rekord?"<br>Rekord: "+esc(Z.dauerText(r.rekord)):"")+(r.naechste&&d!=null?"<br>Nächste Stufe "+r.naechste[1]+" "+r.naechste[0]+(r.naechste[0]===1?" Tag":" Tage")+" in "+esc(Z.dauerText(r.naechste[0]*DAY-r.aktuell)):"")+"</div>"+stat+"</div></div>";
+    '<div class="inf"><b>'+esc(s.name)+'</b><div class="s">'+(r.letzte?"zuletzt "+esc(wann(r.letzte)):"")+(r.rekord?"<br>Rekord (längster Abstand): "+esc(Z.dauerText(r.rekord))+(r.aktuell!=null?' · jetzt <b style="color:'+r.farbe+'">'+Math.round(100*r.aktuell/r.rekord)+" %</b>":""):"")+(r.naechste&&d!=null?"<br>Nächste Stufe "+r.naechste[1]+" "+r.naechste[0]+(r.naechste[0]===1?" Tag":" Tage")+" in "+esc(Z.dauerText(r.naechste[0]*DAY-r.aktuell)):"")+"</div>"+stat+"</div></div>";
   h+='<div class="badges">'+Z.STUFEN.filter(function(x,i){var idx=Z.STUFEN.indexOf(r.naechste||[]);return idx<0||i<=idx+2;}).map(function(x){var ok=d!=null&&d>=x[0];return '<span class="'+(ok?"":"aus")+'" title="'+x[0]+' Tage">'+x[1]+"<small>"+x[0]+"</small></span>";}).join("")+"</div>";
   h+=verlaufChart(r);
   if(r.top.length)h+='<div class="note" style="margin-top:6px">Längste Serien: '+r.top.map(function(a,i){return ["🥇","🥈","🥉"][i]+" "+esc(Z.dauerText(a.ms))+" (bis "+esc(wann(a.bis).replace(/ \d\d:\d\d$/,""))+")";}).join(" · ")+(r.n90||r.v90?" · Einträge letzte 90 Tage: "+r.n90+" (davor "+r.v90+")":"")+"</div>";
@@ -127,10 +127,11 @@ function serienKarte(s){var r=Z.serie(data,s,Date.now()),d=r.aktuell==null?null:
   return h+"</div>";}
 function neuForm(){var t=thema(st.neu);if(!t)return "";
   return '<div class="box"><div class="lbl">'+esc(t.name)+' – wann?</div><div class="g2"><input class="inp" id="zNeuT" type="datetime-local" value="'+lokal(Date.now())+'"><input class="inp" id="zNeuN" placeholder="Notiz (optional)"></div>'+
-    '<div style="display:flex;gap:8px;margin-top:10px"><button class="btn" style="background:#a855f7;padding:10px 16px;font-size:14px" onclick="Z2.speichern()">Speichern</button><button class="mini" onclick="Z2.neu(null)">Abbrechen</button></div></div>';}
+    '<div style="display:flex;gap:8px;margin-top:10px"><button class="btn" style="background:#14b8a6;padding:10px 16px;font-size:14px" onclick="Z2.speichern()">Speichern</button><button class="mini" onclick="Z2.neu(null)">Abbrechen</button></div></div>';}
 function vStart(){var h="";
   st.feier.forEach(function(f){h+='<div class="feier">'+esc(f)+"</div>";});
   Z.serienListe(data).forEach(function(s){h+=serienKarte(s);});
+  if(Z.serienListe(data).length)h+='<div class="note" style="margin:-4px 0 14px">Farbe im Verhältnis zum bisher längsten Abstand: '+[["rgb(239,68,68)","0 %"],["rgb(250,204,21)","50 %"],["rgb(34,197,94)","100 % = Rekord"],[Z.LILA,"darüber = neuer Rekord"]].map(function(x){return '<span style="white-space:nowrap"><i style="display:inline-block;width:10px;height:10px;border-radius:50%;background:'+x[0]+';margin:0 4px -1px 8px"></i>'+x[1]+"</span>";}).join("")+"</div>";
   /* alle Zähler erfassen */
   var inS={};Z.serienListe(data).forEach(function(s){(s.themen||[]).forEach(function(id){inS[id]=1;});});
   var rest=Z.themenListe(data),grp=null,inner="";
@@ -143,16 +144,18 @@ function vStart(){var h="";
   return h+"</div>";}
 
 /* ---------- Monatsübersicht ---------- */
-function heat(n,mx){if(!n)return "";var q=mx?n/mx:0;return "background:rgba(168,85,247,"+(0.15+0.6*q).toFixed(2)+");color:#fff";}
+/* je Spalte eine eigene Farbe – bewusst ohne Rot/Gelb/Grün/Lila, die bei den Serien eine Bedeutung haben */
+var SPF=["56,189,248","244,114,182","251,146,60","45,212,191","96,165,250","251,113,133"];
+function heat(n,mx,i){if(!n)return "";var q=mx?n/mx:0;return "background:rgba("+SPF[i%SPF.length]+","+(0.18+0.62*q).toFixed(2)+");color:#fff";}
 function vMonate(){var n=st.mAnz||12,m=Z.monate(data,n,Date.now()),mx={};
   m.spalten.forEach(function(s){mx[s.id]=Math.max.apply(null,m.monate.map(function(x){return x.c[s.id]||0;}).concat([0]));});
   var h='<div class="filt">'+[6,12,24].map(function(k){return '<button class="pill'+(n===k?" on":"")+'" onclick="Z2.mAnz('+k+')">'+k+" Monate</button>";}).join("")+"</div>";
   h+='<div class="panel"><h3>📅 Anzahl je Monat</h3><table class="mt"><tr><th>Monat</th>'+m.spalten.map(function(s){return "<th>"+esc(s.name)+(s.serie?" ⏱":"")+"</th>";}).join("")+"</tr>"+
-    m.monate.map(function(x){return "<tr><td>"+esc(x.name)+"</td>"+m.spalten.map(function(s){var v=x.c[s.id]||0;return '<td><i style="'+heat(v,mx[s.id])+'">'+(v||"·")+"</i></td>";}).join("")+"</tr>";}).join("")+
+    m.monate.map(function(x){return "<tr><td>"+esc(x.name)+"</td>"+m.spalten.map(function(s,i){var v=x.c[s.id]||0;return '<td><i style="'+heat(v,mx[s.id],i)+'">'+(v||"·")+"</i></td>";}).join("")+"</tr>";}).join("")+
     "<tr><td><b>Ø / Monat</b></td>"+m.spalten.map(function(s){var sum=m.monate.reduce(function(a,x){return a+(x.c[s.id]||0);},0);return "<td><b>"+String(Math.round(sum/n*10)/10).replace(".",",")+"</b></td>";}).join("")+"</tr></table>"+
     '<div class="note" style="margin-top:8px">⏱ = Serie (Summe ihrer Zähler). Je kräftiger die Farbe, desto mehr im Vergleich zum stärksten Monat dieser Spalte.</div></div>';
   /* Balken je Spalte */
-  m.spalten.forEach(function(s){if(!m.monate.some(function(x){return x.c[s.id];}))return;var pts=m.monate.slice().reverse().map(function(x){return {label:x.name,value:x.c[s.id]||0,color:s.serie?"#a855f7":"#38bdf8"};});
+  m.spalten.forEach(function(s,i){if(!m.monate.some(function(x){return x.c[s.id];}))return;var pts=m.monate.slice().reverse().map(function(x){return {label:x.name,value:x.c[s.id]||0,color:"rgb("+SPF[i%SPF.length]+")"};});
     h+='<div class="panel"><h3>'+esc(s.name)+"</h3>"+C.barChart(pts,{h:150,ganz:true,fmt:function(v){return String(Math.round(v));}})+"</div>";});
   return h;}
 
@@ -166,9 +169,9 @@ function vAuswertung(){var l=auswahlListe();if(!st.aw||!l.some(function(x){retur
   var ab=v.std.slice(17,24).reduce(function(s,x){return s+x;},0);
   h+='<div class="kz"><div><b>'+v.n+"</b><span>Einträge gesamt</span></div><div><b>"+String(Math.round(v.proMonat*10)/10).replace(".",",")+"</b><span>Ø pro Monat</span></div>"+
     "<div><b>"+(v.n?Z.WT[wmax]:"–")+"</b><span>häufigster Wochentag</span></div><div><b>"+(v.n?smax+"–"+(smax+1)+" Uhr":"–")+"</b><span>häufigste Uhrzeit</span></div></div>";
-  h+='<div class="panel"><h3>Wochentag</h3>'+C.barChart(v.wt.map(function(n,i){return {label:Z.WT[i],value:n,color:i>=4?"#a855f7":"#7c3aed"};}),{h:160,ganz:true,fmt:function(x){return String(Math.round(x));}})+
+  h+='<div class="panel"><h3>Wochentag</h3>'+C.barChart(v.wt.map(function(n,i){return {label:Z.WT[i],value:n,color:i>=4?"#f472b6":"#38bdf8"};}),{h:160,ganz:true,fmt:function(x){return String(Math.round(x));}})+
     '<div class="note">'+(v.n?Math.round(100*(v.wt[4]+v.wt[5]+v.wt[6])/v.n)+" % von Freitag bis Sonntag.":"")+"</div></div>";
-  h+='<div class="panel"><h3>Uhrzeit (Stunde des Tages)</h3>'+C.barChart(v.std.map(function(n,i){return {label:String(i),value:n,color:i>=17?"#a855f7":"#38bdf8"};}),{h:160,ganz:true,fmt:function(x){return String(Math.round(x));}})+
+  h+='<div class="panel"><h3>Uhrzeit (Stunde des Tages)</h3>'+C.barChart(v.std.map(function(n,i){return {label:String(i),value:n,color:i>=17?"#fb923c":"#38bdf8"};}),{h:160,ganz:true,fmt:function(x){return String(Math.round(x));}})+
     '<div class="note">'+(v.n?Math.round(100*ab/v.n)+" % zwischen 17 und 24 Uhr.":"")+"</div></div>";
   return h;}
 
@@ -186,7 +189,7 @@ function vVerlauf(){var th=Z.themenListe(data),f=st.vf;
 /* ---------- Einstellungen ---------- */
 function vEinst(){var th=Z.themenListe(data),sl=Z.serienListe(data);
   var h='<div class="panel"><h3>📥 Datei einlesen</h3><div class="note" style="margin-bottom:10px">Export aus der App „How Long Since“ oder eine ThingCounter-Startdatei. Schon vorhandene Einträge werden erkannt und nicht doppelt übernommen.</div>'+
-    '<label class="btn" style="display:inline-block;cursor:pointer;background:#a855f7">📂 Datei wählen<input type="file" accept=".json,application/json" style="display:none" onchange="Z2.imp(this)"></label></div>';
+    '<label class="btn" style="display:inline-block;cursor:pointer;background:#14b8a6">📂 Datei wählen<input type="file" accept=".json,application/json" style="display:none" onchange="Z2.imp(this)"></label></div>';
   h+='<div class="panel"><h3>⏱ Serien</h3><div class="note" style="margin-bottom:8px">Eine Serie läuft, solange keiner ihrer Zähler erfasst wird – mit Farbe, Rekord und Meilensteinen. Zähler ohne Serie erscheinen in der Monatsübersicht.</div>'+
     sl.map(function(s){var id=jsq(s.id);return '<div class="row"><div class="l">'+esc(s.name)+"<span>"+(s.themen||[]).map(function(t){return thema(t)?esc(thema(t).name):"";}).filter(Boolean).join(", ")+'</span></div><button class="mini" onclick="Z2.sEdit(\''+id+'\')">✏️</button></div>'+(st.sEdit===s.id?serieForm(s):"");}).join("")+
     (st.sEdit==="__neu"?serieForm({id:"__neu",name:"",themen:[]}):'<button class="mini" style="margin-top:8px" onclick="Z2.sEdit(\'__neu\')">＋ Serie anlegen</button>')+"</div>";

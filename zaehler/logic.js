@@ -61,9 +61,12 @@ function serie(x,s,now){now=now||Date.now();var ts=zeiten(x,s.themen||[]),abst=[
   /* in den letzten 90 Tagen vs. die 90 Tage davor: Anzahl Einträge */
   var a90=ts.filter(function(t){return t>now-90*DAY;}).length,v90=ts.filter(function(t){return t<=now-90*DAY&&t>now-180*DAY;}).length;r.n90=a90;r.v90=v90;
   return r;}
-/* Farbe: 0 Tage rot → bis zum bisherigen Rekord grün, darüber lila (neuer Rekord) */
-function farbe(akt,rek){if(akt==null)return "#64748b";if(rek>0&&akt>rek)return "#a855f7";var q=rek>0?Math.min(1,akt/rek):1;
-  return "hsl("+Math.round(120*q)+",72%,"+(48+Math.round(4*q))+"%)";}
+/* Farbe im Verhältnis zum bisher längsten Abstand (Rekord):
+   0 % rot → 50 % gelb → 100 % grün, über dem Rekord lila. Dazwischen fließender Übergang. */
+var ROT=[239,68,68],GELB=[250,204,21],GRUEN=[34,197,94],LILA="#a855f7";
+function mix(a,b,q){return "rgb("+a.map(function(v,i){return Math.round(v+(b[i]-v)*q);}).join(",")+")";}
+function farbe(akt,rek){if(akt==null)return "#64748b";if(!(rek>0))return mix(GRUEN,GRUEN,0);if(akt>rek)return LILA;
+  var q=Math.max(0,Math.min(1,akt/rek));return q<=0.5?mix(ROT,GELB,q/0.5):mix(GELB,GRUEN,(q-0.5)/0.5);}
 function dauerText(ms){if(ms==null)return "–";var d=Math.floor(ms/DAY),h=Math.floor((ms%DAY)/HOUR),m=Math.floor((ms%HOUR)/6e4);
   if(d>=30)return d+" Tage";if(d>=1)return d+(d===1?" Tag ":" Tage ")+h+" Std";if(h>=1)return h+" Std "+m+" Min";return m+" Min";}
 function tageText(ms){if(ms==null)return "–";var d=ms/DAY;return d>=10?String(Math.floor(d)):String(Math.floor(d*10)/10).replace(".",",");}
@@ -89,7 +92,7 @@ function summary(x,now){x=norm(x);var sl=serienListe(x);if(!sl.length){var n=akt
   var bis=rs.filter(function(r){return r.bisRekord!=null;}).map(function(r){return r.bisRekord;}).sort(function(a,b){return a-b;})[0];
   return {k:sl.length+(sl.length===1?" Serie":" Serien"),s:neu?"🏆 "+neu+" neuer Rekord läuft":bis!=null?"nächster Rekord in "+Math.max(1,Math.ceil(bis/DAY))+" Tagen":"läuft"};}
 
-return {STUFEN:STUFEN,WT:WT,MON:MON,DAY:DAY,blank:blank,norm:norm,merge:merge,aktiv:aktiv,neueId:neueId,themenListe:themenListe,serienListe:serienListe,ohneSerie:ohneSerie,
+return {STUFEN:STUFEN,WT:WT,LILA:LILA,MON:MON,DAY:DAY,blank:blank,norm:norm,merge:merge,aktiv:aktiv,neueId:neueId,themenListe:themenListe,serienListe:serienListe,ohneSerie:ohneSerie,
   importDatei:importDatei,zeiten:zeiten,serie:serie,farbe:farbe,dauerText:dauerText,tageText:tageText,spalten:spalten,monate:monate,verteilung:verteilung,summary:summary};
 })();
 if(typeof window!=="undefined")window.ZAEHLER=ZAEHLER;
