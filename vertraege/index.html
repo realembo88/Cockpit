@@ -176,23 +176,10 @@ function vForm(v,fx,t){var id=jsq(v.id),r=V.termin(v,t);
     '<div class="acts" style="margin-top:12px"><button class="mini" onclick="V2.open(null)">Fertig</button><button class="mini" style="color:#f87171" onclick="V2.del(\''+id+'\')">Löschen</button></div></div>';
   return h;
 }
-/* Dokumente zum Vertrag:
-   1. eigener Suchbegriff (Feld „Dokumente finden über“), sonst das erste markante Wort des Namens (meist die Marke).
-      Ist dieses Wort kurz und steht etwas davor („Stadt Bad …“), zählt das Wort davor mit – sonst passt jedes „Bad …“.
-   2. Vertrags-/Kundennummer in Absender, Betreff oder Dateiname (dann in jeder Kategorie).
-   Mit ✕ ausgeblendete Dokumente (docAus) bleiben draußen. */
-var STOP=" deutsche deutscher der die das und von fuer gmbh mbh ag kg se co eg ev evang stadt gemeinde bank sparkasse zweigniederlassung gesellschaft versicherung versicherungen versicherungs krankenversicherung krankenv lebensversicherung service services online ";
-var KATS=["Vertraege","Versicherungen","Energie_PV","Mobilitaet","Wohnen","Banken_Finanzen","Vertraege_Versicherungen_Geschaeft","Kind_Schule_Kita"];
+/* Dokumente zum Vertrag – Zuordnung in VERTR.docMatch (gemeinsam mit Steuer und Startseite) */
 function kompakt(s){return String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");}
-function suchBegriff(v){if(!window.DOKS)return "";if(v.suchwort)return DOKS.norm(v.suchwort);
-  var ws=DOKS.norm(v.name).split(" "),i=-1;ws.some(function(x,j){if(x.length>=3&&STOP.indexOf(" "+x+" ")<0){i=j;return true;}return false;});
-  if(i<0)return "";return (ws[i].length<=3&&i>0?ws[i-1]+" ":"")+ws[i];}
-function dokumente(v){if(!window.DOKS)return [];var w=suchBegriff(v),aus=v.docAus||{};
-  var nrs=[v.vnr,v.kdnr].map(kompakt).filter(function(n){return n.length>=5;});if(!w&&!nrs.length)return [];
-  return DOKS.index().filter(function(e){if(aus[e.id])return false;
-    if(nrs.length){var k=kompakt(e.absender+" "+e.betreff+" "+(e.datei||""));if(nrs.some(function(n){return k.indexOf(n)>-1;}))return true;}
-    if(!w||(!v.suchwort&&KATS.indexOf(e.kategorie)<0))return false;
-    return (" "+DOKS.norm(e.absender+" "+e.betreff)+" ").indexOf(" "+w+" ")>-1;}).sort(function(a,b){return String(b.datum).localeCompare(String(a.datum));}).slice(0,5);}
+function suchBegriff(v){return V.suchBegriff(v);}
+function dokumente(v){if(!window.DOKS)return [];return V.docMatch(v,DOKS.index()).sort(function(a,b){return String(b.datum).localeCompare(String(a.datum));}).slice(0,5);}
 function docBlock(v){if(!window.DOKS)return "";var id=jsq(v.id),docs=dokumente(v),nAus=Object.keys(v.docAus||{}).length,auto=suchBegriff(Object.assign({},v,{suchwort:""}));
   return '<div class="mt"><div class="lbl">Dokumente</div>'+(docs.length?docs.map(function(e){var did=jsq(e.id);return '<div class="row" style="padding:6px 0"><div class="l"><span style="font-size:12px;color:#cbd5e1">📎 '+esc(DOKS.titel(e))+'</span><div class="s">'+DOKS.de(e.datum)+" · "+esc(e.kategorie)+'</div></div><div class="r"><div class="acts" style="margin-top:0;justify-content:flex-end"><button class="mini" onclick="V2.doc(\''+did+'\')">Öffnen</button><button class="mini" title="Gehört nicht zu diesem Vertrag" onclick="V2.docAus(\''+id+'\',\''+did+'\')">✕</button></div></div></div>';}).join(""):'<div class="note">Keine passenden Dokumente gefunden.</div>')+
     '<div class="mt"><div class="lbl">Dokumente finden über</div><input class="inp" value="'+esc(v.suchwort||"")+'" placeholder="'+esc(auto?"automatisch: „"+auto+"“":"Wort aus Absender/Betreff")+'" onchange="V2.set(\''+id+'\',\'suchwort\',this.value)">'+

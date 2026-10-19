@@ -280,6 +280,104 @@ def import_luecken(fin, t):
     return sorted(out, key=lambda e: (e["ber"] != "geschaeft", e["name"]))
 
 
+# ----------------------------------------------------------------------------- Bescheinigungen (wie STEUER.erwartet + VERTR.docMatch)
+DOC_STOP = set("deutsche deutscher der die das und von fuer gmbh mbh ag kg se co eg ev evang stadt gemeinde bank sparkasse zweigniederlassung "
+               "gesellschaft versicherung versicherungen versicherungs krankenversicherung krankenv lebensversicherung service services online".split())
+ERWARTET = {"kv": "Beitragsbescheinigung", "riester": "Altersvorsorge-Bescheinigung", "basis": "Bescheinigung Basisrente", "kind": "Jahresbescheinigung Betreuungskosten"}
+RE_BES_STRIKT = re.compile(r"(bescheinigung|beitragsnachweis|jahresmeldung|nachweis (ü|ue)ber (die )?(gezahlten )?beitr)", re.I)
+
+
+def dnorm(s):
+    s = str(s or "").lower().replace("ä", "ae").replace("ö", "oe").replace("ü", "ue").replace("ß", "ss")
+    return re.sub(r"[^a-z0-9]+", " ", s).strip()
+
+
+def alnum(s):
+    return re.sub(r"[^a-z0-9]", "", str(s or "").lower())
+
+
+def such_begriff(v):
+    if v.get("suchwort"):
+        return dnorm(v["suchwort"])
+    ws = dnorm(v.get("name")).split(" ")
+    for j, x in enumerate(ws):
+        if len(x) >= 3 and x not in DOC_STOP:
+            return (ws[j - 1] + " " if len(x) <= 3 and j > 0 else "") + x
+    return ""
+
+
+def doc_match(v, idx):
+    w = such_begriff(v)
+    aus = v.get("docAus") or {}
+    nrs = [n for n in (alnum(v.get("vnr")), alnum(v.get("kdnr"))) if len(n) >= 5]
+    if not w and not nrs:
+        return []
+    out = []
+    for e in idx:
+        if not e or aus.get(e.get("id")):
+            continue
+        k = alnum(f"{e.get('absender') or ''} {e.get('betreff') or ''} {e.get('datei') or ''}")
+        if any(n in k for n in nrs) or (w and f" {w} " in " " + dnorm(f"{e.get('absender') or ''} {e.get('betreff') or ''}") + " "):
+            out.append(e)
+    return out
+
+
+def dtext(e):
+    return (str(e.get("betreff") or "") + " " + re.sub(r"^\d{8}_", "", str(e.get("datei") or ""))).replace("_", " ")
+
+
+def jahre_im_titel(e):
+    t = re.sub(r"\.pdf$", "", dtext(e), flags=re.I)
+    out = []
+    for m in re.finditer(r"(?:^|[^0-9])(20\d\d)(?=[^0-9]|$)", t):
+        if int(m.group(1)) not in out:
+            out.append(int(m.group(1)))
+    return out
+
+
+def doc_jahr(e, over):
+    if over.get(e.get("id")):
+        return int(over[e["id"]])
+    m = re.match(r"^01_Steuerberater/(\d{4})/", e.get("stb") or "")
+    if m:
+        return int(m.group(1))
+    if e.get("jahr"):
+        return int(e["jahr"])
+    return int(str(e["datum"])[:4]) if e.get("datum") else None
+
+
+def passt_zu_jahr(e, y, over):
+    if over.get(e.get("id")):
+        return True
+    js = jahre_im_titel(e)
+    return not js or y in js or any(x > y for x in js)
+
+
+def fehlende_bescheinigungen(y, vt, dok, steuer):
+    idx = [e for e in ((dok or {}).get("index") or []) if isinstance(e, dict)]
+    steuer = steuer or {}
+    over = ((steuer.get("einst") or {}).get("docJahr")) or {}
+    man = (((steuer.get("jahre") or {}).get(str(y)) or {}).get("bes")) or {}
+    kand, seen = [], set()
+    for e in idx:
+        im_ordner = e.get("st") and doc_jahr(e, over) == y and passt_zu_jahr(e, y, over)
+        genannt = not (over.get(e.get("id")) and int(over[e["id"]]) != y) and RE_BES_STRIKT.search(dtext(e)) and y in jahre_im_titel(e)
+        if (im_ordner or genannt) and e.get("id") not in seen:
+            seen.add(e.get("id"))
+            kand.append(e)
+    out = []
+    for v in aktiv((vt or {}).get("vertraege")):
+        if v.get("steuer") not in ERWARTET:
+            continue
+        if v.get("status") in ("beendet", "gekuendigt") and v.get("endeAm") and v["endeAm"] < f"{y}-01-01":
+            continue
+        if man.get(v.get("id")):
+            continue
+        if not [e for e in doc_match(v, kand) if RE_BES_STRIKT.search(dtext(e))]:
+            out.append(v)
+    return out
+
+
 # ----------------------------------------------------------------------------- Ferienwohnung
 def buchungen(fw):
     return [b for b in ((fw or {}).get("bookings") or {}).values()
@@ -292,7 +390,7 @@ def gaeste(b):
 
 # ----------------------------------------------------------------------------- Wochenvorschau
 def woche(ordner, t):
-    vt, haus, fw, dok, fin = (lade(ordner, n) for n in ("vertraege", "haus", "ferienwohnung", "dokumente", "finanzen"))
+    vt, haus, fw, dok, fin, steuer = (lade(ordner, n) for n in ("vertraege", "haus", "ferienwohnung", "dokumente", "finanzen", "steuer"))
     ende = plus_t(t, 6)
     kw = dt(t).isocalendar()[1]
     zeilen = [f"📅 Wochenvorschau KW {kw} ({de_kurz(t)} – {de_kurz(ende)})"]
@@ -318,6 +416,12 @@ def woche(ordner, t):
             zeilen.append(f"🧹 Abreise {de_kurz(b['dep'])} – Reinigung")
 
     sonst = []
+    if "02-01" <= t[5:10] <= "05-31":  # Bescheinigungen des Vorjahres
+        y = int(t[:4]) - 1
+        fehlt = fehlende_bescheinigungen(y, vt, dok, steuer)
+        if fehlt:
+            namen = ", ".join(" ".join(str(v.get("name") or "Vertrag").split()[:2]) for v in fehlt)
+            sonst.append(f"📄 Bescheinigungen {y} fehlen noch: {namen}")
     if dok:
         if dok.get("eingang"):
             n = dok["eingang"]

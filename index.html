@@ -44,6 +44,7 @@
 <script src="assets/cockpit.js"></script>
 <script src="finanzen/logic.js"></script>
 <script src="vertraege/logic.js"></script>
+<script src="steuer/logic.js"></script>
 <script>
 (function(){
 "use strict";
@@ -93,6 +94,11 @@ function heuteListe(){
     V.aktiv(vt.vertraege).forEach(function(v){var p=vt.preis[v.id];if(p&&v.fixKey&&V.preisRelevant(v))belegt[v.fixKey+"|"+p.d]=1;});}catch(x){}}
   try{V.termine(vt,{haus:C.getLocal("haus",null),t:t}).forEach(function(e){if(!e.faellig)return;
     add(e.typ==="kuendigung"?"✂️":e.typ==="auto"?"🏘️":e.typ==="preis"?"📈":"📌",e.titel,V.wann(e.tage)+" · "+V.de(e.datum)+(e.typ==="kuendigung"&&e.ende?" (zum "+V.de(e.ende)+")":""),e.tage,e.href,e.tage<0);});}catch(x){}
+  /* Bescheinigungen des Vorjahres (Februar bis Mai), je steuerlich markiertem Vertrag */
+  var bJ=window.STEUER?STEUER.besFenster(t):null;
+  if(bJ){try{var sd=C.getLocal("steuer",null)||{},dk=C.getLocal("dokumente",null);
+    var fe=STEUER.erwartet(bJ,{vt:vt,VT:V,idx:dk&&Array.isArray(dk.index)?dk.index:[],over:(sd.einst&&sd.einst.docJahr)||{}},sd).filter(function(x){return !x.ok;});
+    if(fe.length)add("📄","Bescheinigungen "+bJ+" fehlen noch",fe.map(function(x){return String(x.v.name||"Vertrag").split(/\s+/).slice(0,2).join(" ");}).join(", ")+" – einscannen und ablegen",11,"steuer/index.html#belege");}catch(x){}}
   /* Ferienwohnung: An- und Abreisen der nächsten Tage (ohne Gästenamen) */
   var fw=C.getLocal("ferienwohnung",null);
   if(fw&&fw.bookings)Object.keys(fw.bookings).forEach(function(k){var b=fw.bookings[k];if(!b||b.cancelled||b.blocked||!b.arr)return;

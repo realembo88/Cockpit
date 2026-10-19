@@ -55,8 +55,60 @@ var BELEGE_STD=[
   {id:"vz",n:"Steuerbescheide / Bescheid über Vorauszahlungen",a:"ESt",ba:["Steuerbescheide"]}
 ];
 
+/* ---------- Dokumente: Steuerjahr, Bescheinigungen, Zuordnung ----------
+   Steuerjahr = im Cockpit umgestellt (einst.docJahr), sonst Jahr des Steuerberater-Ordners, sonst Bezugsjahr/Datum. */
+function docJahr(e,over){if(over&&over[e.id])return +over[e.id];var m=/^01_Steuerberater\/(\d{4})\//.exec(e.stb||"");if(m)return +m[1];return e.jahr?+e.jahr:(e.datum?+String(e.datum).slice(0,4):null);}
+function ordnerJahr(e){var m=/^01_Steuerberater\/(\d{4})\//.exec(e.stb||"");return m?+m[1]:null;}
+function dtext(e){return (String(e.betreff||"")+" "+String(e.datei||"").replace(/^\d{8}_/,"")).replace(/_/g," ");}
+/* Nachweis im steuerlichen Sinn (Erstattungen zählen mit) bzw. eigentliche Bescheinigung (für „erwartet“) */
+var RE_BES=/(bescheinigung|beitragsnachweis|jahresmeldung|jahres(ü|ue)bersicht|zuwendungsbest|spendenquittung|nachweis (ü|ue)ber (die )?(gezahlten )?beitr|erstattung)/i;
+var RE_BES_STRIKT=/(bescheinigung|beitragsnachweis|jahresmeldung|nachweis (ü|ue)ber (die )?(gezahlten )?beitr)/i;
+function istNachweis(e){return RE_BES.test(dtext(e));}
+function istBescheinigung(e){return RE_BES_STRIKT.test(dtext(e));}
+function jahreImTitel(e){var out=[],re=/(^|[^0-9])(20\d\d)(?=[^0-9]|$)/g,m,t=dtext(e).replace(/\.pdf$/i,"");while((m=re.exec(t)))if(out.indexOf(+m[2])<0)out.push(+m[2]);return out;}
+/* nennt der Titel nur frühere Jahre, gehört die Bescheinigung vermutlich zu einem davon */
+function passtZuJahr(e,y,over){if(over&&over[e.id])return true;var js=jahreImTitel(e);return !js.length||js.indexOf(+y)>-1||js.some(function(x){return x>+y;});}
+function docsJahr(idx,y,over){return (idx||[]).filter(function(e){return e&&e.st&&docJahr(e,over)===+y;});}
+function jahrHinweise(idx,y,over){over=over||{};return docsJahr(idx,y,over).filter(function(e){return !over[e.id]&&istBescheinigung(e)&&!passtZuJahr(e,y,over);})
+  .map(function(e){var js=jahreImTitel(e).filter(function(x){return x<+y;});return {e:e,jahr:Math.max.apply(null,js)};});}
+
+/* Versicherungsbriefe auf die Belege verteilen: Nummer des Vertrags → Stichwort im Titel → Name des Vertrags → „weitere Versicherungen“ */
+var ART2BELEG={kv:"kv",riester:"riester",basis:"riester",vorsorge:"vers"};
+function versBeleg(e,ctx){var vs=vertraegeListe(ctx).filter(function(v){return ART2BELEG[v.steuer];}),VT=ctx&&ctx.VT,i;
+  if(VT)for(i=0;i<vs.length;i++)if(VT.nrTreffer(vs[i],e))return ART2BELEG[vs[i].steuer];
+  var s=dtext(e).toLowerCase();
+  if(/(riester|f(ö|oe)rderrente|altersvorsorge|§ ?92|92 estg|basisrente|r(ü|ue)rup)/.test(s))return "riester";
+  if(/(kranken|pflegev|pflege ?pflicht)/.test(s))return "kv";
+  if(/(haftpflicht|unfall|berufsunf|risikoleben|\bbu\b)/.test(s))return "vers";
+  if(VT)for(i=0;i<vs.length;i++)if(VT.docMatch(vs[i],[e],{alleKat:true}).length)return ART2BELEG[vs[i].steuer];
+  return "vers";}
+var VERS_BELEGE={kv:1,riester:1,vers:1};
 /* Dokumente aus der Ablage (Steuerberater-Ordner des Jahres) den Belegen zuordnen */
-function belegDocs(b,docs){return (docs||[]).filter(function(e){return b.geschaeft?e.bereich==="Geschaeftlich":(e.bereich!=="Geschaeftlich"&&(b.ba||[]).indexOf(e.belegart)>-1);});}
+function belegDocs(b,docs,ctx){return (docs||[]).filter(function(e){if(b.geschaeft)return e.bereich==="Geschaeftlich";if(e.bereich==="Geschaeftlich")return false;
+  if(VERS_BELEGE[b.id])return e.belegart==="Versicherungen"&&versBeleg(e,ctx||{})===b.id;
+  return (b.ba||[]).indexOf(e.belegart)>-1;});}
+/* zählt ein Dokument als Nachweis? Bei Versicherungen nur Bescheinigungen/Erstattungen, kein Schriftverkehr */
+function zaehlt(b,e,y,over){if(b.id==="lstb")return /bescheinigung/i.test(dtext(e)); /* Verdienstabrechnungen sind keine Lohnsteuerbescheinigung */
+  if(!VERS_BELEGE[b.id])return true;if(!istNachweis(e))return false;
+  return y&&istBescheinigung(e)?passtZuJahr(e,y,over):true;}
+
+/* Erwartete Bescheinigungen je steuerlich markiertem Vertrag (Kranken-/Pflege, Riester, Basisrente, Kinderbetreuung) */
+var ERWARTET={kv:"Beitragsbescheinigung",riester:"Altersvorsorge-Bescheinigung",basis:"Bescheinigung Basisrente",kind:"Jahresbescheinigung Betreuungskosten"};
+function aktivIn(v,y){if(!v||v.del)return false;var e=v.endeAm||"";return !((v.status==="beendet"||v.status==="gekuendigt")&&e&&e<y+"-01-01");}
+function erwartet(y,ctx,data){y=+y;ctx=ctx||{};var VT=ctx.VT;if(!VT)return [];var idx=ctx.idx||[],over=ctx.over||{},man=(jahr(data,y).bes)||{},seen={},kand=[];
+  docsJahr(idx,y,over).filter(function(e){return passtZuJahr(e,y,over);}).concat(idx.filter(function(e){return e&&!(over[e.id]&&over[e.id]!==y)&&istBescheinigung(e)&&jahreImTitel(e).indexOf(y)>-1;}))
+    .forEach(function(e){if(!seen[e.id]){seen[e.id]=1;kand.push(e);}});
+  return vertraegeListe(ctx).filter(function(v){return ERWARTET[v.steuer]&&aktivIn(v,y);}).map(function(v){
+    var d=VT.docMatch(v,kand,{alleKat:true}).filter(istBescheinigung);
+    return {v:v,was:ERWARTET[v.steuer],docs:d,man:!!man[v.id],ok:d.length>0||!!man[v.id]};});}
+/* Zeitraum der Erinnerung: 1. Februar bis 31. Mai des Folgejahres */
+function besFenster(today){var y=+String(today).slice(0,4),md=String(today).slice(5,10);return md>="02-01"&&md<="05-31"?y-1:null;}
+function vtDocs(p,y,ctx){var c=p.c||{},VT=ctx.VT;if(!VT||!c.art)return [];var over=ctx.over||{},kand=docsJahr(ctx.idx||[],y,over).filter(function(e){return !istBescheinigung(e)||passtZuJahr(e,y,over);}),seen={},out=[];
+  vertraegeListe(ctx).filter(function(v){return v.steuer===c.art&&(!p.pers||v.stPers===p.pers);}).forEach(function(v){
+    VT.docMatch(v,kand,{alleKat:true}).forEach(function(e){if(seen[e.id])return;
+      /* beim selben Versicherer (z. B. Haftpflicht und Riester) nur die Briefe, die zu dieser Art passen */
+      if(ART2BELEG[c.art]&&e.belegart==="Versicherungen"&&versBeleg(e,ctx)!==ART2BELEG[c.art])return;seen[e.id]=1;out.push(e);});});
+  return out.sort(function(a,b){return String(b.datum).localeCompare(String(a.datum));});}
 
 /* ---------- Hilfen ---------- */
 function r2(v){return Math.round(v*100)/100;}
@@ -212,6 +264,8 @@ function status(data,y,comp){
 }
 
 return {ANLAGEN:ANLAGEN,QUELLEN:QUELLEN,QICON:QICON,EINHEITEN:EINHEITEN,HAUSF:HAUSF,SMOOF:SMOOF,ENF:ENF,BELEGE_STD:BELEGE_STD,
-  compute:compute,vorjahr:vorjahr,vertraegeListe:vertraegeListe,vtWert:vertraege,belegDocs:belegDocs,status:status,aktiv:aktiv,anlage:anlage,finKategorien:finKategorien,num:num,r2:r2,words:words};
+  compute:compute,vorjahr:vorjahr,vertraegeListe:vertraegeListe,vtWert:vertraege,
+  docJahr:docJahr,ordnerJahr:ordnerJahr,docsJahr:docsJahr,jahrHinweise:jahrHinweise,istNachweis:istNachweis,istBescheinigung:istBescheinigung,jahreImTitel:jahreImTitel,
+  zaehlt:zaehlt,erwartet:erwartet,besFenster:besFenster,vtDocs:vtDocs,ERWARTET:ERWARTET,belegDocs:belegDocs,status:status,aktiv:aktiv,anlage:anlage,finKategorien:finKategorien,num:num,r2:r2,words:words};
 })();
 if(typeof window!=="undefined")window.STEUER=STEUER;

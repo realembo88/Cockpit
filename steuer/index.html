@@ -125,8 +125,8 @@ C.registerMerge(AREA,merge);
 
 var data=norm(C.getLocal(AREA,blank));
 var NOW=new Date().getFullYear();
-var st={tab:"uebersicht",y:NOW,anl:"alle",open:{},flash:null,nur:"alle"};
-function J(y){y=y||st.y;var j=data.jahre[y]=data.jahre[y]||{};["m","ok","note","ex","ref","belege"].forEach(function(k){if(!j[k]||typeof j[k]!=="object")j[k]={};});return j;}
+var st={tab:location.hash==="#belege"?"belege":"uebersicht",y:location.hash==="#belege"&&new Date().getMonth()<6?NOW-1:NOW,anl:"alle",open:{},flash:null,nur:"alle"};
+function J(y){y=y||st.y;var j=data.jahre[y]=data.jahre[y]||{};["m","ok","note","ex","ref","belege","bes"].forEach(function(k){if(!j[k]||typeof j[k]!=="object")j[k]={};});return j;}
 function touchY(y){J(y).upd=Date.now();}
 function persist(){data._summary=summaryFor(data);C.save(AREA,data);}
 function flash(t,warn){st.flash={t:t,warn:!!warn};render();clearTimeout(flash.tm);flash.tm=setTimeout(function(){st.flash=null;render();},warn?4500:2400);}
@@ -142,7 +142,7 @@ function ctx(){
   var h=C.getLocal("haus",null),fw=C.getLocal("ferienwohnung",null);
   return {fin:{tx:Array.isArray(f.tx)?f.tx:[],rules:R,konten:f.konten||{}},F:FIN,haus:h,HS:window.HAUS,
     bookings:fw&&fw.bookings?Object.keys(fw.bookings).map(function(k){return fw.bookings[k];}):[],apt:h&&h.einst?h.einst.apt:null,en:C.getLocal("energie",null),
-    vt:C.getLocal("vertraege",null),VT:window.VERTR,fix:(function(){var l=null;return function(){if(!l){try{l=FIN.fixkosten(f).list;}catch(e){l=[];}}return l;};})()};
+    vt:C.getLocal("vertraege",null),VT:window.VERTR,idx:(function(){var d=C.getLocal("dokumente",null);return d&&Array.isArray(d.index)?d.index:[];})(),over:(data.einst&&data.einst.docJahr)||{},fix:(function(){var l=null;return function(){if(!l){try{l=FIN.fixkosten(f).list;}catch(e){l=[];}}return l;};})()};
 }
 var CTX=null,COMP=null,VJ=null;
 function calc(){CTX=ctx();COMP=S.compute(data,st.y,CTX);VJ=S.vorjahr(data,st.y,CTX);}
@@ -170,10 +170,11 @@ function yearBar(extra){return '<div class="filt"><div class="yr"><button onclic
 function kpi(i,l,v){return '<div class="kpi"><div class="ico">'+i+'</div><div class="val">'+v+'</div><div class="lab">'+l+"</div></div>";}
 
 /* ---------- Dokumente aus der Ablage ---------- */
-function docs(){return window.DOKS?DOKS.stbDocs(st.y):[];}
-function bDocs(b,d){return S.belegDocs(b,d||docs());}
-function vorhanden(b,d){return !!J().belege[b.id]||bDocs(b,d).length>0;}
-function docLine(e){return '<div class="tx" style="padding:5px 0"><span class="m">📄 '+esc(DOKS.titel(e))+"<div>"+esc(DOKS.de(e.datum))+(e.betrag!=null?" · "+eur(+e.betrag):"")+" · "+esc(e.belegart||e.kategorie||"")+'</div></span><button class="mini" onclick="event.preventDefault();T2.docOpen(\''+esc(e.id)+'\')">Öffnen</button></div>';}
+function docs(){return S.docsJahr(CTX.idx,st.y,CTX.over);}
+function bDocs(b,d){return S.belegDocs(b,d||docs(),CTX);}
+function zaehlt(b,e){return S.zaehlt(b,e,st.y,CTX.over);}
+function vorhanden(b,d){return !!J().belege[b.id]||bDocs(b,d).some(function(e){return zaehlt(b,e);});}
+function docLine(e,still){return '<div class="tx" style="padding:5px 0'+(still?";opacity:.55":"")+'"><span class="m">📄 '+esc(DOKS.titel(e))+"<div>"+esc(DOKS.de(e.datum))+(e.betrag!=null?" · "+eur(+e.betrag):"")+" · "+esc(e.belegart||e.kategorie||"")+(still?" · "+esc(still):"")+'</div></span><button class="mini" onclick="event.preventDefault();T2.docOpen(\''+esc(e.id)+'\')">Öffnen</button></div>';}
 
 /* ---------- Übersicht ---------- */
 function belegListe(){var std=S.BELEGE_STD.filter(function(b){return !data.belegeAus[b.id];}),own=data.belege.filter(function(b){return !b.del;});return std.concat(own);}
@@ -203,11 +204,13 @@ function vtVorschlaege(){if(!window.VERTR)return "";var l=vtGruppen();
     return offen&&!S.aktiv(data).some(function(p){return p.q==="vertraege";})?'<div class="note" style="margin-bottom:12px">💡 Tipp: Bei Versicherungen im Bereich Verträge „Steuerlich“ wählen – dann rechnet das Cockpit die gezahlten Beiträge hier automatisch zusammen.</div>':"";}
   return '<div class="panel" style="border-color:#a78bfa66"><h3>📑 Aus deinen Verträgen</h3><div class="note" style="margin-bottom:8px">Diese Verträge sind steuerlich zugeordnet, haben aber noch keinen Posten. Übernehmen legt einen Posten an oder stellt einen bestehenden (z. B. bisher von Hand eingetragen) auf die automatische Summe um.</div>'+
     l.map(function(x,i){var a=VERTR.steuerArt(x.art),sum=S.vtWert({c:{art:x.art},pers:x.pers},st.y,CTX,[]).v||0;
-      var kand=S.aktiv(data).filter(function(p){return p.a===a.a&&p.q!=="vertraege"&&p.q!=="formel";});
+      var kand=S.aktiv(data).filter(function(p){return p.a===a.a&&p.q!=="vertraege"&&p.q!=="formel";}),
+        re={kv:/kranken|pflege/i,riester:/riester|altersvorsorge/i,basis:/basisrente|r(ü|ue)rup/i,kind:/kinderbetreu|kita|hort/i,n:/gewerkschaft|berufsverband/i}[x.art],
+        vor=re?kand.filter(function(p){return re.test(p.n)&&(!x.pers||!p.pers||p.pers===x.pers);})[0]:null;
       return '<div class="arow" style="cursor:default;align-items:flex-start"><div class="i">'+S.anlage(a.a).i+'</div><div class="n">'+esc(a.n)+(x.pers?' <span class="pers">'+esc(persName(x.pers))+"</span>":"")+
         "<div>"+x.vs.map(function(v){return esc(v.name||"Vertrag");}).join(", ")+" · "+st.y+": "+eur(sum)+"</div>"+
         '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><select class="sel" id="vtz'+i+'" style="width:auto;max-width:100%;padding:6px 8px;font-size:12px"><option value="">als neuen Posten</option>'+
-          kand.map(function(p){return '<option value="'+esc(p.id)+'">statt „'+esc(p.n)+'“'+(p.pers?" ("+esc(persName(p.pers))+")":"")+"</option>";}).join("")+
+          kand.map(function(p){return '<option value="'+esc(p.id)+'"'+(vor===p?" selected":"")+'>statt „'+esc(p.n)+'“'+(p.pers?" ("+esc(persName(p.pers))+")":"")+"</option>";}).join("")+
         '</select><button class="mini on" onclick="T2.vtUeber(\''+x.art+'\',\''+esc(x.pers)+'\','+i+')">Übernehmen</button></div></div></div>';}).join("")+"</div>";}
 
 /* ---------- Anlagen mit Posten ---------- */
@@ -225,7 +228,7 @@ function vAnl(){
   return h;
 }
 function card(p){
-  var c=COMP[p.id]||{},v=VJ[p.id],j=J(),ok=!!j.ok[p.id],o=st.open[p.id]||"",e=p.e||"€";
+  var c=COMP[p.id]||{},v=VJ[p.id],j=J(),ok=!!j.ok[p.id],o=st.open[p.id]||"",e=p.e||"€",vd=p.q==="vertraege"&&window.DOKS?S.vtDocs(p,st.y,CTX):[];
   var h='<div class="pst'+(ok?" ok":c.v!=null?" wert":"")+'" id="p_'+esc(p.id)+'"><div class="h"><div style="min-width:0"><b>'+esc(p.n)+"</b>"+(p.pers?'<span class="pers">'+esc(persName(p.pers))+"</span>":"")+
     '<div class="s">'+S.QICON[p.q]+" "+esc(qText(p))+(c.info?" · "+esc(C.maskText(c.info)):"")+(c.korr?' · <span style="color:#fbbf24">korrigiert, berechnet '+fmt(c.auto,e)+"</span>":"")+"</div></div>"+
     '<div class="r"><div class="val'+(c.v==null?" leer":"")+'">'+(c.v==null?"offen":fmt(c.v,e))+'</div><div class="s">'+(v?(st.y-1)+": "+fmt(v.v,e)+(v.ref?"":" (berechnet)")+" "+delta(c.v,v.v):"kein Vorjahreswert")+"</div></div></div>";
@@ -234,9 +237,11 @@ function card(p){
   if(j.note[p.id]&&o!=="note")h+='<div class="s" style="margin-top:6px;color:#e2e8f0">📝 '+esc(j.note[p.id])+"</div>";
   h+='<div class="acts"><button class="mini'+(ok?" on":"")+'" onclick="T2.ok(\''+p.id+'\')">'+(ok?"✓ geprüft":"☐ geprüft")+'</button><button class="mini" onclick="T2.open(\''+p.id+'\',\'note\')">📝 Notiz</button>'+
     (c.list?'<button class="mini" onclick="T2.open(\''+p.id+'\',\'tx\')">💶 '+c.list.length+" Buchungen "+(o==="tx"?"▴":"▾")+"</button>":"")+
+    (p.q==="vertraege"&&vd.length?'<button class="mini" onclick="T2.open(\''+p.id+'\',\'docs\')">📎 '+vd.length+" Dokument"+(vd.length>1?"e ":" ")+(o==="docs"?"▴":"▾")+"</button>":"")+
     (p.q!=="manuell"?'<button class="mini" onclick="T2.open(\''+p.id+'\',\'korr\')">✏️ Korrektur</button>':"")+
     '<button class="mini" onclick="T2.open(\''+p.id+'\',\'edit\')">⚙️ Einstellen</button></div>';
   if(o==="note")h+='<div class="box"><textarea class="inp" rows="2" placeholder="Notiz für die Steuerberatung, z. B. Erläuterung oder fehlender Beleg" onchange="T2.note(\''+p.id+'\',this.value)">'+esc(j.note[p.id]||"")+"</textarea></div>";
+  if(o==="docs"&&vd.length)h+='<div class="box"><div class="note" style="margin-bottom:6px">Schreiben der zugeordneten Verträge im Steuerberater-Ordner '+st.y+'. Als Nachweis zählen Bescheinigungen und Erstattungen.</div>'+vd.map(function(x){return docLine(x,S.istNachweis(x)?"":"Schriftverkehr");}).join("")+"</div>";
   if(o==="korr")h+='<div class="box"><div class="lbl">Wert '+st.y+' von Hand festlegen (überschreibt die Berechnung, z. B. laut Beleg)</div><input class="inp" inputmode="decimal" placeholder="leer = berechneter Wert" value="'+(j.m[p.id]!=null&&j.m[p.id]!==""?esc(String(j.m[p.id]).replace(".",",")):"")+'" onchange="T2.wert(\''+p.id+'\',this.value)"></div>';
   if(o==="tx"&&c.list)h+='<div class="box">'+(c.list.length?'<div class="note" style="margin-bottom:6px">Haken entfernen, um eine Buchung für diesen Posten auszuschließen.</div><div class="txl">'+c.list.map(function(t){
       return '<label class="tx'+(t.aus?" aus":"")+'"><input type="checkbox" '+(t.aus?"":"checked ")+'onchange="T2.ex(\''+p.id+'\',\''+(t.def?"+":"")+esc(t.id)+'\','+(t.def?"this.checked":"!this.checked")+')"><span class="m">'+esc(HAUS.de(t.d))+" · "+esc(t.p||"–")+"<div>"+esc(t.z||"")+" · "+esc(t.cat)+(t.def?" · Verpflegung – vorab abgewählt":"")+'</div></span><span class="b">'+eur(t.b)+"</span></label>";}).join("")+"</div>":'<div class="note">Keine passenden Buchungen in '+st.y+". Kategorien oder Suchwörter unter „Einstellen“ prüfen.</div>")+"</div>";
@@ -285,22 +290,40 @@ function editor(p){
 /* ---------- Belege ---------- */
 function vBelege(){
   var j=J(),bl=belegListe(),dd=docs(),used={},h=yearBar();
+  h+=vErwartet()+vJahrHinweise();
   h+='<div class="note" style="margin-bottom:10px">Was für '+st.y+' gebraucht wird. Die Belege selbst bleiben bei dir – hier wird nur abgehakt, was beisammen ist. Dokumente, die über den Bereich Dokumente in den Steuerberater-Ordner '+st.y+' abgelegt wurden, werden automatisch zugeordnet.</div>';
   var last=null,inner="";
   bl.sort(function(a,b){return S.ANLAGEN.map(function(x){return x.k;}).indexOf(a.a)-S.ANLAGEN.map(function(x){return x.k;}).indexOf(b.a);}).forEach(function(b){
     if(b.a!==last){if(inner)h+='<div class="panel">'+inner+"</div>";inner='<h3>'+S.anlage(b.a).i+" "+esc(S.anlage(b.a).n)+"</h3>";last=b.a;}
-    var own=!S.BELEGE_STD.some(function(x){return x.id===b.id;}),bd=bDocs(b,dd);bd.forEach(function(e){used[e.id]=1;});
-    inner+='<label class="chk"><input type="checkbox" '+(j.belege[b.id]||bd.length?"checked ":"")+(bd.length?"disabled ":"")+'onchange="T2.beleg(\''+esc(b.id)+'\',this.checked)"><span class="t">'+esc(b.n)+
-      (bd.length?'<div style="color:#7dd3fc">📎 '+bd.length+" Dokument"+(bd.length>1?"e":"")+" im Steuerberater-Ordner "+st.y+"</div>":"")+"</span>"+
+    var own=!S.BELEGE_STD.some(function(x){return x.id===b.id;}),bd=bDocs(b,dd),ok=bd.filter(function(e){return zaehlt(b,e);}),rest=bd.length-ok.length;bd.forEach(function(e){used[e.id]=1;});
+    inner+='<label class="chk"><input type="checkbox" '+(j.belege[b.id]||ok.length?"checked ":"")+(ok.length?"disabled ":"")+'onchange="T2.beleg(\''+esc(b.id)+'\',this.checked)"><span class="t">'+esc(b.n)+
+      (ok.length?'<div style="color:#7dd3fc">📎 '+ok.length+(ok.length>1?" Nachweise":" Nachweis")+" im Steuerberater-Ordner "+st.y+"</div>":"")+
+      (rest?'<div class="small muted">'+rest+" weitere Schreiben (z. B. Abrechnung, Nachtrag, Angebot) – zählen nicht als Nachweis</div>":"")+"</span>"+
       '<button class="x" onclick="event.preventDefault();T2.belegWeg(\''+esc(b.id)+'\','+own+')" aria-label="Beleg entfernen">✕</button></label>'+
-      (bd.length?'<div style="margin:-4px 0 6px 28px">'+bd.map(docLine).join("")+"</div>":"");});
+      (bd.length?'<div style="margin:-4px 0 6px 28px">'+ok.map(function(e){return docLine(e);}).join("")+bd.filter(function(e){return !zaehlt(b,e);}).map(function(e){return docLine(e,S.istBescheinigung(e)?"nennt ein anderes Jahr":"Schriftverkehr");}).join("")+"</div>":"");});
   if(inner)h+='<div class="panel">'+inner+"</div>";
   var rest=dd.filter(function(e){return !used[e.id];});
-  if(rest.length)h+='<div class="panel"><h3>📎 Weitere Dokumente im Steuerberater-Ordner '+st.y+'</h3><div class="note" style="margin-bottom:6px">Keinem Beleg oben zugeordnet – sie kommen trotzdem in die Mappe.</div>'+rest.map(docLine).join("")+"</div>";
+  var umg=Object.keys(CTX.over).map(function(id){return CTX.idx.filter(function(e){return e.id===id;})[0];}).filter(function(e){return e&&S.ordnerJahr(e)&&S.ordnerJahr(e)!==+CTX.over[e.id]&&(S.ordnerJahr(e)===st.y||+CTX.over[e.id]===st.y);});
+  if(umg.length)h+='<div class="note" style="margin-bottom:12px">Im Cockpit umgestellt: '+umg.map(function(e){return esc(DOKS.titel(e))+" → "+CTX.over[e.id]+" (Ordner "+S.ordnerJahr(e)+') <a href="#" style="color:#c4b5fd" onclick="T2.docJahr(\''+esc(e.id)+'\',null);return false">zurück</a>';}).join(" · ")+". Die Datei selbst bleibt in ihrem Ordner.</div>";
+  if(rest.length)h+='<div class="panel"><h3>📎 Weitere Dokumente im Steuerberater-Ordner '+st.y+'</h3><div class="note" style="margin-bottom:6px">Keinem Beleg oben zugeordnet – sie kommen trotzdem in die Mappe.</div>'+rest.map(function(e){return docLine(e);}).join("")+"</div>";
   h+='<div class="panel"><h3>Weiteren Beleg aufnehmen</h3><div class="g2"><input class="inp" id="nbN" placeholder="Bezeichnung"><select class="sel" id="nbA">'+S.ANLAGEN.map(function(a){return '<option value="'+a.k+'">'+esc(a.n)+"</option>";}).join("")+'</select></div><button class="mini" style="margin-top:8px" onclick="T2.belegNeu()">＋ Aufnehmen</button>'+
     (Object.keys(data.belegeAus).length?'<div class="note" style="margin-top:8px">'+Object.keys(data.belegeAus).length+' Standard-Belege ausgeblendet · <a href="#" style="color:#c4b5fd" onclick="T2.belegeAlle();return false">wieder einblenden</a></div>':"")+"</div>";
   return h;
 }
+
+/* Erwartete Bescheinigungen je steuerlich markiertem Vertrag */
+function vErwartet(){var l=S.erwartet(st.y,CTX,data);if(!l.length)return "";var fehlt=l.filter(function(x){return !x.ok;}).length,j=J();
+  var h='<div class="panel" style="border-color:'+(fehlt?"#f59e0b66":"#22c55e55")+'"><h3>📄 Bescheinigungen '+st.y+(fehlt?' <span class="small" style="color:#fbbf24">· '+fehlt+" fehlen</span>":' <span class="small" style="color:#4ade80">· vollständig</span>')+'</h3><div class="note" style="margin-bottom:6px">Aus den Verträgen mit steuerlicher Zuordnung. Kommen meist im Januar/Februar '+(st.y+1)+" – einscannen und über Dokumente in den Steuerberater-Ordner ablegen, dann werden sie hier erkannt.</div>";
+  l.forEach(function(x){var id=esc(x.v.id);
+    h+='<div class="tx" style="padding:7px 0;align-items:flex-start"><span class="m">'+(x.ok?"✅ ":"⏳ ")+esc(x.v.name||"Vertrag")+"<div>"+esc(x.was)+(x.man?" · von Hand bestätigt":"")+"</div>"+
+      x.docs.map(function(e){return '<div style="margin-top:4px"><a href="#" style="color:#7dd3fc" onclick="T2.docOpen(\''+esc(e.id)+'\');return false">📎 '+esc(DOKS.titel(e))+"</a></div>";}).join("")+"</span>"+
+      (x.docs.length?"":x.man?'<button class="mini" onclick="T2.bes(\''+id+'\',false)">zurücknehmen</button>':'<button class="mini" onclick="T2.bes(\''+id+'\',true)">liegt vor</button>')+"</div>";});
+  return h+'<div class="note" style="margin-top:6px">„liegt vor“ z. B. wenn die Bescheinigung nur per E-Mail oder im Kundenportal kam.</div></div>';}
+/* Bescheinigungen, deren Titel ein früheres Jahr nennt als ihr Ordner */
+function vJahrHinweise(){var l=S.jahrHinweise(CTX.idx,st.y,CTX.over);if(!l.length)return "";
+  return '<div class="panel" style="border-color:#f59e0b66"><h3>⚠ Steuerjahr prüfen</h3><div class="note" style="margin-bottom:6px">Diese Bescheinigungen liegen im Ordner '+st.y+', nennen im Titel aber ein früheres Jahr.</div>'+
+    l.map(function(x){var id=esc(x.e.id);return '<div class="tx" style="padding:7px 0;align-items:flex-start"><span class="m">📄 '+esc(DOKS.titel(x.e))+"<div>nennt "+x.jahr+'</div></span><span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="mini on" onclick="T2.docJahr(\''+id+'\','+x.jahr+')">→ '+x.jahr+'</button><button class="mini" onclick="T2.docJahr(\''+id+'\','+st.y+')">passt so</button></span></div>';}).join("")+
+    '<div class="note" style="margin-top:6px">Umstellen ändert nur die Zuordnung im Cockpit (Belege, Mappe) – die Datei bleibt in ihrem Ordner.</div></div>';}
 
 /* ---------- Fragen an die Steuerberatung ---------- */
 function vFragen(){
@@ -341,8 +364,10 @@ function docHtml(withTx){
   h+="<h2>2. Fragen und Auffälligkeiten</h2>"+(of.length?"<table><tr><th>Bereich</th><th>Frage</th><th>Stand</th></tr>"+of.map(function(x){return "<tr><td>"+esc(S.anlage(x.a).n)+(x.y?"<br>"+x.y:"")+'</td><td style="white-space:pre-wrap">'+esc(x.t)+"</td><td>"+(x.done?"geklärt"+(x.antwort?": "+esc(x.antwort):""):"offen"+(x.antwort?"<br>"+esc(x.antwort):""))+"</td></tr>";}).join("")+"</table>":"<p>Keine.</p>");
   var bl=belegListe();
   var dd=docs(),used={};
-  h+="<h2>3. Belege</h2><table><tr><th>Beleg</th><th>Bereich</th><th>Stand</th></tr>"+bl.map(function(b){var bd=bDocs(b,dd);bd.forEach(function(e){used[e.id]=1;});
-    return "<tr><td>"+esc(b.n)+(bd.length?'<div class="info">'+bd.map(function(e){return esc(e.datei);}).join("<br>")+"</div>":"")+"</td><td>"+esc(S.anlage(b.a).n)+"</td><td>"+(bd.length?"liegt vor ("+bd.length+" im Ordner)":j.belege[b.id]?"liegt vor":"<b>fehlt noch</b>")+"</td></tr>";}).join("")+"</table>";
+  h+="<h2>3. Belege</h2><table><tr><th>Beleg</th><th>Bereich</th><th>Stand</th></tr>"+bl.map(function(b){var bd=bDocs(b,dd),ok=bd.filter(function(e){return zaehlt(b,e);});bd.forEach(function(e){used[e.id]=1;});
+    return "<tr><td>"+esc(b.n)+(bd.length?'<div class="info">'+ok.map(function(e){return esc(e.datei);}).join("<br>")+(bd.length>ok.length?(ok.length?"<br>":"")+"dazu "+(bd.length-ok.length)+" Schreiben ohne Nachweis-Charakter":"")+"</div>":"")+"</td><td>"+esc(S.anlage(b.a).n)+"</td><td>"+(ok.length?"liegt vor ("+ok.length+" im Ordner)":j.belege[b.id]?"liegt vor":"<b>fehlt noch</b>")+"</td></tr>";}).join("")+"</table>";
+  var ew=S.erwartet(y,CTX,data).filter(function(x){return !x.ok;});
+  if(ew.length)h+='<p class="info"><b>Noch erwartete Bescheinigungen:</b> '+ew.map(function(x){return esc(x.v.name||"Vertrag")+" ("+esc(x.was)+")";}).join(", ")+"</p>";
   var rest=dd.filter(function(e){return !used[e.id];});
   if(rest.length)h+='<h3>Weitere Dokumente im Steuerberater-Ordner '+y+'</h3><table><tr><th>Datei</th><th>Belegart</th><th class="r">Betrag</th></tr>'+rest.map(function(e){return "<tr><td>"+esc(e.datei)+"</td><td>"+esc(e.belegart||"")+'</td><td class="r">'+(e.betrag!=null?C.eurRaw(+e.betrag):"")+"</td></tr>";}).join("")+"</table>";
   if(withTx){var fl=all.filter(function(p){var c=COMP[p.id];return c&&c.list&&c.list.some(function(t){return !t.aus;});});
@@ -397,6 +422,9 @@ window.T2={
   delPost:function(id){if(!confirm("Diesen Posten löschen?"))return;var p=post(id);p.del=true;upd(p);},
   beleg:function(id,on){var j=J();if(on)j.belege[id]=true;else delete j.belege[id];touchY();persist();render();},
   belegWeg:function(id,own){if(own){data.belege.forEach(function(b){if(b.id===id){b.del=true;b.upd=Date.now();}});}else{data.belegeAus[id]=true;data.einst.upd=Date.now();}persist();render();},
+  docJahr:function(id,y){data.einst.docJahr=data.einst.docJahr||{};if(y==null)delete data.einst.docJahr[id];else data.einst.docJahr[id]=+y;data.einst.upd=Date.now();persist();
+    flash(y==null?"✓ Zuordnung zurückgesetzt":"✓ Im Cockpit dem Jahr "+y+" zugeordnet");},
+  bes:function(vid,on){var j=J();if(on)j.bes[vid]=true;else delete j.bes[vid];touchY();persist();render();},
   docOpen:function(id){var e=DOKS.index().filter(function(x){return x.id===id;})[0];if(!e)return;DOKS.oeffnen(e).catch(function(err){flash("⚠ "+(err.message||err),true);});},
   belegeAlle:function(){data.belegeAus={};data.einst.upd=Date.now();persist();render();},
   belegNeu:function(){var n=document.getElementById("nbN").value.trim(),a=document.getElementById("nbA").value;if(!n)return;data.belege.push({id:"b"+Date.now().toString(36),n:n,a:a,upd:Date.now()});persist();render();},

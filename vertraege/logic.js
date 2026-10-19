@@ -143,6 +143,26 @@ function vorlageFuer(g){return g==="Steuern & Abgaben"?"nk":g==="Versicherung"?"
 function vorschlaege(x,fix){x=norm(x);var link={};aktiv(x.vertraege).forEach(function(v){if(v.fixKey)link[v.fixKey]=1;});
   return (fix||[]).filter(function(f){return f.status==="ok"&&f.active&&!link[f.key]&&!(x.ignFix[f.key]&&!x.ignFix[f.key].del);});}
 
+/* ---------- Dokumente zu einem Vertrag ----------
+   1. eigener Suchbegriff (Feld „Dokumente finden über“), sonst das erste markante Wort des Namens (meist die Marke).
+      Ist dieses Wort kurz und steht etwas davor („Stadt Bad …“), zählt das Wort davor mit – sonst passt jedes „Bad …“.
+   2. Vertrags-/Kundennummer in Absender, Betreff oder Dateiname (dann in jeder Kategorie).
+   Mit ✕ ausgeblendete Dokumente (docAus) bleiben draußen. opt.alleKat: Wort-Treffer auch außerhalb der Vertrags-Kategorien. */
+var DOC_STOP=" deutsche deutscher der die das und von fuer gmbh mbh ag kg se co eg ev evang stadt gemeinde bank sparkasse zweigniederlassung gesellschaft versicherung versicherungen versicherungs krankenversicherung krankenv lebensversicherung service services online ";
+var DOC_KATS=["Vertraege","Versicherungen","Energie_PV","Mobilitaet","Wohnen","Banken_Finanzen","Vertraege_Versicherungen_Geschaeft","Kind_Schule_Kita"];
+function dnorm(s){return String(s||"").toLowerCase().replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue").replace(/ß/g,"ss").replace(/[^a-z0-9]+/g," ").trim();}
+function alnum(s){return String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");}
+function suchBegriff(v){if(!v)return "";if(v.suchwort)return dnorm(v.suchwort);
+  var ws=dnorm(v.name).split(" "),i=-1;ws.some(function(x,j){if(x.length>=3&&DOC_STOP.indexOf(" "+x+" ")<0){i=j;return true;}return false;});
+  if(i<0)return "";return (ws[i].length<=3&&i>0?ws[i-1]+" ":"")+ws[i];}
+function nrTreffer(v,e){var nrs=[v.vnr,v.kdnr].map(alnum).filter(function(n){return n.length>=5;});if(!nrs.length)return false;
+  var k=alnum((e.absender||"")+" "+(e.betreff||"")+" "+(e.datei||""));return nrs.some(function(n){return k.indexOf(n)>-1;});}
+function docMatch(v,idx,opt){opt=opt||{};if(!v)return [];var w=suchBegriff(v),aus=v.docAus||{},hatNr=[v.vnr,v.kdnr].some(function(n){return alnum(n).length>=5;});
+  if(!w&&!hatNr)return [];
+  return (idx||[]).filter(function(e){if(!e||aus[e.id])return false;if(nrTreffer(v,e))return true;
+    if(!w||(!v.suchwort&&!opt.alleKat&&DOC_KATS.indexOf(e.kategorie)<0))return false;
+    return (" "+dnorm((e.absender||"")+" "+(e.betreff||""))+" ").indexOf(" "+w+" ")>-1;});}
+
 /* ---------- Steuerliche Zuordnung ----------
    Verträge mit Art landen im Bereich Steuer (Quelle „Verträge“): gezahlte Beiträge minus Erstattungen laut Konto. */
 var STEUER_ARTEN=[
@@ -199,6 +219,7 @@ return {GRUPPEN:GRUPPEN,VORLAGEN:VORLAGEN,RHYTHMUS:RHYTHMUS,FRIST_VORLAGEN:FRIST
   blank:blank,norm:norm,merge:merge,aktiv:aktiv,neueId:neueId,termin:termin,fristText:fristText,rhText:rhText,monatlich:monatlich,naechste:naechste,autoFristen:autoFristen,
   termine:termine,ohneDatum:ohneDatum,summary:summary,gruppeAus:gruppeAus,vorlageFuer:vorlageFuer,vorschlaege:vorschlaege,nummernAus:nummernAus,
   preisSync:preisSync,preisRelevant:preisRelevant,PREIS_TAGE:PREIS_TAGE,
+  suchBegriff:suchBegriff,docMatch:docMatch,nrTreffer:nrTreffer,dnorm:dnorm,
   STEUER_ARTEN:STEUER_ARTEN,steuerArt:steuerArt,steuerVorschlag:steuerVorschlag,zahlungen:zahlungen,jahresSumme:jahresSumme};
 })();
 if(typeof window!=="undefined")window.VERTR=VERTR;
