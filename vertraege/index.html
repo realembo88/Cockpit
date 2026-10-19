@@ -36,6 +36,11 @@
 .chips{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 10px;}
 .chips button{border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:14px;padding:4px 10px;font-size:11px;cursor:pointer;}
 details summary{cursor:pointer;}
+.nrs{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px;}
+.nr{background:#1e293b;border:1px solid transparent;color:#cbd5e1;border-radius:8px;padding:2px 8px;font-size:11px;cursor:pointer;font-variant-numeric:tabular-nums;font-family:inherit;}
+.nr:hover{border-color:#f59e0b88;} .nr .cp{color:#64748b;margin-left:2px;}
+.sug{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;color:#94a3b8;padding:5px 0;border-top:1px solid #152038;}
+.sug:first-of-type{border-top:none;} .sug b{color:#fff;font-variant-numeric:tabular-nums;} .sug .rt{margin-left:auto;display:flex;gap:6px;}
 .btn:disabled{opacity:.45;}
 </style>
 </head>
@@ -96,6 +101,7 @@ function vTermine(){
 function terminRow(e){
   var ic=e.typ==="kuendigung"?"✂️":e.typ==="auto"?"🏘️":"📌",id=jsq(e.id);
   var h='<div class="row"><div class="l"><b>'+ic+" "+esc(e.titel)+"</b>"+whenChip(e.tage,e.faellig)+'<div class="s">'+V.deKurz(e.datum)+" "+e.datum.slice(0,4)+(e.info?" · "+esc(e.info):"")+"</div>";
+  if(e.typ==="kuendigung"&&data.vertraege[e.id])h+=nrZeile(data.vertraege[e.id]);
   if(e.typ==="kuendigung")h+='<div class="acts">'+(e.erledigt?'<span class="chip">behalten – Erinnerung erst wieder im nächsten Zeitraum</span>':'<button class="mini ok" onclick="V2.gekuendigt(\''+id+'\')">✓ gekündigt</button><button class="mini" onclick="V2.behalten(\''+id+'\')">behalten</button>')+'<button class="mini" onclick="V2.oeffne(\''+id+'\')">Vertrag</button></div>';
   else if(e.typ==="auto")h+='<div class="acts"><button class="mini ok" onclick="V2.autoOk(\''+id+'\')">✓ erledigt</button><a class="mini" style="text-decoration:none" href="../'+e.href+'">Haus öffnen</a></div>';
   else{h+='<div class="acts"><button class="mini ok" onclick="V2.fristOk(\''+id+'\')">✓ erledigt</button><button class="mini" onclick="V2.fristEdit(\''+id+'\')">✏️ ändern</button></div>';
@@ -136,6 +142,7 @@ function vVertraege(){
 }
 function terminText(v,t){var r=V.termin(v,t);
   if(r.art==="unbekannt")return '<span style="color:#fbbf24">⚠ Laufzeit eintragen</span>';
+  if(r.art==="nicht")return "nicht kündbar";
   if(r.art==="jederzeit")return "jederzeit kündbar · Frist "+esc(V.fristText(v));
   if(r.art==="gekuendigt")return "gekündigt"+(r.ende?" zum "+V.de(r.ende):"");
   if(r.art==="beendet")return "beendet"+(r.ende?" am "+V.de(r.ende):"");
@@ -144,32 +151,61 @@ function preisInfo(v,fx){var x=v.fixKey&&fx[v.fixKey];if(!x||!x.change)return ""
   var up=x.change.to>x.change.from;return '<div class="s '+(up?"up":"dn")+'">'+(up?"↑ teurer":"↓ günstiger")+" seit "+V.de(x.change.d)+": "+C.eur(x.change.from)+" → "+C.eur(x.change.to)+"</div>";}
 function vRow(v,fx,t){var op=st.open===v.id,id=jsq(v.id);
   var h='<div class="row" id="v-'+esc(v.id)+'"><div class="l"><b style="cursor:pointer" onclick="V2.open(\''+id+'\')">'+esc(v.name||"Vertrag")+'</b><div class="s">'+(v.betrag?C.eur(v.betrag)+" "+esc(V.rhText(v.rh))+" · ":"")+terminText(v,t)+"</div>"+preisInfo(v,fx)+
-    '</div><div class="r"><button class="mini" onclick="V2.open(\''+id+'\')">'+(op?"Schließen":"✏️")+"</button></div></div>";
+    nrZeile(v)+'</div><div class="r"><button class="mini" onclick="V2.open(\''+id+'\')">'+(op?"Schließen":"✏️")+"</button></div></div>";
   return h+(op?vForm(v,fx,t):"");}
 function vForm(v,fx,t){var id=jsq(v.id),r=V.termin(v,t);
   var inp=function(k,val,ph){return '<input class="inp" value="'+esc(val==null?"":val)+'" placeholder="'+(ph||"")+'" onchange="V2.set(\''+id+'\',\''+k+'\',this.value)">';},
       sel=function(k,list,cur){return '<select class="sel" onchange="V2.set(\''+id+'\',\''+k+'\',this.value)">'+list.map(function(o){return '<option value="'+esc(o[0])+'"'+(String(o[0])===String(cur)?" selected":"")+">"+esc(o[1])+"</option>";}).join("")+"</select>";};
   var vl=V.VORLAGEN.filter(function(x){return x.id===v.vorlage;})[0];
   var h='<div class="box"><div class="g2"><div><div class="lbl">Name</div>'+inp("name",v.name)+'</div><div><div class="lbl">Bereich</div>'+sel("gruppe",V.GRUPPEN.map(function(g){return [g,g];}),v.gruppe||"Sonstiges")+"</div></div>"+
+    '<div class="g2 mt"><div><div class="lbl">Vertrags- bzw. Versicherungsnr.</div>'+inp("vnr",v.vnr,"optional")+'</div><div><div class="lbl">Kundennummer</div>'+inp("kdnr",v.kdnr,"optional")+"</div></div>"+nrVorschlag(v,fx)+
     '<div class="g2 mt"><div><div class="lbl">Betrag (€)</div>'+inp("betrag",v.betrag!=null?String(v.betrag).replace(".",","):"","z. B. 12,99")+'</div><div><div class="lbl">Rhythmus</div>'+sel("rh",V.RHYTHMUS,v.rh||1)+"</div></div>"+
     '<div class="mt"><div class="lbl">Kündigungsregel</div>'+sel("vorlage",[["","bitte wählen …"]].concat(V.VORLAGEN.map(function(x){return [x.id,x.name];})),v.vorlage||"")+(vl&&vl.hint?'<div class="note" style="margin-top:4px">'+esc(vl.hint)+"</div>":"")+"</div>"+
-    '<div class="g2 mt"><div><div class="lbl">Läuft bis (Ablauf / Mindestlaufzeit)</div>'+inp("bis",v.bis?V.de(v.bis):"","TT.MM.JJJJ")+'</div><div><div class="lbl">Verlängert sich um</div>'+sel("verl",[[0,"– danach jederzeit kündbar"],[1,"1 Monat"],[3,"3 Monate"],[6,"6 Monate"],[12,"1 Jahr"],[24,"2 Jahre"]],v.verl||0)+"</div></div>"+
-      '<div class="g2 mt"><div><div class="lbl">Kündigungsfrist</div><input class="inp" value="'+esc(v.frist!=null?v.frist:"")+'" placeholder="z. B. 3" onchange="V2.set(\''+id+'\',\'frist\',this.value)"></div><div><div class="lbl">&nbsp;</div>'+sel("einh",[["M","Monate"],["W","Wochen"],["T","Tage"]],v.einh||"M")+"</div></div>";
+    (v.vorlage==="nk"?"":'<div class="g2 mt"><div><div class="lbl">Läuft bis (Ablauf / Mindestlaufzeit)</div>'+inp("bis",v.bis?V.de(v.bis):"","TT.MM.JJJJ")+'</div><div><div class="lbl">Verlängert sich um</div>'+sel("verl",[[0,"– danach jederzeit kündbar"],[1,"1 Monat"],[3,"3 Monate"],[6,"6 Monate"],[12,"1 Jahr"],[24,"2 Jahre"]],v.verl||0)+"</div></div>"+
+      '<div class="g2 mt"><div><div class="lbl">Kündigungsfrist</div><input class="inp" value="'+esc(v.frist!=null?v.frist:"")+'" placeholder="z. B. 3" onchange="V2.set(\''+id+'\',\'frist\',this.value)"></div><div><div class="lbl">&nbsp;</div>'+sel("einh",[["M","Monate"],["W","Wochen"],["T","Tage"]],v.einh||"M")+"</div></div>");
   if(r.art==="fest")h+='<div class="prev">Spätestens kündigen am <b>'+V.de(r.bis)+"</b> – zum "+V.de(r.ende)+(+v.verl?", sonst läuft er bis "+V.de(V.plusM(r.ende,+v.verl)):", danach jederzeit kündbar")+".</div>";
   else if(r.art==="jederzeit")h+='<div class="prev">Jederzeit kündbar – heute gekündigt endet er am '+V.de(r.ende)+".</div>";
-  h+='<div class="g2 mt"><div><label class="note" style="display:flex;gap:8px;align-items:center;font-size:13px;color:#e2e8f0"><input type="checkbox" '+(v.erinnern!==false?"checked ":"")+'onchange="V2.set(\''+id+'\',\'erinnern\',this.checked)"> rechtzeitig erinnern</label></div><div><div class="lbl">… Tage vor der Frist</div>'+inp("vorlauf",v.vorlauf!=null?v.vorlauf:30)+"</div></div>"+
-    '<div class="g2 mt"><div><div class="lbl">Status</div>'+sel("status",[["aktiv","läuft"],["gekuendigt","gekündigt"],["beendet","beendet"]],v.status||"aktiv")+"</div>"+(v.status==="gekuendigt"||v.status==="beendet"?'<div><div class="lbl">'+(v.status==="gekuendigt"?"endet am":"beendet am")+"</div>"+inp("endeAm",v.endeAm?V.de(v.endeAm):"","TT.MM.JJJJ")+"</div>":"<div></div>")+"</div>";
+  if(v.vorlage!=="nk")h+='<div class="g2 mt"><div><label class="note" style="display:flex;gap:8px;align-items:center;font-size:13px;color:#e2e8f0"><input type="checkbox" '+(v.erinnern!==false?"checked ":"")+'onchange="V2.set(\''+id+'\',\'erinnern\',this.checked)"> rechtzeitig erinnern</label></div><div><div class="lbl">… Tage vor der Frist</div>'+inp("vorlauf",v.vorlauf!=null?v.vorlauf:30)+"</div></div>";
+  h+='<div class="g2 mt"><div><div class="lbl">Status</div>'+sel("status",[["aktiv","läuft"],["gekuendigt","gekündigt"],["beendet","beendet"]],v.status||"aktiv")+"</div>"+(v.status==="gekuendigt"||v.status==="beendet"?'<div><div class="lbl">'+(v.status==="gekuendigt"?"endet am":"beendet am")+"</div>"+inp("endeAm",v.endeAm?V.de(v.endeAm):"","TT.MM.JJJJ")+"</div>":"<div></div>")+"</div>";
   var x=v.fixKey&&fx[v.fixKey];if(x)h+='<div class="note mt">Verknüpft mit Fixkosten „'+esc(x.name)+"“ · zuletzt "+C.eur(x.amount)+(x.last?" am "+V.de(x.last):"")+"</div>";
-  var docs=dokumente(v);if(docs.length)h+='<div class="mt"><div class="lbl">Dokumente</div>'+docs.map(function(e){return '<div class="row" style="padding:6px 0"><div class="l"><span style="font-size:12px;color:#cbd5e1">📎 '+esc(DOKS.titel(e))+'</span><div class="s">'+DOKS.de(e.datum)+" · "+esc(e.kategorie)+'</div></div><div class="r"><button class="mini" onclick="V2.doc(\''+jsq(e.id)+'\')">Öffnen</button></div></div>';}).join("")+"</div>";
-  h+='<div class="mt"><div class="lbl">Notiz (z. B. Kundennummer, Ansprechpartner)</div><textarea class="inp" rows="2" onchange="V2.set(\''+id+'\',\'notiz\',this.value)">'+esc(v.notiz||"")+"</textarea></div>"+
+  h+=docBlock(v);
+  h+='<div class="mt"><div class="lbl">Notiz (z. B. Ansprechpartner, Telefon)</div><textarea class="inp" rows="2" onchange="V2.set(\''+id+'\',\'notiz\',this.value)">'+esc(v.notiz||"")+"</textarea></div>"+
     '<div class="acts" style="margin-top:12px"><button class="mini" onclick="V2.open(null)">Fertig</button><button class="mini" style="color:#f87171" onclick="V2.del(\''+id+'\')">Löschen</button></div></div>';
   return h;
 }
-/* Dokumente zum Vertrag: erstes markantes Wort des Namens (meist die Marke) als ganzes Wort im Absender */
+/* Dokumente zum Vertrag:
+   1. eigener Suchbegriff (Feld „Dokumente finden über“), sonst das erste markante Wort des Namens (meist die Marke).
+      Ist dieses Wort kurz und steht etwas davor („Stadt Bad …“), zählt das Wort davor mit – sonst passt jedes „Bad …“.
+   2. Vertrags-/Kundennummer in Absender, Betreff oder Dateiname (dann in jeder Kategorie).
+   Mit ✕ ausgeblendete Dokumente (docAus) bleiben draußen. */
 var STOP=" deutsche deutscher der die das und von fuer gmbh mbh ag kg se co eg ev evang stadt gemeinde bank sparkasse zweigniederlassung gesellschaft versicherung versicherungen versicherungs krankenversicherung krankenv lebensversicherung service services online ";
-function dokumente(v){if(!window.DOKS)return [];var w=DOKS.norm(v.suchwort||v.name).split(" ").filter(function(x){return x.length>=3&&STOP.indexOf(" "+x+" ")<0;})[0];if(!w)return [];
-  return DOKS.index().filter(function(e){if(["Vertraege","Versicherungen","Energie_PV","Mobilitaet","Wohnen","Banken_Finanzen","Vertraege_Versicherungen_Geschaeft","Kind_Schule_Kita"].indexOf(e.kategorie)<0)return false;
+var KATS=["Vertraege","Versicherungen","Energie_PV","Mobilitaet","Wohnen","Banken_Finanzen","Vertraege_Versicherungen_Geschaeft","Kind_Schule_Kita"];
+function kompakt(s){return String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");}
+function suchBegriff(v){if(!window.DOKS)return "";if(v.suchwort)return DOKS.norm(v.suchwort);
+  var ws=DOKS.norm(v.name).split(" "),i=-1;ws.some(function(x,j){if(x.length>=3&&STOP.indexOf(" "+x+" ")<0){i=j;return true;}return false;});
+  if(i<0)return "";return (ws[i].length<=3&&i>0?ws[i-1]+" ":"")+ws[i];}
+function dokumente(v){if(!window.DOKS)return [];var w=suchBegriff(v),aus=v.docAus||{};
+  var nrs=[v.vnr,v.kdnr].map(kompakt).filter(function(n){return n.length>=5;});if(!w&&!nrs.length)return [];
+  return DOKS.index().filter(function(e){if(aus[e.id])return false;
+    if(nrs.length){var k=kompakt(e.absender+" "+e.betreff+" "+(e.datei||""));if(nrs.some(function(n){return k.indexOf(n)>-1;}))return true;}
+    if(!w||(!v.suchwort&&KATS.indexOf(e.kategorie)<0))return false;
     return (" "+DOKS.norm(e.absender+" "+e.betreff)+" ").indexOf(" "+w+" ")>-1;}).sort(function(a,b){return String(b.datum).localeCompare(String(a.datum));}).slice(0,5);}
+function docBlock(v){if(!window.DOKS)return "";var id=jsq(v.id),docs=dokumente(v),nAus=Object.keys(v.docAus||{}).length,auto=suchBegriff(Object.assign({},v,{suchwort:""}));
+  return '<div class="mt"><div class="lbl">Dokumente</div>'+(docs.length?docs.map(function(e){var did=jsq(e.id);return '<div class="row" style="padding:6px 0"><div class="l"><span style="font-size:12px;color:#cbd5e1">📎 '+esc(DOKS.titel(e))+'</span><div class="s">'+DOKS.de(e.datum)+" · "+esc(e.kategorie)+'</div></div><div class="r"><div class="acts" style="margin-top:0;justify-content:flex-end"><button class="mini" onclick="V2.doc(\''+did+'\')">Öffnen</button><button class="mini" title="Gehört nicht zu diesem Vertrag" onclick="V2.docAus(\''+id+'\',\''+did+'\')">✕</button></div></div></div>';}).join(""):'<div class="note">Keine passenden Dokumente gefunden.</div>')+
+    '<div class="mt"><div class="lbl">Dokumente finden über</div><input class="inp" value="'+esc(v.suchwort||"")+'" placeholder="'+esc(auto?"automatisch: „"+auto+"“":"Wort aus Absender/Betreff")+'" onchange="V2.set(\''+id+'\',\'suchwort\',this.value)">'+
+    '<div class="note" style="margin-top:4px">Wort aus Absender oder Betreff – Treffer per Vertrags-/Kundennummer kommen immer dazu. ✕ blendet ein falsches Dokument aus.'+(nAus?' <a href="#" onclick="V2.docZurueck(\''+id+'\');return false" style="color:#fbbf24">'+nAus+" ausgeblendet – zurückholen</a>":"")+"</div></div></div>";}
+
+/* Vertrags-/Kundennummer: antippen = kopieren */
+function nrZeile(v){var a=[];if(v.vnr)a.push(["Vertr.-Nr.",v.vnr]);if(v.kdnr)a.push(["Kd.-Nr.",v.kdnr]);if(!a.length)return "";
+  return '<div class="nrs">'+a.map(function(x){return '<button class="nr" title="Kopieren" onclick="V2.kopie(\''+jsq(x[1])+'\')">'+x[0]+" "+esc(x[1])+' <span class="cp">⧉</span></button>';}).join("")+"</div>";}
+/* Vorschläge aus den verknüpften Abbuchungen (Verwendungszweck) */
+function nrVorschlag(v,fx){var x=v.fixKey&&fx[v.fixKey],f=fin();if(!x||!f||!Array.isArray(x.ids)||(v.vnr&&v.kdnr))return "";
+  var ids={};x.ids.slice(-3).forEach(function(i){ids[i]=1;});var zs=(f.tx||[]).filter(function(t){return ids[t.id];}).sort(function(a,b){return b.d.localeCompare(a.d);}).map(function(t){return t.z;});
+  var schon=[v.vnr,v.kdnr].map(kompakt),l=V.nummernAus(zs).filter(function(c){return schon.indexOf(kompakt(c.nr))<0;});if(!l.length)return "";
+  var id=jsq(v.id);
+  return '<div class="box" style="margin-top:8px;background:#f59e0b0d;border-color:#f59e0b44"><div class="note" style="margin-bottom:4px">💡 In den Abbuchungen gefunden – antippen zum Übernehmen:</div>'+l.map(function(c){var n=jsq(c.nr);
+    var b=function(k,t){return v[k]?"":'<button class="mini'+(c.art===k?" ok":"")+'" onclick="V2.nrSet(\''+id+'\',\''+k+'\',\''+n+'\')">'+t+"</button>";};
+    return '<div class="sug"><span>'+(c.ctx?esc(c.ctx)+" ":"")+"<b>"+esc(c.nr)+"</b>"+(c.nach?" "+esc(c.nach):"")+'</span><span class="rt">'+b("vnr","→ Vertragsnr.")+b("kdnr","→ Kundennr.")+"</span></div>";}).join("")+"</div>";}
 
 function v(id){return data.vertraege[id];}
 window.V2={
@@ -189,7 +225,7 @@ window.V2={
     else if(k==="rh"||k==="verl")x[k]=+val;
     else if(k==="frist"||k==="vorlauf"){var m=parseInt(val,10);x[k]=isNaN(m)?null:Math.max(0,m);}
     else if(k==="erinnern")x.erinnern=!!val;
-    else if(k==="vorlage"){x.vorlage=val;var tpl=V.VORLAGEN.filter(function(y){return y.id===val;})[0];if(tpl&&tpl.verl!=null){x.verl=tpl.verl;x.frist=tpl.frist;x.einh=tpl.einh;if(tpl.erinnern===false)x.erinnern=false;if(tpl.gruppe&&(!x.gruppe||x.gruppe==="Sonstiges"))x.gruppe=tpl.gruppe;}}
+    else if(k==="vorlage"){x.vorlage=val;var tpl=V.VORLAGEN.filter(function(y){return y.id===val;})[0];if(tpl&&tpl.verl!=null){x.verl=tpl.verl;x.frist=tpl.frist;x.einh=tpl.einh;}if(tpl&&tpl.erinnern===false)x.erinnern=false;if(tpl&&tpl.gruppe&&(val==="nk"||!x.gruppe||x.gruppe==="Sonstiges"))x.gruppe=tpl.gruppe;}
     else if(k==="status"){x.status=val;if(val==="aktiv")delete x.endeAm;else if(!x.endeAm){var r=V.termin(Object.assign({},x,{status:"aktiv"}),V.heute());x.endeAm=r.ende||"";}}
     else x[k]=String(val).trim();
     x.t=Date.now();persist();render();},
@@ -207,6 +243,10 @@ window.V2={
   fristEdit:function(id){st.fOpen=st.fOpen===id?null:id;render();},
   fristOk:function(id){var f=data.fristen[id];if(!f)return;var D=V.naechste(f);f.erledigt=D;f.t=Date.now();persist();var n=V.naechste(f);flash("✓ Erledigt"+(n?" – nächstes Mal am "+V.de(n):""));},
   fDel:function(id){if(!confirm("Frist löschen?"))return;data.fristen[id]={id:id,del:true,t:Date.now()};st.fOpen=null;persist();render();},
+  nrSet:function(id,k,nr){var x=v(id);if(!x)return;x[k]=nr;x.t=Date.now();persist();flash("✓ "+(k==="vnr"?"Vertragsnummer":"Kundennummer")+" übernommen – bitte kurz prüfen");},
+  kopie:function(t){var ok=function(){flash("✓ Kopiert: "+t);};try{navigator.clipboard.writeText(t).then(ok,function(){flash(t);});}catch(e){flash(t);}},
+  docAus:function(id,did){var x=v(id);if(!x)return;x.docAus=x.docAus||{};x.docAus[did]=1;x.t=Date.now();persist();flash("✓ Ausgeblendet – erscheint bei diesem Vertrag nicht mehr");},
+  docZurueck:function(id){var x=v(id);if(!x)return;delete x.docAus;x.t=Date.now();persist();render();},
   doc:function(id){var e=DOKS.index().filter(function(x){return x.id===id;})[0];if(!e)return;DOKS.oeffnen(e).catch(function(err){flash("⚠ "+(err.message||err),true);});}
 };
 window.addEventListener("cockpit:priv",render);

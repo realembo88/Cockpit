@@ -3,7 +3,7 @@
 var VERTR=(function(){
 "use strict";
 var DAY=864e5;
-var GRUPPEN=["Versicherung","Strom & Gas","Telefon & Internet","Streaming & Abos","Mobilität","Wohnen","Finanzen & Kredite","Mitgliedschaften","Sonstiges"];
+var GRUPPEN=["Versicherung","Strom & Gas","Telefon & Internet","Streaming & Abos","Mobilität","Wohnen","Finanzen & Kredite","Mitgliedschaften","Steuern & Abgaben","Sonstiges"];
 /* Vorlagen für die Kündigungsregeln. verl = verlängert sich um x Monate (0 = danach jederzeit kündbar),
    frist + einh = Kündigungsfrist (M = Monate, W = Wochen, T = Tage) */
 var VORLAGEN=[
@@ -12,6 +12,7 @@ var VORLAGEN=[
   {id:"telko",name:"Handy, Internet, Strom, Gas, Fitness",verl:0,frist:1,einh:"M",hint:"„Läuft bis“ = Ende der Mindestlaufzeit. Danach meist jederzeit mit 1 Monat Frist kündbar (Verträge seit März 2022)."},
   {id:"abo",name:"Monatliches Abo / Streaming",verl:1,frist:0,einh:"T",gruppe:"Streaming & Abos",erinnern:false,hint:"Zum Ende des laufenden Abrechnungsmonats kündbar."},
   {id:"jahr",name:"Jahresabo / Mitgliedschaft",verl:12,frist:1,einh:"M",gruppe:"Mitgliedschaften",hint:"Verlängert sich jährlich, Kündigung 1 Monat vor Ablauf."},
+  {id:"nk",name:"Nicht kündbar (Steuer, Gebühr, Pflichtbeitrag)",gruppe:"Steuern & Abgaben",erinnern:false,hint:"Keine Kündigungserinnerung – der Eintrag dient der Übersicht über Betrag, Nummern und Dokumente."},
   {id:"frei",name:"Eigene Angaben"}
 ];
 var RHYTHMUS=[[1,"monatlich"],[2,"alle 2 Monate"],[3,"vierteljährlich"],[6,"halbjährlich"],[12,"jährlich"],[24,"alle 2 Jahre"]];
@@ -52,8 +53,9 @@ function aktiv(o){return Object.keys(o).map(function(k){return o[k];}).filter(fu
 function neueId(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5);}
 
 /* ---------- Kündigungstermin eines Vertrags ----------
-   → {art:"fest"|"jederzeit"|"unbekannt"|"gekuendigt"|"beendet", ende, bis (spätestens kündigen), tage (bis dahin)} */
+   → {art:"fest"|"jederzeit"|"unbekannt"|"nicht"|"gekuendigt"|"beendet", ende, bis (spätestens kündigen), tage (bis dahin)} */
 function termin(v,t){t=t||heute();
+  if(v.vorlage==="nk"&&v.status!=="beendet")return {art:"nicht"};
   if(v.status==="gekuendigt")return {art:"gekuendigt",ende:v.endeAm||""};
   if(v.status==="beendet")return {art:"beendet",ende:v.endeAm||""};
   if(!v.bis)return {art:"unbekannt"};
@@ -102,15 +104,35 @@ function summary(x,haus){var l=termine(x,{haus:haus}).filter(function(e){return 
 
 /* ---------- Vorschläge aus den Fixkosten ---------- */
 function gruppeAus(name){var s=String(name||"").toLowerCase();
+  if(/(^|[^a-zäöü])(stadt|gemeinde|landratsamt|finanzamt)([^a-zäöü]|$)|grundsteuer|rundfunk|beitragsservice|abgabe/.test(s))return "Steuern & Abgaben";
   if(/versicher/.test(s))return "Versicherung";if(/strom|gas|energie/.test(s))return "Strom & Gas";if(/telekom|telefon|internet|mobil ?funk|handy/.test(s))return "Telefon & Internet";
   if(/abo|stream/.test(s))return "Streaming & Abos";if(/auto|mobilit|kfz/.test(s))return "Mobilität";if(/wohn|miete|vermiet/.test(s))return "Wohnen";
   if(/bank|kredit|darlehen|spar|finanz/.test(s))return "Finanzen & Kredite";if(/fitness|verein|mitglied|gesundheit/.test(s))return "Mitgliedschaften";return "Sonstiges";}
-function vorlageFuer(g){return g==="Versicherung"?"vers":g==="Streaming & Abos"?"abo":g==="Mitgliedschaften"?"jahr":(g==="Strom & Gas"||g==="Telefon & Internet")?"telko":"frei";}
+function vorlageFuer(g){return g==="Steuern & Abgaben"?"nk":g==="Versicherung"?"vers":g==="Streaming & Abos"?"abo":g==="Mitgliedschaften"?"jahr":(g==="Strom & Gas"||g==="Telefon & Internet")?"telko":"frei";}
 function vorschlaege(x,fix){x=norm(x);var link={};aktiv(x.vertraege).forEach(function(v){if(v.fixKey)link[v.fixKey]=1;});
   return (fix||[]).filter(function(f){return f.status==="ok"&&f.active&&!link[f.key]&&!(x.ignFix[f.key]&&!x.ignFix[f.key].del);});}
 
+/* ---------- Vertrags- und Kundennummern aus dem Verwendungszweck ----------
+   zs = Verwendungszwecke der letzten Abbuchungen, neueste zuerst. Kandidat = Zeichenkette mit mind. 5 Ziffern.
+   Bevorzugt werden Nummern, die in mehreren Abbuchungen gleich bleiben (Vertrags-/Kundennummern bleiben,
+   Rechnungs- und Belegnummern wechseln). art: "vnr" | "kdnr" | "" (aus dem Wort davor). */
+var RE_KD=/(k(?:d|unden)?[\s.\-]*n(?:r|ummer)|kunden\w*)\W*$/i,RE_VN=/(vertrag\w*|vers\w*|police\w*|vsnr|beitrags?\s*nr|mitglied\w*|schein\w*)\W*$/i;
+function nummernAus(zs){zs=(zs||[]).filter(Boolean).map(String);var cnt={},info={};
+  zs.forEach(function(z,zi){var re=/[A-Za-z]{0,4}\d[A-Za-z0-9\-\/]*/g,m,seen={};
+    while((m=re.exec(z))){var tok=m[0].replace(/[\-\/]+$/,""),dig=(tok.match(/\d/g)||[]).length,nach=z.slice(m.index+m[0].length);
+      if(dig<5||tok.length>20)continue;
+      if(/^\d{5}$/.test(tok)&&/^\s+[A-ZÄÖÜ][a-zäöüß]/.test(nach))continue;          /* Postleitzahl */
+      if(tok.length<=10&&/(19|20)\d\d[01]\d[0-3]\d/.test(tok))continue;              /* Datum JJJJMMTT */
+      var k=tok.toUpperCase();if(seen[k])continue;seen[k]=1;cnt[k]=(cnt[k]||0)+1;
+      if(!info[k]){var vor=z.slice(Math.max(0,m.index-24),m.index),w=z.slice(Math.max(0,m.index-40),m.index).trim().split(/\s+/).filter(Boolean);
+        if(m.index>40&&w.length>1)w.shift();
+        info[k]={nr:tok,art:RE_KD.test(vor)?"kdnr":RE_VN.test(vor)?"vnr":"",ctx:w.slice(-2).join(" "),nach:(function(n){return /^[\d.]+,\d\d/.test(n)?"":n.length>14?n.slice(0,13)+"…":n;})(nach.trim().split(/\s+/)[0]||""),zi:zi};}}});
+  var keys=Object.keys(cnt),gut=zs.length>1?keys.filter(function(k){return cnt[k]>1;}):keys;
+  if(!gut.length)gut=keys.filter(function(k){return info[k].zi===0;});
+  return gut.map(function(k){return info[k];}).sort(function(a,b){return (b.art?1:0)-(a.art?1:0);}).slice(0,4);}
+
 return {GRUPPEN:GRUPPEN,VORLAGEN:VORLAGEN,RHYTHMUS:RHYTHMUS,FRIST_VORLAGEN:FRIST_VORLAGEN,heute:heute,plusM:plusM,plusT:plusT,tage:tage,de:de,deKurz:deKurz,parse:parse,wann:wann,
   blank:blank,norm:norm,merge:merge,aktiv:aktiv,neueId:neueId,termin:termin,fristText:fristText,rhText:rhText,monatlich:monatlich,naechste:naechste,autoFristen:autoFristen,
-  termine:termine,ohneDatum:ohneDatum,summary:summary,gruppeAus:gruppeAus,vorlageFuer:vorlageFuer,vorschlaege:vorschlaege};
+  termine:termine,ohneDatum:ohneDatum,summary:summary,gruppeAus:gruppeAus,vorlageFuer:vorlageFuer,vorschlaege:vorschlaege,nummernAus:nummernAus};
 })();
 if(typeof window!=="undefined")window.VERTR=VERTR;

@@ -100,6 +100,8 @@ def aktiv(o):
 
 
 def termin(v, t):
+    if v.get("vorlage") == "nk":
+        return None  # nicht kuendbar (Steuer, Gebuehr) - keine Erinnerung
     if v.get("status") in ("gekuendigt", "beendet") or not v.get("bis"):
         return None
     E, verl, f, e, i = v["bis"], int(v.get("verl") or 0), v.get("frist"), v.get("einh") or "M", 0
