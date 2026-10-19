@@ -401,7 +401,7 @@ function txRow(t){
         /* Regel aus dem Verwendungszweck – bei Zahlungsdiensten (PayPal, Klarna …) die richtige Wahl */
         var dienst=t.p&&/paypal|amazon|amzn|klarna|ebay|sumup|stripe|adyen|mollie|giropay|apple|google/i.test(t.p);
         var zr=t.z?'<div style="margin-top:8px"><div class="note">'+(dienst?"<b>Empfohlen:</b> ":"")+'Regel aus dem Verwendungszweck – alle Buchungen, deren Verwendungszweck dieses Stichwort enthält:</div>'+
-          '<div class="addkw"><input id="zk'+t.id+'" value="'+C.esc(F.zweckVorschlag(t.z))+'" placeholder="Stichwort, z. B. exaring" onkeydown="if(event.key===\'Enter\')F2.learnZ(\''+t.id+'\')"><button class="btn" style="padding:8px 12px;font-size:12px" onclick="F2.learnZ(\''+t.id+'\')">Als Regel merken</button></div></div>':"";
+          '<div class="addkw"><input id="zk'+t.id+'" value="'+C.esc(F.zweckVorschlag(t.z))+'" placeholder="Stichwort, z. B. netflix" onkeydown="if(event.key===\'Enter\')F2.learnZ(\''+t.id+'\')"><button class="btn" style="padding:8px 12px;font-size:12px" onclick="F2.learnZ(\''+t.id+'\')">Als Regel merken</button></div></div>':"";
         if(dienst)h+=zr;
         if(t.p){
           if(/paypal|amazon|amzn|klarna|ebay|sumup|stripe/i.test(t.p))h+='<div class="note" style="color:#ffb74d">Achtung: „'+C.esc(t.p)+'“ ist ein Zahlungsdienst, über den viele verschiedene Käufe laufen. Eine Regel für diesen Empfänger würde alle diese Käufe in dieselbe Kategorie stecken.</div>';
