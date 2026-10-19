@@ -117,9 +117,10 @@ def naechste(f):
     if not f.get("datum"):
         return None
     D, w, i = f["datum"], int(f.get("wdh") or 0), 0
+    mo = f.get("monate") if isinstance(f.get("monate"), list) and f.get("monate") else None  # z. B. nur Heizperiode
     if not w:
         return None if f.get("erledigt") else D
-    while f.get("erledigt") and D <= f["erledigt"] and i < 2000:
+    while i < 2000 and ((f.get("erledigt") and D <= f["erledigt"]) or (mo and int(D[5:7]) not in mo)):
         D = plus_m(D, w)
         i += 1
     return D

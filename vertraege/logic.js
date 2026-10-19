@@ -70,9 +70,11 @@ function monatlich(v){return v.betrag&&v.rh?v.betrag/(+v.rh||1):0;}
 
 /* ---------- Fristen ---------- */
 /* nächster offener Termin (wiederkehrend: erledigte Termine werden übersprungen) */
-function naechste(f){if(!f.datum)return null;var D=f.datum,w=+f.wdh||0,i=0;
+/* monate (optional): nur in diesen Monaten fällig, z. B. [10,11,12,1,2,3,4] für die Heizperiode */
+function naechste(f){if(!f.datum)return null;var D=f.datum,w=+f.wdh||0,i=0,mo=Array.isArray(f.monate)&&f.monate.length?f.monate:null;
   if(!w)return f.erledigt?null:D;
-  while(f.erledigt&&D<=f.erledigt&&i<2000){D=plusM(D,w);i++;}return D;}
+  while(i<2000&&((f.erledigt&&D<=f.erledigt)||(mo&&mo.indexOf(+D.slice(5,7))<0))){D=plusM(D,w);i++;}return D;}
+function ohneDatum(x){return aktiv(norm(x).fristen).filter(function(f){return !f.datum;});}
 /* automatische Fristen aus anderen Bereichen: Nebenkostenabrechnung je Mietpartei und Jahr (§ 556 BGB: 12 Monate nach Ende des Zeitraums) */
 function autoFristen(haus,t){t=t||heute();var out=[],jetzt=+t.slice(0,4);
   ((haus&&haus.belegung)||[]).forEach(function(b){if(!b||b.art!=="miete"||b.del)return;
@@ -109,6 +111,6 @@ function vorschlaege(x,fix){x=norm(x);var link={};aktiv(x.vertraege).forEach(fun
 
 return {GRUPPEN:GRUPPEN,VORLAGEN:VORLAGEN,RHYTHMUS:RHYTHMUS,FRIST_VORLAGEN:FRIST_VORLAGEN,heute:heute,plusM:plusM,plusT:plusT,tage:tage,de:de,deKurz:deKurz,parse:parse,wann:wann,
   blank:blank,norm:norm,merge:merge,aktiv:aktiv,neueId:neueId,termin:termin,fristText:fristText,rhText:rhText,monatlich:monatlich,naechste:naechste,autoFristen:autoFristen,
-  termine:termine,summary:summary,gruppeAus:gruppeAus,vorlageFuer:vorlageFuer,vorschlaege:vorschlaege};
+  termine:termine,ohneDatum:ohneDatum,summary:summary,gruppeAus:gruppeAus,vorlageFuer:vorlageFuer,vorschlaege:vorschlaege};
 })();
 if(typeof window!=="undefined")window.VERTR=VERTR;

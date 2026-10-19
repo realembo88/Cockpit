@@ -87,6 +87,8 @@ function vTermine(){
   h+='<div class="panel"><h3>⏰ Jetzt dran</h3>'+(faellig.length?faellig.map(terminRow).join(""):'<div class="note">Nichts fällig. 👍</div>')+"</div>";
   if(bald.length)h+='<div class="panel"><h3>📆 Demnächst</h3>'+bald.map(terminRow).join("")+"</div>";
   h+=st.neuF?'<div class="panel"><h3>Neue Frist</h3>'+fristForm(st.neuF,true)+"</div>":'<button class="btn ghost full" style="margin-bottom:14px" onclick="V2.neuFrist()">＋ Frist oder Termin hinzufügen</button>';
+  var od=V.ohneDatum(data);
+  if(od.length)h+='<div class="panel" style="border-color:#f59e0b55"><h3>📝 Datum fehlt</h3>'+od.map(function(f){return '<div class="row"><div class="l"><b>'+esc(f.titel||"Frist")+'</b><div class="s">'+esc([+f.wdh?V.rhText(f.wdh):"",f.notiz||""].filter(Boolean).join(" · "))+'</div>'+(st.fOpen===f.id?fristForm(f,false):'<div class="acts"><button class="mini warn" onclick="V2.fristEdit(\''+jsq(f.id)+'\')">Datum eintragen</button></div>')+"</div></div>";}).join("")+"</div>";
   if(spaet.length)h+='<details class="panel"'+(st.spaeter?" open":"")+' ontoggle="V2.spaeter(this.open)"><summary class="small muted">Später ('+spaet.length+")</summary>"+spaet.map(terminRow).join("")+"</details>";
   h+='<div class="note">Hier landen Kündigungstermine aus deinen Verträgen, eigene Fristen (z. B. TÜV, Kurtaxe) und automatisch die Nebenkostenabrechnungen aus „Haus“ (12 Monate nach Ende des Abrechnungsjahres). Was fällig ist, erscheint auch auf der Startseite und in der Wochenvorschau aufs Handy.</div>';
   return h;

@@ -49,6 +49,12 @@ table.t tr.sum td{font-weight:700;color:#fff;border-top:1px solid var(--border);
 .badge{display:inline-block;font-size:10px;border-radius:8px;padding:2px 7px;margin-left:6px;vertical-align:middle;}
 .b-miete{background:#fb923c22;color:#fdba74;} .b-fewo{background:#2dd4bf22;color:#5eead4;} .b-eigen{background:#64748b33;color:#cbd5e1;} .b-leer{background:#47556933;color:#94a3b8;}
 input[type=file]{display:none;}
+.tk{display:flex;justify-content:space-between;gap:10px;padding:6px 0;font-size:13px;border-top:1px solid #152038;}
+.tk:first-of-type{border-top:none;} .tk span:first-child{color:var(--muted);} .tk span:last-child{text-align:right;color:#e2e8f0;}
+.chipb{display:inline-block;font-size:10.5px;border-radius:8px;padding:1px 7px;background:#fb923c22;color:#fdba74;margin-right:6px;}
+.lg{padding:9px 0;border-top:1px solid #152038;font-size:13px;} .lg:first-of-type{border-top:none;}
+.lg .w{color:#fde68a;font-variant-numeric:tabular-nums;} .lg .g{font-size:11px;color:var(--muted);margin-top:2px;}
+.formbox{border:1px solid var(--border);border-radius:12px;padding:12px;background:var(--panel2);margin:10px 0;}
 /* Abrechnung als Dokument (Bildschirm-Overlay, beim Drucken nur das Dokument) */
 #docOverlay{display:none;}
 body.doc-on #docOverlay{display:block;position:fixed;inset:0;z-index:50;overflow:auto;background:#e9edf3;padding:0 0 40px;}
@@ -87,7 +93,9 @@ body.doc-on .wrap{display:none;}
 <div id="docOverlay"></div>
 <script src="../assets/cockpit.js"></script>
 <script src="logic.js"></script>
+<script src="technik.js"></script>
 <script src="../dokumente/logic.js"></script>
+<script src="../vertraege/logic.js"></script>
 <script>
 (function(){
 "use strict";
@@ -98,12 +106,12 @@ var C=window.Cockpit,HS=window.HAUS,AREA="haus";
    jahre {Jahr:{kosten:{k:{betrag,s,such,info}},extra:[],strompreis,zaehler:{unit:[{d,v}]},flaechen,fewoFix,vzIst:{id:betrag},neueVz:{id:{betrag,ab}},versandt:{id:datum},wasserHZ,notiz,upd}},
    einst {vermieter,objekt,bank,frist,apt,upd} */
 function blank(){return {einheiten:[],belegung:[],jahre:{},einst:{}};}
-function norm(d){d=d&&typeof d==="object"?d:blank();if(!Array.isArray(d.einheiten))d.einheiten=[];if(!Array.isArray(d.belegung))d.belegung=[];if(!d.jahre||typeof d.jahre!=="object")d.jahre={};if(!d.einst||typeof d.einst!=="object")d.einst={};return d;}
+function norm(d){d=d&&typeof d==="object"?d:blank();if(d.technik)d.technik=TECH.norm(d.technik);if(!Array.isArray(d.einheiten))d.einheiten=[];if(!Array.isArray(d.belegung))d.belegung=[];if(!d.jahre||typeof d.jahre!=="object")d.jahre={};if(!d.einst||typeof d.einst!=="object")d.einst={};return d;}
 function clone(x){return JSON.parse(JSON.stringify(x));}
 function merge(l,r){l=norm(clone(l));r=norm(clone(r));var o=blank(),by={};
   r.belegung.concat(l.belegung).forEach(function(b){var a=by[b.id];if(!a||(b.upd||0)>=(a.upd||0))by[b.id]=b;});o.belegung=Object.keys(by).map(function(k){return by[k];});
   Object.keys(Object.assign({},r.jahre,l.jahre)).forEach(function(y){var a=l.jahre[y],b=r.jahre[y];o.jahre[y]=!a?b:!b?a:((a.upd||0)>=(b.upd||0)?a:b);});
-  var newer=(l.einst.upd||0)>=(r.einst.upd||0)?l:r;o.einst=newer.einst;o.einheiten=(newer.einheiten.length?newer:(l.einheiten.length?l:r)).einheiten;
+  var newer=(l.einst.upd||0)>=(r.einst.upd||0)?l:r;o.einst=newer.einst;if(l.technik||r.technik)o.technik=TECH.merge(l.technik,r.technik);o.einheiten=(newer.einheiten.length?newer:(l.einheiten.length?l:r)).einheiten;
   o._summary=summaryFor(o);return o;}
 C.registerMerge(AREA,merge);
 
@@ -134,13 +142,115 @@ function summaryFor(d){
 /* ---------- Rahmen ---------- */
 function render(){
   document.getElementById("top").innerHTML=C.topbar({title:"Haus",icon:"🏘️",sub:"Nebenkosten · Kostenaufteilung",accent:"#fb923c",accent2:"#f97316"});C.paintStatus();
-  var tabs=[["uebersicht","📊 Übersicht"],["abrechnung","🧾 Abrechnung"],["kosten","💶 Kosten"],["belegung","👥 Belegung"],["zaehler","🔢 Zähler"],["steuer","🧮 Für die Steuer"],["einst","⚙️ Einstellungen"]];
+  var tabs=[["uebersicht","📊 Übersicht"],["abrechnung","🧾 Abrechnung"],["kosten","💶 Kosten"],["belegung","👥 Belegung"],["zaehler","🔢 Zähler"],["steuer","🧮 Für die Steuer"],["technik","🔧 Technik"],["einst","⚙️ Einstellungen"]];
   document.getElementById("tabs").innerHTML=tabs.map(function(t){return '<button class="tab'+(st.tab===t[0]?" on":"")+'" onclick="H2.tab(\''+t[0]+'\')">'+t[1]+"</button>";}).join("");
   var h="";if(st.flash)h+='<div class="flash'+(st.flash.warn?" warn":"")+'">'+esc(st.flash.t)+"</div>";
-  if(!data.einheiten.length&&st.tab!=="einst")h+='<div class="empty"><div class="big">🏘️</div>Noch keine Wohnungen angelegt.<br><span class="small">Unter Einstellungen die Startdatei importieren oder die Wohnungen anlegen.</span><br><button class="btn" style="margin-top:14px;background:#fb923c" onclick="H2.tab(\'einst\')">Zu den Einstellungen</button></div>';
-  else h+=({uebersicht:vDash,abrechnung:vAbr,kosten:vKosten,belegung:vBel,zaehler:vZ,steuer:vSteuer,einst:vEinst}[st.tab])();
+  if(!data.einheiten.length&&st.tab!=="einst"&&st.tab!=="technik")h+='<div class="empty"><div class="big">🏘️</div>Noch keine Wohnungen angelegt.<br><span class="small">Unter Einstellungen die Startdatei importieren oder die Wohnungen anlegen.</span><br><button class="btn" style="margin-top:14px;background:#fb923c" onclick="H2.tab(\'einst\')">Zu den Einstellungen</button></div>';
+  else h+=({uebersicht:vDash,abrechnung:vAbr,kosten:vKosten,belegung:vBel,zaehler:vZ,steuer:vSteuer,technik:vTechnik,einst:vEinst}[st.tab])();
   document.getElementById("main").innerHTML=h;
 }
+/* ---------- Technik: Heizungsanlage ---------- */
+var V=window.VERTR;if(V)C.registerMerge("vertraege",V.merge);
+function T(){data.technik=TECH.norm(data.technik);return data.technik;}
+function heuteIso(){return new Date().toISOString().slice(0,10);}
+function dIn(v){return v?de(v):"";}
+function tk(l,v){return v==null||v===""?"":'<div class="tk"><span>'+esc(l)+"</span><span>"+v+"</span></div>";}
+function n1(v){return v==null||v===""?"":String(v).replace(".",",");}
+function vTechnik(){
+  var t=T(),a=t.anlage,h="";
+  if(!a.waermeerzeuger&&!t.heizkreise.length)return '<div class="empty"><div class="big">🔧</div>Noch keine Heizungsdaten.<br><span class="small">Die Startdatei aus dem Heizungs-Chat einlesen – danach pflegst du Änderungen hier.</span><br>'+
+    '<label class="btn" style="display:inline-block;margin-top:14px;background:#fb923c;cursor:pointer">📄 Heizungs-Startdatei einlesen<input type="file" accept=".json,application/json" onchange="H2.tImp(this)"></label></div>';
+  /* Anlage */
+  var w=a.waermeerzeuger||{},r=a.regler||{},mm=a.mischermodul||{},fb=a.fachbetrieb||{};
+  h+='<div class="panel"><h3>🔥 Anlage</h3>'+
+    tk("Wärmeerzeuger",esc([w.hersteller,w.modell].filter(Boolean).join(" "))+(w.typ?'<br><span class="small muted">'+esc(w.typ)+(w.leistung_kw?" · "+w.leistung_kw+" kW":"")+"</span>":""))+
+    tk("Eingebaut",w.eingebaut?esc(dIn(w.eingebaut)):"")+
+    '<div class="tk"><span>Letzte Wartung</span><span><input class="inp" style="width:130px;padding:5px 8px;font-size:13px;text-align:right" placeholder="TT.MM.JJJJ" value="'+esc(dIn(a.letzteWartung))+'" onchange="H2.tWartung(this.value)"></span></div>'+
+    tk("Regler",esc([r.modell,r.regelung].filter(Boolean).join(" · "))+(r.montageort?'<br><span class="small muted">'+esc(r.montageort)+"</span>":""))+
+    tk("Mischermodul",esc(mm.modell||"")+(mm.hinweis?'<br><span class="small muted">'+esc(mm.hinweis)+"</span>":""))+
+    tk("Pumpengruppen",(a.pumpengruppen||[]).map(function(p){return esc([p.hersteller,p.kreis].filter(Boolean).join(" · "))+(p.hinweis?' <span class="small muted">('+esc(p.hinweis)+")</span>":"");}).join("<br>"))+
+    tk("Warmwasser",esc((a.warmwasser||{}).typ||""))+
+    tk("Fachbetrieb",fb.name?esc(fb.name)+(fb.telefon?'<br><a href="tel:'+esc(String(fb.telefon).replace(/[^0-9+]/g,""))+'" style="color:#fdba74">📞 '+esc(fb.telefon)+"</a>":"")+(fb.web?' · <a href="https://'+esc(String(fb.web).replace(/^https?:\/\//,""))+'" target="_blank" rel="noopener" style="color:#fdba74">Web</a>':""):"")+"</div>";
+  /* Heizkreise */
+  t.heizkreise.forEach(function(k){var e=k.e||{},op=st.tEdit===k.id;
+    h+='<div class="panel"><h3>'+esc(k.id)+" · "+esc(k.name||"")+(k.heizsystem?' <span class="small muted">· '+esc(k.heizsystem)+"</span>":"")+"</h3>";
+    var rows=TECH.FELDER.filter(function(f){return e[f.k]!=null&&e[f.k]!=="";});
+    h+=rows.length?rows.map(function(f){return tk(f.n,esc(TECH.wert(f,e[f.k])));}).join(""):'<div class="note">'+esc(k.hinweis||"Noch keine Einstellungen erfasst.")+"</div>";
+    if(e.fusspunkt!=null&&e.endpunkt!=null)h+='<div class="note" style="margin-top:8px">Soll-Vorlauf laut Heizkurve: '+[-10,0,10,15].map(function(x){return (x>0?"+":"")+x+" °C außen → "+Math.round(TECH.vorlauf(e,x))+" °C";}).join(" · ")+"</div>";
+    h+=op?wertForm(k):'<button class="mini" style="margin-top:10px" onclick="H2.tEdit(\''+esc(k.id)+'\')">✏️ Wert ändern</button>';
+    h+="</div>";});
+  /* Protokoll */
+  var log=TECH.aktiv(t.log).sort(function(x,y){return String(y.datum).localeCompare(String(x.datum))||(y.t||0)-(x.t||0);});
+  h+='<div class="panel"><h3>📋 Änderungsprotokoll</h3>'+(log.length?log.map(function(g){return '<div class="lg"><span class="chipb">'+esc(g.bereich||"")+"</span><b style=\"color:#fff\">"+esc(g.aenderung||"")+'</b> <span class="small muted">'+esc(dIn(g.datum))+'</span><button class="x" style="float:right" onclick="H2.tLogDel(\''+g.id+'\')" aria-label="Eintrag löschen">×</button>'+
+      (g.vorher!==""||g.nachher!==""?'<div class="w">'+esc(g.vorher||"–")+" → "+esc(g.nachher||"–")+"</div>":"")+(g.grund?'<div class="g">'+esc(g.grund)+"</div>":"")+"</div>";}).join(""):'<div class="note">Noch keine Einträge.</div>')+
+    (st.tNotiz?notizForm():'<button class="mini" style="margin-top:10px" onclick="H2.tNotiz(1)">＋ Maßnahme eintragen</button>')+"</div>";
+  /* Ablesungen */
+  var ab=TECH.aktiv(t.ablesungen).sort(function(x,y){return String(y.datum).localeCompare(String(x.datum));});
+  h+='<div class="panel"><h3>🌡️ Ablesungen</h3>'+(ab.length?ab.slice(0,st.tAlle?999:8).map(function(x){var dr=TECH.toN(x.druck),warn=dr!=null&&(dr<1||dr>2.5);
+      return '<div class="lg"><b style="color:#fff">'+esc(dIn(x.datum))+'</b> <span class="small muted">'+esc(x.kreis||"")+'</span><button class="x" style="float:right" onclick="H2.tAbDel(\''+x.id+'\')" aria-label="Ablesung löschen">×</button><div class="w">'+
+        [x.vorlauf!=null&&x.vorlauf!==""?"Vorlauf "+n1(x.vorlauf)+" °C":"",x.ruecklauf!=null&&x.ruecklauf!==""?"Rücklauf "+n1(x.ruecklauf)+" °C":"",x.druck!=null&&x.druck!==""?(warn?'<span style="color:#f87171">':"")+"Druck "+n1(x.druck)+" bar"+(warn?" ⚠</span>":""):"",x.aussen!=null&&x.aussen!==""?"außen "+n1(x.aussen)+" °C":"",x.raum!=null&&x.raum!==""?"Raum "+n1(x.raum)+" °C":""].filter(Boolean).join(" · ")+"</div>"+(x.notiz?'<div class="g">'+esc(x.notiz)+"</div>":"")+"</div>";}).join(""):'<div class="note">Noch keine Ablesungen.</div>')+
+    (ab.length>8&&!st.tAlle?'<button class="mini" style="margin-top:8px" onclick="H2.tAlle()">Alle '+ab.length+" zeigen</button> ":"")+
+    (st.tAb?ablesForm():'<button class="mini" style="margin-top:10px" onclick="H2.tAb(1)">＋ Ablesung eintragen</button>')+'<div class="note" style="margin-top:8px">Anlagendruck soll bei etwa 1,5 bar liegen – unter 1 bar Wasser nachfüllen.</div></div>';
+  h+=vWirkung(t);
+  h+='<div class="panel"><h3>Daten</h3><label class="mini" style="display:inline-block;cursor:pointer">📄 Heizungs-Startdatei erneut einlesen<input type="file" accept=".json,application/json" onchange="H2.tImp(this)"></label>'+
+    '<div class="note" style="margin-top:8px">Einlesen ergänzt: vorhandene Protokoll-Einträge und Ablesungen bleiben erhalten, die Einstellungen der Heizkreise werden mit der Datei aktualisiert.</div></div>';
+  return h;
+}
+function wertForm(k){var e=k.e||{},f=st.tF||TECH.FELDER[2].k,fd=TECH.feld(f);
+  return '<div class="formbox"><div class="lbl">Einstellung</div><select class="sel" onchange="H2.tFeld(this.value)">'+TECH.FELDER.map(function(x){return '<option value="'+x.k+'"'+(x.k===f?" selected":"")+">"+esc(x.n)+(x.u?" ("+x.u+")":"")+"</option>";}).join("")+"</select>"+
+    '<div class="g3" style="margin-top:8px"><div><div class="lbl">bisher</div><div style="padding:9px 0;color:#e2e8f0">'+esc(TECH.wert(fd,e[f]))+'</div></div><div><div class="lbl">neu'+(fd.hint?" – "+esc(fd.hint):"")+'</div><input id="tNeu" class="inp" value="'+esc(e[f]!=null?n1(e[f]):"")+'"></div></div>'+
+    '<div class="g3" style="margin-top:8px"><div><div class="lbl">Datum</div><input id="tDat" class="inp" value="'+esc(de(heuteIso()))+'" placeholder="TT.MM.JJJJ"></div><div><div class="lbl">Grund (optional)</div><input id="tGrund" class="inp" placeholder="z. B. zu warm im OG"></div></div>'+
+    '<div style="display:flex;gap:6px;margin-top:10px"><button class="btn" style="background:#fb923c;padding:9px 14px;font-size:13px" onclick="H2.tSave(\''+esc(k.id)+'\')">Speichern & protokollieren</button><button class="mini" onclick="H2.tEdit(null)">Abbrechen</button></div></div>';}
+function notizForm(){var t=T(),ber=["Anlage"].concat(t.heizkreise.map(function(k){return k.id;}));
+  return '<div class="formbox"><div class="g3"><div><div class="lbl">Bereich</div><select id="nBer" class="sel">'+ber.map(function(b){return "<option>"+esc(b)+"</option>";}).join("")+'</select></div><div><div class="lbl">Datum</div><input id="nDat" class="inp" value="'+esc(de(heuteIso()))+'"></div></div>'+
+    '<div style="margin-top:8px"><div class="lbl">Was wurde gemacht?</div><input id="nWas" class="inp" placeholder="z. B. Wartung, Wasser nachgefüllt, Durchfluss Bad OG gedrosselt"></div>'+
+    '<div style="margin-top:8px"><div class="lbl">Grund / Ergebnis (optional)</div><input id="nGrund" class="inp"></div>'+
+    '<div style="display:flex;gap:6px;margin-top:10px"><button class="btn" style="background:#fb923c;padding:9px 14px;font-size:13px" onclick="H2.tNotizSave()">Speichern</button><button class="mini" onclick="H2.tNotiz(0)">Abbrechen</button></div></div>';}
+function ablesForm(){var t=T(),kr=t.heizkreise.map(function(k){return k.id;});if(!kr.length)kr=["HK2"];
+  var f=function(id,l,ph){return '<div><div class="lbl">'+l+'</div><input id="'+id+'" class="inp" inputmode="decimal" placeholder="'+(ph||"")+'"></div>';};
+  return '<div class="formbox"><div class="g3"><div><div class="lbl">Datum</div><input id="aDat" class="inp" value="'+esc(de(heuteIso()))+'"></div><div><div class="lbl">Heizkreis</div><select id="aKr" class="sel">'+kr.map(function(k){return "<option"+(k==="HK2"?" selected":"")+">"+esc(k)+"</option>";}).join("")+"</select></div></div>"+
+    '<div class="g3" style="margin-top:8px">'+f("aVor","Vorlauf °C")+f("aRue","Rücklauf °C")+"</div>"+
+    '<div class="g3" style="margin-top:8px">'+f("aDr","Anlagendruck bar","z. B. 1,5")+f("aAu","Außen °C")+"</div>"+
+    '<div class="g3" style="margin-top:8px">'+f("aRa","Raum °C")+'<div><div class="lbl">Notiz</div><input id="aNo" class="inp"></div></div>'+
+    '<div style="display:flex;gap:6px;margin-top:10px"><button class="btn" style="background:#fb923c;padding:9px 14px;font-size:13px" onclick="H2.tAbSave()">Speichern</button><button class="mini" onclick="H2.tAb(0)">Abbrechen</button></div></div>';}
+/* Wirkung: Heizenergie je Heizgradtag (wetterbereinigt) mit Markierungen der Änderungen */
+function vWirkung(t){
+  var en=C.getLocal("energie",null),gas=TECH.gasMonate(en),h='<div class="panel"><h3>📉 Wirkung auf den Gasverbrauch</h3>';
+  if(!t.ort||t.ort.lat==null)return h+'<div class="note">Für die Außentemperaturen fehlt der Ort (aus der Startdatei).</div></div>';
+  if(!gas.length)return h+'<div class="note">Noch keine Gas-Zählerstände in „Energie“.</div></div>';
+  if(!Object.keys(t.wetter).length)return h+'<div class="note" style="margin-bottom:8px">Außentemperaturen für '+esc(t.ort.name||"den Ort")+' werden beim Wetterdienst Open-Meteo abgerufen (nur Ort und Zeitraum).</div><button class="mini" onclick="H2.tWetter(1)">'+(st.tWLauf?"lädt …":"🌤 Außentemperaturen laden")+"</button></div>";
+  var W=TECH.wirkung(gas,t.wetter),by={},mx=0;W.monate.forEach(function(m){by[m.ym]=m;});
+  /* durchgehende Achse: die letzten 24 Monate bis zum letzten Monat mit Gaswert */
+  var last=W.monate[W.monate.length-1].ym,ms=[];for(var q=23;q>=0;q--){var dd=new Date(+last.slice(0,4),+last.slice(5,7)-1-q,1),k=dd.getFullYear()+"-"+("0"+(dd.getMonth()+1)).slice(-2);ms.push(by[k]||{ym:k,kennzahl:null});}
+  ms.forEach(function(m){if(m.kennzahl>mx)mx=m.kennzahl;});
+  var aend=TECH.aktiv(t.log).filter(function(g){return /^HK/i.test(g.bereich||"")&&g.datum;}).map(function(g){return g.datum.slice(0,7);});
+  if(mx){var W2=340,H=150,pL=30,pB=26,pT=10,bw=(W2-pL-6)/ms.length,s='<svg viewBox="0 0 '+W2+" "+H+'" width="100%" role="img" aria-label="Heizenergie je Heizgradtag pro Monat">';
+    for(var g=0;g<=2;g++){var gy=pT+(H-pT-pB)*(1-g/2);s+='<line x1="'+pL+'" y1="'+gy+'" x2="'+(W2-6)+'" y2="'+gy+'" stroke="#1e2a4a" stroke-dasharray="3 3"/><text x="'+(pL-4)+'" y="'+(gy+3)+'" fill="#5c7aaa" font-size="9" text-anchor="end">'+C.num(mx*g/2,1)+"</text>";}
+    ms.forEach(function(m,i){var x=pL+i*bw;
+      if(aend.indexOf(m.ym)>-1)s+='<line x1="'+(x+bw/2)+'" y1="'+pT+'" x2="'+(x+bw/2)+'" y2="'+(H-pB)+'" stroke="#fde68a" stroke-dasharray="2 2"/><circle cx="'+(x+bw/2)+'" cy="'+pT+'" r="3" fill="#fde68a"><title>Änderung im '+m.ym+"</title></circle>";
+      if(m.kennzahl!=null){var bh=(H-pT-pB)*m.kennzahl/mx;s+='<rect x="'+(x+1)+'" y="'+(H-pB-bh)+'" width="'+Math.max(2,bw-2)+'" height="'+bh+'" rx="2" fill="#fb923c"><title>'+m.ym+": "+C.num(m.kennzahl,2)+" kWh je Heizgradtag ("+m.hgt+" HGT)</title></rect>";}
+      if(+m.ym.slice(5,7)===1||+m.ym.slice(5,7)===7||i===0)s+='<text x="'+(x+bw/2)+'" y="'+(H-8)+'" fill="#5c7aaa" font-size="9" text-anchor="middle">'+m.ym.slice(2,4)+"/"+m.ym.slice(5,7)+"</text>";});
+    h+=s+'</svg><div class="note">Balken: Heizenergie je Heizgradtag (ohne Warmwasser-Grundlast) – je niedriger, desto sparsamer. <span style="color:#fde68a">┆</span> = Änderung an einem Heizkreis.</div>';}
+  if(W.saisons.length)h+='<table class="t" style="margin-top:10px"><tr><th>Heizperiode</th><th>kWh je HGT</th><th>ggü. Vorjahr*</th></tr>'+W.saisons.map(function(p){var d=p.vgl;
+      return "<tr><td>"+esc(p.saison)+'<br><span class="small muted">'+p.n+" Mon. · "+C.int(p.heiz)+" kWh · "+C.int(p.hgt)+" HGT</span></td><td><b>"+C.num(p.kennzahl,2)+"</b></td><td>"+(d?'<span class="'+(d.delta<=0?"dn":"up")+'">'+(d.delta>0?"+":"")+d.delta+" %</span>"+'<br><span class="small muted">'+d.monate+" gleiche Mon.</span>":"–")+"</td></tr>";}).join("")+
+      '</table><div class="note">* nur über die Monate, die in beiden Heizperioden vorliegen; minus = sparsamer.</div>';
+  var fehlt=W.monate.filter(function(m){return !m.voll;}).length;
+  h+='<div class="note" style="margin-top:8px">Warmwasser-Grundlast: '+(W.grundlast!=null?C.num(W.grundlast,1)+" kWh/Tag (aus den Sommermonaten)":"noch unbekannt")+". Gaswerte aus „Energie“ (nur echte Ablesungen), Außentemperaturen von Open-Meteo für "+esc(t.ort.name||"den Ort")+
+    (t.wetterAbruf?", Stand "+new Date(t.wetterAbruf).toLocaleDateString("de-DE"):"")+'. Ein Vergleich ist erst nach einigen Heizmonaten aussagekräftig.</div><button class="mini" style="margin-top:8px" onclick="H2.tWetter(1)">'+(st.tWLauf?"lädt …":"🌤 Außentemperaturen aktualisieren")+"</button></div>";
+  return h;
+}
+function ladeWetter(force){var t=T();if(!t.ort||t.ort.lat==null||st.tWLauf)return;if(!force&&t.wetterAbruf&&Date.now()-t.wetterAbruf<12*36e5)return;
+  var gas=TECH.gasMonate(C.getLocal("energie",null)),von=(gas.length?gas[0].ym:String(NOW-2)+"-01")+"-01",bis=new Date(Date.now()-6*864e5).toISOString().slice(0,10),u=TECH.wetterUrls(t.ort,von,bis);
+  st.tWLauf=true;render();
+  Promise.all(u.map(function(x){return fetch(x).then(function(r){if(!r.ok)throw new Error("Wetterdienst "+r.status);return r.json();});})).then(function(res){
+    var tage={};res.forEach(function(j){var d=j&&j.daily;if(!d)return;(d.time||[]).forEach(function(dt,i){var v=(d.temperature_2m_mean||[])[i];if(v!=null&&dt<=heuteIso())tage[dt]=v;});});
+    var keys=Object.keys(tage).sort();var w=TECH.wetterAus({time:keys,temperature_2m_mean:keys.map(function(k){return tage[k];})});
+    t.wetter=Object.assign({},t.wetter,w);t.wetterAbruf=Date.now();st.tWLauf=false;persist();render();})
+  .catch(function(e){st.tWLauf=false;flash("⚠ Außentemperaturen nicht abrufbar: "+(e.message||e),true);});}
+/* Frist „Wartung Therme“ in Verträge & Fristen nachziehen */
+function wartungsFrist(letzte){if(!V||!letzte)return;var x=V.norm(C.getLocal("vertraege",V.blank)),f=x.fristen["f-heiz-wartung"];if(!f||f.del)return;
+  f.datum=V.plusM(letzte,12);delete f.erledigt;f.t=Date.now();x._summary=V.summary(x,data);C.save("vertraege",x);}
+
 function yearBar(){var ys={};Object.keys(data.jahre).forEach(function(y){ys[y]=1;});ys[NOW]=1;ys[st.y]=1;
   return '<div class="filt"><div class="yr"><button onclick="H2.yr(-1)" aria-label="Vorjahr">‹</button><b>'+st.y+'</b><button onclick="H2.yr(1)" aria-label="Folgejahr">›</button></div>'+
     (J().notiz?'<span class="small muted" style="flex:1;min-width:180px">'+esc(J().notiz)+"</span>":"")+"</div>";}
@@ -356,7 +466,7 @@ function docHtml(id){
 function pnum(v){var n=C.parseNum(v);return isNaN(n)?null:n;}
 function seg(id){return data.belegung.filter(function(b){return b.id===id;})[0];}
 window.H2={
-  tab:function(t){st.tab=t;render();window.scrollTo(0,0);},
+  tab:function(t){if(t==="technik")setTimeout(function(){ladeWetter(false);},50);st.tab=t;render();window.scrollTo(0,0);},
   yr:function(d){st.y+=d;render();},
   m:function(id){st.mieter=id;render();},
   showM:function(id){st.mieter=id;st.tab="abrechnung";render();window.scrollTo(0,0);},
@@ -401,6 +511,40 @@ window.H2={
   addUnit:function(){data.einheiten.push({k:"W"+(data.einheiten.length+1),n:"Wohnung",flaeche:0});data.einst.upd=Date.now();persist();render();},
   dropFl:function(){if(!confirm("Abweichende Flächen für "+st.y+" entfernen? Dann gelten die Flächen oben."))return;delete J().flaechen;touch();persist();render();},
   einst:function(k,v){data.einst[k]=v;data.einst.upd=Date.now();persist();render();},
+  tImp:function(inp){var f=inp.files&&inp.files[0];inp.value="";if(!f)return;C.readFile(f).then(function(txt){var o=JSON.parse(txt),r=TECH.ausStart(T(),o);data.technik=r.t;
+      var nf=0;if(V&&r.fristen.length){var x=V.norm(C.getLocal("vertraege",V.blank));r.fristen.forEach(function(fr){if(!fr||!fr.id||(x.fristen[fr.id]&&!x.fristen[fr.id].del))return;x.fristen[fr.id]=Object.assign({},fr,{t:Date.now()});nf++;});
+        if(nf){x._summary=V.summary(x,data);C.save("vertraege",x);}}
+      if(data.technik.anlage.letzteWartung)wartungsFrist(data.technik.anlage.letzteWartung);
+      persist();st.tab="technik";flash("✓ Heizung übernommen: "+data.technik.heizkreise.length+" Heizkreise, "+data.technik.log.length+" Protokoll-Einträge"+(nf?", "+nf+" Erinnerungen in Verträge & Fristen":""));ladeWetter(false);})
+    .catch(function(e){flash("⚠ "+(e.message||"Datei konnte nicht gelesen werden"),true);});},
+  tEdit:function(id){st.tEdit=id;st.tF=null;render();},
+  tFeld:function(k){st.tF=k;render();},
+  tSave:function(kid){var t=T(),k=t.heizkreise.filter(function(x){return x.id===kid;})[0];if(!k)return;var f=st.tF||TECH.FELDER[2].k,fd=TECH.feld(f);
+    var nv=(document.getElementById("tNeu").value||"").trim(),dat=document.getElementById("tDat").value,gr=(document.getElementById("tGrund").value||"").trim();
+    var d=V?V.parse(dat):"";if(!d){flash("⚠ Datum bitte als TT.MM.JJJJ",true);return;}
+    if(fd.typ==="zahl"&&nv!==""){var n=C.parseNum(nv);if(isNaN(n)){flash("⚠ Bitte eine Zahl eintragen",true);return;}nv=n;}
+    k.e=k.e||{};var alt=k.e[f];if(String(alt==null?"":alt)===String(nv)){flash("Wert unverändert.");return;}
+    if(nv==="")delete k.e[f];else k.e[f]=nv;k.upd=Date.now();
+    t.log.push({id:TECH.id("l"),datum:d,bereich:kid,aenderung:fd.n,vorher:TECH.wert(fd,alt),nachher:TECH.wert(fd,nv),grund:gr,t:Date.now()});
+    st.tEdit=null;persist();flash("✓ "+fd.n+" geändert und protokolliert");},
+  tNotiz:function(on){st.tNotiz=!!on;render();},
+  tNotizSave:function(){var t=T(),was=(document.getElementById("nWas").value||"").trim(),d=V?V.parse(document.getElementById("nDat").value):"";
+    if(!was||!d){flash("⚠ Bitte Datum (TT.MM.JJJJ) und „Was“ eintragen",true);return;}
+    t.log.push({id:TECH.id("l"),datum:d,bereich:document.getElementById("nBer").value,aenderung:was,vorher:"",nachher:"",grund:(document.getElementById("nGrund").value||"").trim(),t:Date.now()});
+    if(/wartung/i.test(was)&&document.getElementById("nBer").value==="Anlage"){t.anlage.letzteWartung=d;t.anlage.upd=Date.now();wartungsFrist(d);}
+    st.tNotiz=false;persist();flash("✓ Eingetragen");},
+  tLogDel:function(id){if(!confirm("Protokoll-Eintrag löschen?"))return;T().log.forEach(function(g){if(g.id===id){g.del=true;g.t=Date.now();}});persist();render();},
+  tAb:function(on){st.tAb=!!on;render();},
+  tAlle:function(){st.tAlle=true;render();},
+  tAbSave:function(){var t=T(),d=V?V.parse(document.getElementById("aDat").value):"";if(!d){flash("⚠ Datum bitte als TT.MM.JJJJ",true);return;}
+    var g=function(id){var v=(document.getElementById(id).value||"").trim();if(v==="")return null;var n=C.parseNum(v);return isNaN(n)?null:n;};
+    var x={id:TECH.id("a"),datum:d,kreis:document.getElementById("aKr").value,vorlauf:g("aVor"),ruecklauf:g("aRue"),druck:g("aDr"),aussen:g("aAu"),raum:g("aRa"),notiz:(document.getElementById("aNo").value||"").trim(),t:Date.now()};
+    if(x.vorlauf==null&&x.ruecklauf==null&&x.druck==null&&x.aussen==null&&x.raum==null&&!x.notiz){flash("⚠ Bitte mindestens einen Wert eintragen",true);return;}
+    t.ablesungen.push(x);st.tAb=false;persist();flash(x.druck!=null&&x.druck<1?"⚠ Druck unter 1 bar – Wasser nachfüllen":"✓ Ablesung gespeichert",x.druck!=null&&x.druck<1);},
+  tAbDel:function(id){if(!confirm("Ablesung löschen?"))return;T().ablesungen.forEach(function(g){if(g.id===id){g.del=true;g.t=Date.now();}});persist();render();},
+  tWartung:function(v){var d=V?V.parse(v):"";if(v&&!d){flash("⚠ Datum bitte als TT.MM.JJJJ",true);return;}var t=T();t.anlage.letzteWartung=d;t.anlage.upd=Date.now();
+    if(d)wartungsFrist(d);persist();flash(d?"✓ Nächste Wartung: "+de(V.plusM(d,12))+" (steht in Verträge & Fristen)":"✓ Gespeichert");},
+  tWetter:function(){ladeWetter(true);},
   imp:function(inp){var f=inp.files&&inp.files[0];inp.value="";if(!f)return;C.readFile(f).then(function(t){var o=JSON.parse(t);
       if(!o||o.schema!=="cockpit-haus-start/1")throw new Error("Keine Haus-Startdatei");
       var now=Date.now();if(Array.isArray(o.einheiten)&&o.einheiten.length){data.einheiten=o.einheiten;data.einst.upd=now;}
