@@ -95,7 +95,7 @@ svg text{font-family:inherit;}
 .eye:active{transform:scale(.95);}
 
 /* Gerätesperre */
-html.locked .wrap{visibility:hidden;}
+html.locked body>*:not(#cp-lock){visibility:hidden;}
 #cp-lock{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at 50% 30%,#13213f,var(--bg) 70%);padding:24px;}
 #cp-lock .lk{max-width:340px;text-align:center;}
 #cp-lock .lk-ic{font-size:54px;margin-bottom:8px;}
@@ -104,3 +104,12 @@ html.locked .wrap{visibility:hidden;}
 #cp-lock .btn{min-width:200px;font-size:16px;padding:14px 20px;}
 #cp-lock .lk-err{color:#ff8a80;font-size:13px;min-height:20px;margin-top:12px;}
 #cp-lock .lk-help{font-size:11px;margin-top:22px;}
+#cp-lock .lk-pin{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none;}
+#cp-lock .lk-dots{display:flex;gap:12px;justify-content:center;margin:4px 0 18px;}
+#cp-lock .lk-dots i{width:14px;height:14px;border-radius:50%;border:2px solid #5c7aaa;display:block;}
+#cp-lock .lk-dots i.on{background:#00bcd4;border-color:#00bcd4;}
+#cp-lock .lk-pad{display:grid;grid-template-columns:repeat(3,68px);gap:14px 18px;justify-content:center;}
+#cp-lock .lk-pad button{height:68px;border-radius:50%;border:1px solid #2a3a5e;background:#111a30;color:#fff;font-size:24px;font-family:inherit;cursor:pointer;}
+#cp-lock .lk-pad button:active{background:#1d2c4f;}
+#cp-lock .wackel{animation:lkw .35s;}
+@keyframes lkw{0%,100%{transform:translateX(0);}25%{transform:translateX(-8px);}75%{transform:translateX(8px);}}

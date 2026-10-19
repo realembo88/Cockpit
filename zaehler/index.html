@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0e1a">
+<title>Cockpit · ThingCounter</title>
+<link rel="manifest" href="../manifest.webmanifest">
+<link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/style.css">
+<style>
+.pill{border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:20px;padding:6px 12px;font-size:12px;cursor:pointer;}
+.pill.on{background:#a855f7;border-color:#a855f7;color:#fff;font-weight:700;}
+.filt{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
+.mini{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;white-space:nowrap;font-family:inherit;}
+.mini.ok{border-color:#22c55e;color:#4ade80;}
+.note{font-size:11px;color:var(--muted);line-height:1.6;}
+.inp,.sel{width:100%;background:var(--field);border:1px solid var(--border);border-radius:8px;padding:9px 10px;color:#fff;font-size:14px;font-family:inherit;}
+.inp:focus,.sel:focus{outline:none;border-color:#a855f7;}
+.lbl{font-size:11px;color:var(--muted);margin:0 0 4px;}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+/* Serien-Karte */
+.sc{background:var(--panel);border:1px solid var(--border);border-left:4px solid var(--f);border-radius:14px;padding:14px;margin-bottom:14px;}
+.sc .top{display:flex;gap:14px;align-items:center;}
+.sc .ring{flex:0 0 108px;height:108px;position:relative;}
+.sc .ring svg{width:108px;height:108px;transform:rotate(-90deg);}
+.sc .ring .mid{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;}
+.sc .ring .d{font-size:30px;font-weight:800;color:var(--f);line-height:1;font-variant-numeric:tabular-nums;}
+.sc .ring .u{font-size:11px;color:var(--muted);margin-top:3px;}
+.sc .inf{min-width:0;flex:1;}
+.sc .inf b{color:#fff;font-size:16px;}
+.sc .inf .s{font-size:12px;color:var(--muted);margin-top:3px;line-height:1.5;}
+.sc .stat{display:inline-block;font-size:12px;border-radius:8px;padding:2px 8px;margin-top:6px;background:#1e293b;color:#cbd5e1;}
+.sc .stat.rek{background:#a855f733;color:#e9d5ff;font-weight:700;}
+.badges{display:flex;gap:4px;flex-wrap:wrap;margin-top:10px;}
+.badges span{font-size:18px;line-height:1;padding:4px 5px;border-radius:8px;background:#111a30;border:1px solid #1e2a4a;position:relative;}
+.badges span.aus{filter:grayscale(1);opacity:.28;}
+.badges span small{position:absolute;bottom:-11px;left:0;right:0;text-align:center;font-size:8px;color:var(--muted);}
+.badges{padding-bottom:10px;}
+.quick{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;}
+/* Erfassen */
+.grp{font-size:11px;color:var(--muted);margin:12px 0 6px;text-transform:uppercase;letter-spacing:.05em;}
+.tb{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px;}
+.tb button{background:#111a30;border:1px solid #2a3a5e;border-radius:12px;color:#fff;padding:12px 8px;font-size:14px;font-family:inherit;cursor:pointer;text-align:left;}
+.tb button small{display:block;color:var(--muted);font-size:10.5px;margin-top:3px;}
+.tb button.on{border-color:#a855f7;background:#a855f71f;}
+.box{border:1px solid #a855f766;border-radius:12px;padding:12px;margin:10px 0;background:#a855f70d;}
+/* Tabellen */
+table.mt{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums;}
+table.mt th{color:var(--muted);font-weight:500;text-align:center;padding:6px 4px;border-bottom:1px solid var(--border);overflow-wrap:anywhere;}
+table.mt th:first-child,table.mt td:first-child{text-align:left;white-space:nowrap;}
+table.mt td{text-align:center;padding:6px 4px;border-bottom:1px solid #152038;}
+table.mt td i{display:inline-block;min-width:26px;border-radius:6px;padding:2px 4px;font-style:normal;}
+.row{display:flex;justify-content:space-between;gap:10px;padding:9px 2px;border-top:1px solid #152038;align-items:center;}
+.row:first-child{border-top:none;}
+.row .l{min-width:0;flex:1;font-size:13px;}
+.row .l span{display:block;font-size:11px;color:var(--muted);}
+.kz{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;}
+.kz div{background:#111a30;border:1px solid #1e2a4a;border-radius:10px;padding:10px;}
+.kz b{display:block;font-size:17px;color:#fff;}
+.kz span{font-size:11px;color:var(--muted);}
+/* Feier */
+.feier{border-radius:12px;padding:12px 14px;margin-bottom:14px;background:linear-gradient(135deg,#7c3aed33,#22c55e22);border:1px solid #a855f7;color:#f3e8ff;font-size:14px;}
+.konf{position:fixed;top:-30px;font-size:22px;pointer-events:none;z-index:60;animation:fall 2.6s ease-in forwards;}
+@keyframes fall{to{transform:translateY(105vh) rotate(540deg);opacity:.2;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div id="top"></div>
+<nav class="tabs" id="tabs"></nav>
+<div class="content" id="main"></div>
+</div>
+<script src="../assets/cockpit.js"></script>
+<script src="logic.js"></script>
+<script>
+(function(){
+"use strict";
+var C=window.Cockpit,Z=window.ZAEHLER,AREA="zaehler",DAY=Z.DAY;
+C.registerMerge(AREA,Z.merge);
+var data=Z.norm(C.getLocal(AREA,Z.blank));
+var st={tab:"start",neu:null,flash:null,feier:[],aw:null,vf:"alle",edit:null,thEdit:null,sEdit:null,undo:null};
+
+function persist(){data._summary=Z.summary(data,Date.now());C.save(AREA,data);}
+function esc(s){return C.esc(s);}
+function jsq(s){return String(s).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;");}
+function flash(t,warn){st.flash={t:t,warn:!!warn};render();clearTimeout(flash.tm);flash.tm=setTimeout(function(){st.flash=null;st.undo=null;render();},warn?5000:6000);}
+function p2(n){return (n<10?"0":"")+n;}
+function lokal(ts){var d=new Date(ts);return d.getFullYear()+"-"+p2(d.getMonth()+1)+"-"+p2(d.getDate())+"T"+p2(d.getHours())+":"+p2(d.getMinutes());}
+function wann(ts){var d=new Date(ts);return Z.WT[(d.getDay()+6)%7]+" "+p2(d.getDate())+"."+p2(d.getMonth()+1)+"."+(d.getFullYear()!==new Date().getFullYear()?d.getFullYear():"")+" "+p2(d.getHours())+":"+p2(d.getMinutes());}
+function thema(id){return data.themen[id];}
+
+/* ---------- Rahmen ---------- */
+function render(){
+  document.getElementById("top").innerHTML=C.topbar({title:"ThingCounter",icon:"🎯",sub:"Serien · Rekorde · Auswertung",accent:"#a855f7",accent2:"#7c3aed",eye:false});C.paintStatus();
+  var tabs=[["start","🎯 Serien"],["monate","📅 Monate"],["auswertung","📊 Auswertung"],["verlauf","🕘 Verlauf"],["einst","⚙️"]];
+  document.getElementById("tabs").innerHTML=tabs.map(function(t){return '<button class="tab'+(st.tab===t[0]?" on":"")+'" onclick="Z2.tab(\''+t[0]+'\')">'+t[1]+"</button>";}).join("");
+  var h="";if(st.flash)h+='<div class="flash'+(st.flash.warn?" warn":"")+'">'+esc(st.flash.t)+(st.undo?' · <a href="#" style="color:#fff" onclick="Z2.undo();return false">Rückgängig</a>':"")+"</div>";
+  if(!Z.themenListe(data).length&&st.tab!=="einst")h+='<div class="empty"><div class="big">🎯</div>Noch keine Zähler.<br><span class="small">Unter ⚙️ eine Datei einlesen (Export aus „How Long Since“ oder Startdatei) oder Zähler anlegen.</span><br><button class="btn" style="margin-top:14px;background:#a855f7" onclick="Z2.tab(\'einst\')">Einrichten</button></div>';
+  else h+=({start:vStart,monate:vMonate,auswertung:vAuswertung,verlauf:vVerlauf,einst:vEinst}[st.tab])();
+  document.getElementById("main").innerHTML=h;
+}
+
+/* ---------- Serien + Erfassen ---------- */
+function ring(r){var R=46,U=2*Math.PI*R,q=r.neuerRekord?1:Math.max(0,Math.min(1,r.anteil));
+  return '<svg viewBox="0 0 108 108"><circle cx="54" cy="54" r="'+R+'" fill="none" stroke="#1e2a4a" stroke-width="10"/>'+
+    '<circle cx="54" cy="54" r="'+R+'" fill="none" stroke="'+r.farbe+'" stroke-width="10" stroke-linecap="round" stroke-dasharray="'+(U*q).toFixed(1)+" "+U.toFixed(1)+'"/></svg>';}
+/* Balken der letzten Serien, Höhe = Länge, Farbe wie die Ampel bezogen auf den Rekord; rechts die laufende */
+function verlaufChart(r){var l=r.abst.filter(function(a){return a.ms>=6*36e5;}).slice(-18),W=340,H=90,pB=14,n=l.length+1;if(n<2)return "";
+  var mx=Math.max(r.rekord,r.aktuell||0)||1,bw=Math.min(16,(W-10)/n*0.7),pT=12,s='<svg viewBox="0 0 '+W+" "+H+'" width="100%" role="img" style="margin-top:10px;max-width:560px;display:block">';
+  var y=function(ms){return pT+(H-pB-pT)*(1-ms/mx);},cx=function(i){return 5+(W-10)*(i+.5)/n;};
+  s+='<line x1="0" x2="'+W+'" y1="'+y(r.rekord)+'" y2="'+y(r.rekord)+'" stroke="#a855f7" stroke-dasharray="4 3" opacity=".7"/><text x="'+(W-2)+'" y="'+(y(r.rekord)-3)+'" fill="#c4b5fd" font-size="9" text-anchor="end">Rekord '+Z.tageText(r.rekord)+" T</text>";
+  l.forEach(function(a,i){var hh=(H-pB)-y(a.ms);s+='<rect x="'+(cx(i)-bw/2)+'" y="'+y(a.ms)+'" width="'+bw+'" height="'+Math.max(1,hh)+'" rx="3" fill="'+Z.farbe(a.ms,r.rekord)+'" opacity=".85"><title>'+esc(Z.dauerText(a.ms)+" bis "+wann(a.bis))+"</title></rect>";});
+  var a=r.aktuell||0,hh2=(H-pB)-y(a);s+='<rect x="'+(cx(n-1)-bw/2)+'" y="'+y(a)+'" width="'+bw+'" height="'+Math.max(1,hh2)+'" rx="3" fill="'+r.farbe+'" stroke="#fff" stroke-width="1.5"><title>läuft: '+esc(Z.dauerText(a))+"</title></rect>";
+  s+='<text x="'+cx(n-1)+'" y="'+(H-2)+'" fill="#cbd5e1" font-size="9" text-anchor="middle">jetzt</text><text x="'+cx(0)+'" y="'+(H-2)+'" fill="#5c7aaa" font-size="9" text-anchor="middle">früher</text>';
+  return s+"</svg>";}
+function serienKarte(s){var r=Z.serie(data,s,Date.now()),d=r.aktuell==null?null:r.aktuell/DAY;
+  var stat=r.aktuell==null?'<span class="stat">noch kein Eintrag</span>':r.neuerRekord?'<span class="stat rek">🏆 Neuer Rekord – '+Z.dauerText(r.aktuell-r.rekord)+" über der bisherigen Bestzeit</span>":
+    r.rekord?'<span class="stat">noch '+Z.dauerText(r.bisRekord)+" bis zum Rekord</span>":"";
+  var h='<div class="sc" style="--f:'+r.farbe+'"><div class="top"><div class="ring">'+ring(r)+'<div class="mid"><div class="d">'+(d==null?"–":Z.tageText(r.aktuell))+'</div><div class="u">'+(d!=null&&d<1?esc(Z.dauerText(r.aktuell)):"Tage")+"</div></div></div>"+
+    '<div class="inf"><b>'+esc(s.name)+'</b><div class="s">'+(r.letzte?"zuletzt "+esc(wann(r.letzte)):"")+(r.rekord?"<br>Rekord: "+esc(Z.dauerText(r.rekord)):"")+(r.naechste&&d!=null?"<br>Nächste Stufe "+r.naechste[1]+" "+r.naechste[0]+(r.naechste[0]===1?" Tag":" Tage")+" in "+esc(Z.dauerText(r.naechste[0]*DAY-r.aktuell)):"")+"</div>"+stat+"</div></div>";
+  h+='<div class="badges">'+Z.STUFEN.filter(function(x,i){var idx=Z.STUFEN.indexOf(r.naechste||[]);return idx<0||i<=idx+2;}).map(function(x){var ok=d!=null&&d>=x[0];return '<span class="'+(ok?"":"aus")+'" title="'+x[0]+' Tage">'+x[1]+"<small>"+x[0]+"</small></span>";}).join("")+"</div>";
+  h+=verlaufChart(r);
+  if(r.top.length)h+='<div class="note" style="margin-top:6px">Längste Serien: '+r.top.map(function(a,i){return ["🥇","🥈","🥉"][i]+" "+esc(Z.dauerText(a.ms))+" (bis "+esc(wann(a.bis).replace(/ \d\d:\d\d$/,""))+")";}).join(" · ")+(r.n90||r.v90?" · Einträge letzte 90 Tage: "+r.n90+" (davor "+r.v90+")":"")+"</div>";
+  h+='<div class="quick">'+(s.themen||[]).map(function(id){var t=thema(id);return t&&!t.del?'<button class="mini" onclick="Z2.neu(\''+jsq(id)+'\')">＋ '+esc(t.name)+"</button>":"";}).join("")+"</div>";
+  if(st.neu&&(s.themen||[]).indexOf(st.neu)>-1)h+=neuForm();
+  return h+"</div>";}
+function neuForm(){var t=thema(st.neu);if(!t)return "";
+  return '<div class="box"><div class="lbl">'+esc(t.name)+' – wann?</div><div class="g2"><input class="inp" id="zNeuT" type="datetime-local" value="'+lokal(Date.now())+'"><input class="inp" id="zNeuN" placeholder="Notiz (optional)"></div>'+
+    '<div style="display:flex;gap:8px;margin-top:10px"><button class="btn" style="background:#a855f7;padding:10px 16px;font-size:14px" onclick="Z2.speichern()">Speichern</button><button class="mini" onclick="Z2.neu(null)">Abbrechen</button></div></div>';}
+function vStart(){var h="";
+  st.feier.forEach(function(f){h+='<div class="feier">'+esc(f)+"</div>";});
+  Z.serienListe(data).forEach(function(s){h+=serienKarte(s);});
+  /* alle Zähler erfassen */
+  var inS={};Z.serienListe(data).forEach(function(s){(s.themen||[]).forEach(function(id){inS[id]=1;});});
+  var rest=Z.themenListe(data),grp=null,inner="";
+  h+='<div class="panel"><h3>＋ Erfassen</h3><div class="note" style="margin-bottom:4px">Antippen, Uhrzeit ist vorausgefüllt (änderbar).</div>';
+  rest.forEach(function(t){if(t.gruppe!==grp){if(inner)h+='<div class="tb">'+inner+"</div>";inner="";grp=t.gruppe;if(grp)h+='<div class="grp">'+esc(grp)+"</div>";}
+    var l=Z.zeiten(data,[t.id]),last=l.length?l[l.length-1]:null;
+    inner+='<button class="'+(st.neu===t.id?"on":"")+'" onclick="Z2.neu(\''+jsq(t.id)+'\')">'+esc(t.name)+"<small>"+(last?"vor "+esc(Z.dauerText(Date.now()-last)):"noch nie")+"</small></button>";});
+  if(inner)h+='<div class="tb">'+inner+"</div>";
+  if(st.neu&&!inS[st.neu])h+=neuForm();
+  return h+"</div>";}
+
+/* ---------- Monatsübersicht ---------- */
+function heat(n,mx){if(!n)return "";var q=mx?n/mx:0;return "background:rgba(168,85,247,"+(0.15+0.6*q).toFixed(2)+");color:#fff";}
+function vMonate(){var n=st.mAnz||12,m=Z.monate(data,n,Date.now()),mx={};
+  m.spalten.forEach(function(s){mx[s.id]=Math.max.apply(null,m.monate.map(function(x){return x.c[s.id]||0;}).concat([0]));});
+  var h='<div class="filt">'+[6,12,24].map(function(k){return '<button class="pill'+(n===k?" on":"")+'" onclick="Z2.mAnz('+k+')">'+k+" Monate</button>";}).join("")+"</div>";
+  h+='<div class="panel"><h3>📅 Anzahl je Monat</h3><table class="mt"><tr><th>Monat</th>'+m.spalten.map(function(s){return "<th>"+esc(s.name)+(s.serie?" ⏱":"")+"</th>";}).join("")+"</tr>"+
+    m.monate.map(function(x){return "<tr><td>"+esc(x.name)+"</td>"+m.spalten.map(function(s){var v=x.c[s.id]||0;return '<td><i style="'+heat(v,mx[s.id])+'">'+(v||"·")+"</i></td>";}).join("")+"</tr>";}).join("")+
+    "<tr><td><b>Ø / Monat</b></td>"+m.spalten.map(function(s){var sum=m.monate.reduce(function(a,x){return a+(x.c[s.id]||0);},0);return "<td><b>"+String(Math.round(sum/n*10)/10).replace(".",",")+"</b></td>";}).join("")+"</tr></table>"+
+    '<div class="note" style="margin-top:8px">⏱ = Serie (Summe ihrer Zähler). Je kräftiger die Farbe, desto mehr im Vergleich zum stärksten Monat dieser Spalte.</div></div>';
+  /* Balken je Spalte */
+  m.spalten.forEach(function(s){if(!m.monate.some(function(x){return x.c[s.id];}))return;var pts=m.monate.slice().reverse().map(function(x){return {label:x.name,value:x.c[s.id]||0,color:s.serie?"#a855f7":"#38bdf8"};});
+    h+='<div class="panel"><h3>'+esc(s.name)+"</h3>"+C.barChart(pts,{h:150,ganz:true,fmt:function(v){return String(Math.round(v));}})+"</div>";});
+  return h;}
+
+/* ---------- Auswertung Wochentag / Uhrzeit ---------- */
+function auswahlListe(){return Z.serienListe(data).map(function(s){return {id:"s:"+s.id,name:"⏱ "+s.name,themen:s.themen||[]};})
+  .concat(Z.themenListe(data).map(function(t){return {id:"t:"+t.id,name:t.name,themen:[t.id]};}));}
+function vAuswertung(){var l=auswahlListe();if(!st.aw||!l.some(function(x){return x.id===st.aw;}))st.aw=l[0]&&l[0].id;var a=l.filter(function(x){return x.id===st.aw;})[0];
+  var h='<div class="filt">'+l.map(function(x){return '<button class="pill'+(x.id===st.aw?" on":"")+'" onclick="Z2.aw(\''+jsq(x.id)+'\')">'+esc(x.name)+"</button>";}).join("")+"</div>";
+  if(!a)return h;var v=Z.verteilung(data,a.themen);
+  var wmax=v.wt.indexOf(Math.max.apply(null,v.wt)),smax=v.std.indexOf(Math.max.apply(null,v.std));
+  var ab=v.std.slice(17,24).reduce(function(s,x){return s+x;},0);
+  h+='<div class="kz"><div><b>'+v.n+"</b><span>Einträge gesamt</span></div><div><b>"+String(Math.round(v.proMonat*10)/10).replace(".",",")+"</b><span>Ø pro Monat</span></div>"+
+    "<div><b>"+(v.n?Z.WT[wmax]:"–")+"</b><span>häufigster Wochentag</span></div><div><b>"+(v.n?smax+"–"+(smax+1)+" Uhr":"–")+"</b><span>häufigste Uhrzeit</span></div></div>";
+  h+='<div class="panel"><h3>Wochentag</h3>'+C.barChart(v.wt.map(function(n,i){return {label:Z.WT[i],value:n,color:i>=4?"#a855f7":"#7c3aed"};}),{h:160,ganz:true,fmt:function(x){return String(Math.round(x));}})+
+    '<div class="note">'+(v.n?Math.round(100*(v.wt[4]+v.wt[5]+v.wt[6])/v.n)+" % von Freitag bis Sonntag.":"")+"</div></div>";
+  h+='<div class="panel"><h3>Uhrzeit (Stunde des Tages)</h3>'+C.barChart(v.std.map(function(n,i){return {label:String(i),value:n,color:i>=17?"#a855f7":"#38bdf8"};}),{h:160,ganz:true,fmt:function(x){return String(Math.round(x));}})+
+    '<div class="note">'+(v.n?Math.round(100*ab/v.n)+" % zwischen 17 und 24 Uhr.":"")+"</div></div>";
+  return h;}
+
+/* ---------- Verlauf ---------- */
+function vVerlauf(){var th=Z.themenListe(data),f=st.vf;
+  var E=Z.aktiv(data.eintraege).filter(function(e){return thema(e.thema)&&!thema(e.thema).del&&(f==="alle"||e.thema===f);}).sort(function(a,b){return b.ts-a.ts;});
+  var h='<div class="filt"><button class="pill'+(f==="alle"?" on":"")+'" onclick="Z2.vf(\'alle\')">Alle</button>'+th.map(function(t){return '<button class="pill'+(f===t.id?" on":"")+'" onclick="Z2.vf(\''+jsq(t.id)+'\')">'+esc(t.name)+"</button>";}).join("")+"</div>";
+  var max=st.vAlle?99999:60;
+  h+='<div class="panel"><h3>🕘 Einträge ('+E.length+")</h3>"+(E.length?E.slice(0,max).map(function(e){var id=jsq(e.id);
+    return '<div class="row"><div class="l">'+esc(thema(e.thema).name)+"<span>"+esc(wann(e.ts))+(e.note?" · "+esc(e.note):"")+'</span></div><button class="mini" onclick="Z2.edit(\''+id+'\')">✏️</button><button class="mini" onclick="Z2.del(\''+id+'\')">✕</button></div>'+
+      (st.edit===e.id?'<div class="box"><div class="g2"><input class="inp" id="zEdT" type="datetime-local" value="'+lokal(e.ts)+'"><input class="inp" id="zEdN" value="'+esc(e.note||"")+'" placeholder="Notiz"></div><div style="display:flex;gap:8px;margin-top:8px"><button class="mini ok" onclick="Z2.editOk(\''+id+'\')">Speichern</button><button class="mini" onclick="Z2.edit(null)">Abbrechen</button></div></div>':"");}).join(""):'<div class="note">Keine Einträge.</div>')+
+    (E.length>max?'<button class="btn ghost full" style="margin-top:8px" onclick="Z2.vAlle()">Alle '+E.length+" zeigen</button>":"")+"</div>";
+  return h;}
+
+/* ---------- Einstellungen ---------- */
+function vEinst(){var th=Z.themenListe(data),sl=Z.serienListe(data);
+  var h='<div class="panel"><h3>📥 Datei einlesen</h3><div class="note" style="margin-bottom:10px">Export aus der App „How Long Since“ oder eine ThingCounter-Startdatei. Schon vorhandene Einträge werden erkannt und nicht doppelt übernommen.</div>'+
+    '<label class="btn" style="display:inline-block;cursor:pointer;background:#a855f7">📂 Datei wählen<input type="file" accept=".json,application/json" style="display:none" onchange="Z2.imp(this)"></label></div>';
+  h+='<div class="panel"><h3>⏱ Serien</h3><div class="note" style="margin-bottom:8px">Eine Serie läuft, solange keiner ihrer Zähler erfasst wird – mit Farbe, Rekord und Meilensteinen. Zähler ohne Serie erscheinen in der Monatsübersicht.</div>'+
+    sl.map(function(s){var id=jsq(s.id);return '<div class="row"><div class="l">'+esc(s.name)+"<span>"+(s.themen||[]).map(function(t){return thema(t)?esc(thema(t).name):"";}).filter(Boolean).join(", ")+'</span></div><button class="mini" onclick="Z2.sEdit(\''+id+'\')">✏️</button></div>'+(st.sEdit===s.id?serieForm(s):"");}).join("")+
+    (st.sEdit==="__neu"?serieForm({id:"__neu",name:"",themen:[]}):'<button class="mini" style="margin-top:8px" onclick="Z2.sEdit(\'__neu\')">＋ Serie anlegen</button>')+"</div>";
+  h+='<div class="panel"><h3>🎯 Zähler</h3>'+th.map(function(t){var id=jsq(t.id),n=Z.zeiten(data,[t.id]).length;return '<div class="row"><div class="l">'+esc(t.name)+"<span>"+(t.gruppe?esc(t.gruppe)+" · ":"")+n+' Einträge</span></div><button class="mini" onclick="Z2.thEdit(\''+id+'\')">✏️</button></div>'+(st.thEdit===t.id?themaForm(t):"");}).join("")+
+    (st.thEdit==="__neu"?themaForm({id:"__neu",name:"",gruppe:""}):'<button class="mini" style="margin-top:8px" onclick="Z2.thEdit(\'__neu\')">＋ Zähler anlegen</button>')+"</div>";
+  h+='<div class="note">Sichtbar ist der ThingCounter nur hier. Auf der Startseite steht eine Kachel ohne Namen; in Wochenvorschau und Mitteilungen taucht nichts auf.</div>';
+  return h;}
+function serieForm(s){var id=jsq(s.id);
+  return '<div class="box"><div class="lbl">Name</div><input class="inp" id="zSN" value="'+esc(s.name)+'" placeholder="z. B. Süßigkeiten">'+
+    '<div class="lbl" style="margin-top:8px">Diese Zähler beenden die Serie</div>'+Z.themenListe(data).map(function(t){return '<label class="note" style="display:flex;gap:8px;align-items:center;font-size:13px;color:#e2e8f0;padding:3px 0"><input type="checkbox" class="zST" value="'+esc(t.id)+'"'+((s.themen||[]).indexOf(t.id)>-1?" checked":"")+"> "+esc(t.name)+"</label>";}).join("")+
+    '<div style="display:flex;gap:8px;margin-top:10px"><button class="mini ok" onclick="Z2.sOk(\''+id+'\')">Speichern</button><button class="mini" onclick="Z2.sEdit(null)">Abbrechen</button>'+(s.id!=="__neu"?'<button class="mini" style="color:#f87171" onclick="Z2.sDel(\''+id+'\')">Serie löschen</button>':"")+"</div></div>";}
+function themaForm(t){var id=jsq(t.id);
+  return '<div class="box"><div class="g2"><div><div class="lbl">Name</div><input class="inp" id="zTN" value="'+esc(t.name)+'"></div><div><div class="lbl">Gruppe</div><input class="inp" id="zTG" value="'+esc(t.gruppe||"")+'" placeholder="optional"></div></div>'+
+    '<div style="display:flex;gap:8px;margin-top:10px"><button class="mini ok" onclick="Z2.thOk(\''+id+'\')">Speichern</button><button class="mini" onclick="Z2.thEdit(null)">Abbrechen</button>'+(t.id!=="__neu"?'<button class="mini" style="color:#f87171" onclick="Z2.thDel(\''+id+'\')">Zähler löschen</button>':"")+"</div></div>";}
+
+/* ---------- Feiern: neue Stufe oder neuer Rekord seit dem letzten Besuch (je Gerät gemerkt) ---------- */
+function pruefeFeier(){st.feier=[];var neu=false;
+  Z.serienListe(data).forEach(function(s){var r=Z.serie(data,s,Date.now());if(r.letzte==null)return;var key="cockpit:zaehler:feier:"+s.id,g=null;
+    try{g=JSON.parse(localStorage.getItem(key));}catch(e){}
+    if(!g||g.letzte!==r.letzte){g={letzte:r.letzte,stufe:r.stufe?r.stufe[0]:0,rek:r.neuerRekord};try{localStorage.setItem(key,JSON.stringify(g));}catch(e){}return;}
+    if(r.stufe&&r.stufe[0]>(g.stufe||0)){st.feier.push("🎉 "+s.name+": "+r.stufe[1]+" "+r.stufe[0]+" Tage geschafft!");g.stufe=r.stufe[0];neu=true;}
+    if(r.neuerRekord&&!g.rek){st.feier.push("🏆 "+s.name+": neuer Rekord! Bisher "+Z.dauerText(r.rekord)+".");g.rek=true;neu=true;}
+    try{localStorage.setItem(key,JSON.stringify(g));}catch(e){}});
+  if(neu)konfetti();}
+function konfetti(){var em=["🎉","✨","🎊","⭐","💜","🏆"];for(var i=0;i<28;i++){var d=document.createElement("div");d.className="konf";d.textContent=em[i%em.length];
+  d.style.left=Math.round(Math.random()*100)+"vw";d.style.animationDelay=(Math.random()*0.8).toFixed(2)+"s";document.body.appendChild(d);setTimeout(function(x){return function(){x.remove();};}(d),3600);}}
+
+window.Z2={
+  tab:function(t){st.tab=t;st.neu=null;st.edit=null;render();window.scrollTo(0,0);},
+  neu:function(id){st.neu=st.neu===id?null:id;render();var el=document.getElementById("zNeuT");if(el)el.scrollIntoView({block:"center"});},
+  speichern:function(){var t=st.neu,el=document.getElementById("zNeuT"),n=document.getElementById("zNeuN");if(!t||!el)return;
+    var ts=el.value?new Date(el.value).getTime():Date.now();if(isNaN(ts)){flash("⚠ Datum/Uhrzeit prüfen",true);return;}
+    if(ts>Date.now()+5*60000){flash("⚠ Der Zeitpunkt liegt in der Zukunft",true);return;}
+    var id=Z.neueId("e");data.eintraege[id]={id:id,thema:t,ts:ts,note:n?n.value.trim():"",t:Date.now()};st.neu=null;st.undo=id;persist();
+    flash("✓ "+thema(t).name+" – "+wann(ts)+" erfasst");},
+  undo:function(){var id=st.undo;if(!id||!data.eintraege[id])return;data.eintraege[id]={id:id,del:true,t:Date.now()};st.undo=null;persist();flash("Rückgängig gemacht");st.undo=null;},
+  mAnz:function(n){st.mAnz=n;render();},
+  aw:function(id){st.aw=id;render();},
+  vf:function(id){st.vf=id;st.edit=null;render();},
+  vAlle:function(){st.vAlle=true;render();},
+  edit:function(id){st.edit=st.edit===id?null:id;render();},
+  editOk:function(id){var e=data.eintraege[id],el=document.getElementById("zEdT"),n=document.getElementById("zEdN");if(!e||!el)return;var ts=new Date(el.value).getTime();if(isNaN(ts)){flash("⚠ Datum/Uhrzeit prüfen",true);return;}
+    e.ts=ts;e.note=n?n.value.trim():"";e.t=Date.now();st.edit=null;persist();flash("✓ Geändert");},
+  del:function(id){if(!confirm("Eintrag löschen?"))return;data.eintraege[id]={id:id,del:true,t:Date.now()};persist();render();},
+  imp:function(inp){var f=inp.files&&inp.files[0];inp.value="";if(!f)return;C.readFile(f).then(function(t){var o=JSON.parse(t),r=Z.importDatei(data,o);persist();pruefeFeier();
+      flash("✓ Eingelesen: "+r.neu+" neue Einträge"+(r.doppelt?", "+r.doppelt+" schon vorhanden":"")+(r.themen?", "+r.themen+" Zähler":"")+(r.serien?", "+r.serien+" Serien":""));})
+    .catch(function(e){flash("⚠ "+(e.message||"Datei konnte nicht gelesen werden"),true);});},
+  sEdit:function(id){st.sEdit=st.sEdit===id?null:id;render();},
+  sOk:function(id){var n=(document.getElementById("zSN")||{}).value||"",l=[].slice.call(document.querySelectorAll(".zST:checked")).map(function(x){return x.value;});
+    if(!n.trim()||!l.length){flash("⚠ Name und mindestens einen Zähler wählen",true);return;}
+    if(id==="__neu")id=Z.neueId("s");var s=data.serien[id]||{id:id,ord:Z.serienListe(data).length+1};s.name=n.trim();s.themen=l;s.t=Date.now();data.serien[id]=s;st.sEdit=null;persist();flash("✓ Serie gespeichert");},
+  sDel:function(id){if(!confirm("Serie löschen? Die Einträge bleiben erhalten."))return;data.serien[id]={id:id,del:true,t:Date.now()};st.sEdit=null;persist();render();},
+  thEdit:function(id){st.thEdit=st.thEdit===id?null:id;render();},
+  thOk:function(id){var n=(document.getElementById("zTN")||{}).value||"",g=(document.getElementById("zTG")||{}).value||"";if(!n.trim()){flash("⚠ Bitte einen Namen eingeben",true);return;}
+    if(id==="__neu")id=Z.neueId("t");var t=data.themen[id]||{id:id,ord:999};t.name=n.trim();t.gruppe=g.trim();t.t=Date.now();data.themen[id]=t;st.thEdit=null;persist();flash("✓ Zähler gespeichert");},
+  thDel:function(id){if(!confirm("Zähler löschen? Seine Einträge werden nicht mehr angezeigt."))return;data.themen[id]={id:id,del:true,t:Date.now()};st.thEdit=null;persist();render();}
+};
+pruefeFeier();render();
+/* Anzeige jede Minute auffrischen (laufende Serien), aber nicht während einer Eingabe */
+setInterval(function(){var a=document.activeElement;if(a&&/INPUT|SELECT|TEXTAREA/.test(a.tagName))return;if(st.neu||st.edit||st.sEdit||st.thEdit)return;render();},60000);
+C.autoPull([AREA],function(a,d){data=Z.norm(d);pruefeFeier();render();});
+})();
+</script>
+</body>
+</html>

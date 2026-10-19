@@ -40,16 +40,37 @@ function maskText(t){if(!priv()||t==null)return t;return String(t).replace(/[+�
 function eyeButton(){var p=priv();return '<button id="cp-eye" class="eye" onclick="Cockpit.togglePriv()" title="'+(p?"Beträge anzeigen":"Beträge ausblenden")+'" aria-label="Beträge ein- oder ausblenden">'+(p?"🙈":"👁")+'</button>';}
 try{document.documentElement.classList.toggle("priv",priv());}catch(e){}
 
-/* ---------- Gerätesperre: Entsperren mit PIN / Fingerabdruck / Gesicht des Geräts (WebAuthn) ----------
-   Eine Zugangssperre für die Oberfläche: pro Gerät wird ein Schlüssel im Sicherheitsspeicher des Geräts angelegt;
-   beim Start muss das Gerät die Person bestätigen (userVerification "required"). */
-var LOCK_KEY="cockpit:lock",UNL_KEY="cockpit:unlocked",HID_KEY="cockpit:hiddenAt",RELOCK_MS=5*60000;
+/* ---------- Sperre ----------
+   a) Cockpit-PIN (pro Gerät): nur ein gesalzener PBKDF2-Hash liegt im Browser.
+   b) alternativ Gerätesperre per WebAuthn (PIN/Fingerabdruck des Geräts).
+   Entsperrt gilt je Browser-Sitzung; automatisch wieder gesperrt nach X Minuten ohne Bedienung oder im Hintergrund.
+   Eigenständige Apps ohne Sync (sport/) bleiben ohne Sperre. */
+var lockKeys=null,LOCK_KEY="cockpit:lock",PIN_KEY="cockpit:pin",FAIL_KEY="cockpit:pinFail",UNL_KEY="cockpit:unlocked",HID_KEY="cockpit:hiddenAt",ACT_KEY="cockpit:aktiv";
 function lockCfg(){try{return JSON.parse(localStorage.getItem(LOCK_KEY))||null;}catch(e){return null;}}
+function pinCfg(){try{return JSON.parse(localStorage.getItem(PIN_KEY))||null;}catch(e){return null;}}
+function lockAktiv(){return !LOCAL_ONLY&&!!(pinCfg()||lockCfg());}
+function relockMs(){var p=pinCfg();return ((p&&+p.min)||5)*60000;}
 function lockSupported(){return !!(window.PublicKeyCredential&&navigator.credentials&&window.isSecureContext);}
+function pinSupported(){return !!(window.crypto&&crypto.subtle&&window.isSecureContext);}
 function rnd(n){var a=new Uint8Array(n);crypto.getRandomValues(a);return a;}
 function b64u(buf){var s="",b=new Uint8Array(buf);for(var i=0;i<b.length;i++)s+=String.fromCharCode(b[i]);return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");}
 function unb64u(s){s=s.replace(/-/g,"+").replace(/_/g,"/");while(s.length%4)s+="=";var b=atob(s),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a;}
 function isUnlocked(){try{return sessionStorage.getItem(UNL_KEY)==="1";}catch(e){return false;}}
+function markUnlocked(){try{sessionStorage.setItem(UNL_KEY,"1");sessionStorage.setItem(ACT_KEY,String(Date.now()));}catch(e){}}
+/* --- PIN --- */
+function pinHash(pin,salt,it){return crypto.subtle.importKey("raw",new TextEncoder().encode(String(pin)),"PBKDF2",false,["deriveBits"])
+  .then(function(k){return crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:salt,iterations:it},k,256);}).then(b64u);}
+function pinOk(pin){return /^\d{4,8}$/.test(String(pin||""));}
+function pinSet(pin,min){if(!pinSupported())return Promise.reject(new Error("Dieser Browser unterstützt die PIN-Sperre nicht."));
+  if(!pinOk(pin))return Promise.reject(new Error("Die PIN muss aus 4 bis 8 Ziffern bestehen."));
+  var salt=rnd(16),it=150000,old=pinCfg();
+  return pinHash(pin,salt,it).then(function(h){localStorage.setItem(PIN_KEY,JSON.stringify({s:b64u(salt),h:h,it:it,n:String(pin).length,min:+min||(old&&old.min)||5,created:Date.now()}));
+    localStorage.removeItem(FAIL_KEY);markUnlocked();return true;});}
+function pinCheck(pin){var c=pinCfg();if(!c)return Promise.resolve(true);return pinHash(pin,unb64u(c.s),c.it).then(function(h){return h===c.h;});}
+function pinRemove(pin){return pinCheck(pin).then(function(ok){if(!ok)throw new Error("PIN falsch.");localStorage.removeItem(PIN_KEY);localStorage.removeItem(FAIL_KEY);return true;});}
+function pinMinuten(min){var c=pinCfg();if(!c)return;c.min=+min||5;localStorage.setItem(PIN_KEY,JSON.stringify(c));}
+function failState(){try{return JSON.parse(localStorage.getItem(FAIL_KEY))||{n:0,until:0};}catch(e){return {n:0,until:0};}}
+/* --- Gerätesperre (WebAuthn) --- */
 function lockEnable(){
   if(!lockSupported())return Promise.reject(new Error("Dieser Browser unterstützt die Gerätesperre nicht."));
   return PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().then(function(ok){
@@ -57,39 +78,70 @@ function lockEnable(){
     return navigator.credentials.create({publicKey:{rp:{name:"Cockpit"},user:{id:rnd(16),name:"cockpit",displayName:"Cockpit"},challenge:rnd(32),
       pubKeyCredParams:[{type:"public-key",alg:-7},{type:"public-key",alg:-257}],timeout:60000,attestation:"none",
       authenticatorSelection:{authenticatorAttachment:"platform",userVerification:"required",residentKey:"discouraged"}}});
-  }).then(function(cred){localStorage.setItem(LOCK_KEY,JSON.stringify({id:b64u(cred.rawId),created:Date.now()}));sessionStorage.setItem(UNL_KEY,"1");return true;});
+  }).then(function(cred){localStorage.setItem(LOCK_KEY,JSON.stringify({id:b64u(cred.rawId),created:Date.now()}));markUnlocked();return true;});
 }
 function lockDisable(){try{localStorage.removeItem(LOCK_KEY);}catch(e){}}
-function unlock(){
+function unlockDevice(){
   var c=lockCfg();if(!c)return Promise.resolve(true);
   return navigator.credentials.get({publicKey:{challenge:rnd(32),timeout:60000,userVerification:"required",allowCredentials:[{type:"public-key",id:unb64u(c.id)}]}})
-    .then(function(a){if(!a)throw new Error("abgebrochen");sessionStorage.setItem(UNL_KEY,"1");hideLock();return true;});
+    .then(function(a){if(!a)throw new Error("abgebrochen");markUnlocked();hideLock();return true;});
 }
+/* --- Sperrbildschirm --- */
 function showLock(){
   document.documentElement.classList.add("locked");
   var ov=document.getElementById("cp-lock");
   if(!ov){ov=document.createElement("div");ov.id="cp-lock";(document.body||document.documentElement).appendChild(ov);}
+  var p=pinCfg();
+  if(p){
+    ov.innerHTML='<div class="lk"><div class="lk-ic">🔒</div><h2>Cockpit gesperrt</h2><p>PIN eingeben</p>'+
+      '<div class="lk-dots" id="cp-dots">'+new Array(p.n+1).join("<i></i>")+'</div>'+
+      '<div class="lk-pad">'+[1,2,3,4,5,6,7,8,9,"",0,"⌫"].map(function(k){return k===""?"<span></span>":'<button type="button" data-k="'+k+'">'+k+"</button>";}).join("")+"</div>"+
+      '<div class="lk-err" id="cp-lock-err"></div>'+
+      '<p class="lk-help">PIN vergessen? Website-Daten des Cockpits im Browser löschen und die Sync neu einrichten – deine Daten liegen weiter im privaten Daten-Repo.</p></div>';
+    var inp={value:""},busy=false;
+    var paint=function(){var d=document.querySelectorAll("#cp-dots i");for(var i=0;i<d.length;i++)d[i].className=i<inp.value.length?"on":"";};
+    var go=function(){var f=failState(),err=document.getElementById("cp-lock-err");if(busy)return;
+      if(f.until>Date.now()){err.textContent="Zu viele Fehlversuche – bitte "+Math.ceil((f.until-Date.now())/1000)+" s warten.";inp.value="";paint();return;}
+      var v=inp.value;busy=true;
+      pinCheck(v).then(function(ok){busy=false;inp.value="";paint();
+        if(ok){localStorage.removeItem(FAIL_KEY);markUnlocked();hideLock();return;}
+        f.n=(f.n||0)+1;if(f.n>=5)f.until=Date.now()+Math.min(900,30*Math.pow(2,f.n-5))*1000;localStorage.setItem(FAIL_KEY,JSON.stringify(f));
+        err.textContent="PIN falsch"+(f.n>=5?" – nächster Versuch in "+Math.round((f.until-Date.now())/1000)+" s":"");
+        var lk=ov.querySelector(".lk");if(lk){lk.classList.remove("wackel");void lk.offsetWidth;lk.classList.add("wackel");}});};
+    var tippe=function(k){if(busy)return;if(k==="⌫")inp.value=inp.value.slice(0,-1);else if(/^\d$/.test(k)&&inp.value.length<p.n)inp.value+=k;paint();if(inp.value.length===p.n)go();};
+    ov.querySelector(".lk-pad").addEventListener("click",function(e){var k=e.target&&e.target.getAttribute("data-k");if(k!=null)tippe(k);});
+    /* Tastatur am PC – unabhängig davon, welches Element den Fokus hat */
+    if(lockKeys)document.removeEventListener("keydown",lockKeys,true);
+    lockKeys=function(e){if(!document.getElementById("cp-lock"))return;if(/^\d$/.test(e.key))tippe(e.key);else if(e.key==="Backspace")tippe("⌫");else if(e.key==="Enter"&&inp.value.length>=4)go();else return;e.preventDefault();e.stopPropagation();};
+    document.addEventListener("keydown",lockKeys,true);
+    return;
+  }
   ov.innerHTML='<div class="lk"><div class="lk-ic">🔒</div><h2>Cockpit gesperrt</h2><p>Bestätige mit PIN, Fingerabdruck oder Gesicht deines Geräts.</p>'+
     '<button class="btn" id="cp-unlock">Entsperren</button><div class="lk-err" id="cp-lock-err"></div>'+
     '<p class="lk-help">Gerät neu oder Entsperren klappt dauerhaft nicht? Website-Daten des Cockpits im Browser löschen und die Sync neu einrichten.</p></div>';
   document.getElementById("cp-unlock").onclick=tryUnlock;
 }
-function hideLock(){document.documentElement.classList.remove("locked");var ov=document.getElementById("cp-lock");if(ov)ov.remove();}
+function hideLock(){document.documentElement.classList.remove("locked");var ov=document.getElementById("cp-lock");if(ov)ov.remove();
+  try{window.dispatchEvent(new CustomEvent("cockpit:unlocked"));}catch(e){}}
 function tryUnlock(){var e=document.getElementById("cp-lock-err");if(e)e.textContent="";
-  unlock().catch(function(err){if(e)e.textContent=(err&&err.name==="NotAllowedError")?"Abgebrochen oder nicht bestätigt – bitte erneut versuchen.":"Entsperren nicht möglich: "+(err&&err.message||err);});}
+  unlockDevice().catch(function(err){if(e)e.textContent=(err&&err.name==="NotAllowedError")?"Abgebrochen oder nicht bestätigt – bitte erneut versuchen.":"Entsperren nicht möglich: "+(err&&err.message||err);});}
+function lockNow(){try{sessionStorage.removeItem(UNL_KEY);}catch(e){}guard();}
 function guard(){
-  if(!lockCfg()||isUnlocked())return;
+  if(!lockAktiv()||isUnlocked())return;
   showLock();
-  /* direkt die Abfrage starten; manche Browser verlangen dafür einen Tipp – dann bleibt der Knopf */
-  setTimeout(function(){if(document.visibilityState==="visible")tryUnlock();},300);
+  if(!pinCfg())setTimeout(function(){if(document.visibilityState==="visible")tryUnlock();},300);
 }
-/* nach längerer Zeit im Hintergrund erneut sperren */
+/* Bedienung merken; nach X Minuten ohne Bedienung oder im Hintergrund wieder sperren */
+var actT=0;
+function aktiv(){var n=Date.now();if(n-actT<15000)return;actT=n;try{sessionStorage.setItem(ACT_KEY,String(n));}catch(e){}}
+["pointerdown","keydown","touchstart","wheel"].forEach(function(ev){window.addEventListener(ev,aktiv,{passive:true,capture:true});});
+setInterval(function(){if(!lockAktiv()||!isUnlocked()||document.hidden)return;var a=+(sessionStorage.getItem(ACT_KEY)||0);if(a&&Date.now()-a>relockMs())lockNow();},20000);
 document.addEventListener("visibilitychange",function(){
-  if(!lockCfg())return;
+  if(!lockAktiv())return;
   try{if(document.hidden){sessionStorage.setItem(HID_KEY,String(Date.now()));return;}
-    var h=+sessionStorage.getItem(HID_KEY)||0;if(h&&Date.now()-h>RELOCK_MS){sessionStorage.removeItem(UNL_KEY);guard();}}catch(e){}
+    var h=+sessionStorage.getItem(HID_KEY)||0;if(h&&Date.now()-h>relockMs())sessionStorage.removeItem(UNL_KEY);else aktiv();guard();}catch(e){}
 });
-if(lockCfg()&&!isUnlocked())document.documentElement.classList.add("locked");
+if(lockAktiv()&&!isUnlocked())document.documentElement.classList.add("locked");
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",guard);else guard();
 function int(n){return (n==null||isNaN(n))?"–":Math.round(n).toLocaleString("de-DE");}
 function parseNum(v){if(v==null)return NaN;if(typeof v==="number")return v;var s=String(v).trim().replace(/\s/g,"");if(s.indexOf(",")>-1&&s.indexOf(".")>-1)s=s.replace(/\./g,"").replace(",",".");else s=s.replace(",",".");return parseFloat(s);}
@@ -291,7 +343,7 @@ function topbar(o){
   return '<header class="topbar">'+
     (o.home===false?'':'<a class="home" href="'+base+'index.html" aria-label="Zur Startseite">⌂</a>')+
     '<div class="ttl"><b>'+(o.icon?o.icon+" ":"")+esc(o.title)+'</b>'+(o.sub?'<span>'+esc(o.sub)+'</span>':'')+'</div>'+
-    '<div class="right">'+(o.eye===false?"":eyeButton())+'<a id="cp-sync" class="sync" href="'+(o.syncHref||base+"einstellungen.html")+'"><i></i></a></div></header>';
+    '<div class="right">'+(lockAktiv()?'<button class="eye" onclick="Cockpit.lockNow()" title="Jetzt sperren" aria-label="Cockpit jetzt sperren">🔒</button>':"")+(o.eye===false?"":eyeButton())+'<a id="cp-sync" class="sync" href="'+(o.syncHref||base+"einstellungen.html")+'"><i></i></a></div></header>';
 }
 
 /* ---------------- Diagramme (SVG, ohne Bibliothek) ---------------- */
@@ -320,11 +372,11 @@ function barChart(points,o){
   if(!points.length)return '<div class="small muted">Noch keine Daten</div>';
   var vals=points.map(function(p){return p.value||0;});
   var mx=Math.max.apply(null,vals.concat([0])),mn=Math.min.apply(null,vals.concat([0]));if(mx===mn)mx=mn+1;
-  var span=(mx-mn)*1.12;mx=mn+span;
+  var span=(mx-mn)*1.12;mx=mn+span;if(o.ganz){mx=Math.max(3,Math.ceil(mx/3)*3);}
   var iW=W-pL-pR,iH=H-pT-pB,n=points.length,bw=Math.max(3,Math.min(40,iW/n*0.62));
   function cx(i){return pL+iW*(i+.5)/n;} function y(v){return pT+iH*(1-(v-mn)/(mx-mn));}
   var s='<svg viewBox="0 0 '+W+" "+H+'" width="100%" role="img">';
-  for(var g=0;g<=3;g++){var gv=mn+(mx-mn)*g/3,gy=y(gv);s+='<line x1="'+pL+'" y1="'+gy+'" x2="'+(W-pR)+'" y2="'+gy+'" stroke="#1e2a4a" stroke-dasharray="3 3"/><text x="'+(pL-5)+'" y="'+(gy+3)+'" fill="#5c7aaa" font-size="9" text-anchor="end">'+(o.money&&priv()?"":axisFmt(gv))+"</text>";}
+  for(var g=0;g<=3;g++){var gv=mn+(mx-mn)*g/3,gy=y(gv);s+='<line x1="'+pL+'" y1="'+gy+'" x2="'+(W-pR)+'" y2="'+gy+'" stroke="#1e2a4a" stroke-dasharray="3 3"/><text x="'+(pL-5)+'" y="'+(gy+3)+'" fill="#5c7aaa" font-size="9" text-anchor="end">'+(o.money&&priv()?"":(o.ganz?String(Math.round(gv)):axisFmt(gv)))+"</text>";}
   var every=Math.ceil(n/8),y0=y(0);
   points.forEach(function(p,i){var v=p.value||0,top=Math.min(y(v),y0),h=Math.abs(y(v)-y0);
     s+='<rect x="'+(cx(i)-bw/2)+'" y="'+top+'" width="'+bw+'" height="'+Math.max(0,h)+'" rx="3" fill="'+(p.color||o.color||"var(--accent2)")+'"><title>'+esc(p.label+": "+(o.fmt?o.fmt(v):num(v,2)))+"</title></rect>";
@@ -376,6 +428,7 @@ window.Cockpit={
   esc:esc,num:num,eur:eur,int:int,parseNum:parseNum,today:today,
   getConfig:getConfig,setConfig:setConfig,configured:configured,testConnection:testConnection,
   lockCfg:lockCfg,lockSupported:lockSupported,lockEnable:lockEnable,lockDisable:lockDisable,
+  pinCfg:pinCfg,pinSupported:pinSupported,pinSet:pinSet,pinCheck:pinCheck,pinRemove:pinRemove,pinMinuten:pinMinuten,pinOk:pinOk,lockAktiv:lockAktiv,lockNow:lockNow,
   priv:priv,setPriv:setPriv,togglePriv:togglePriv,eurRaw:eurRaw,maskText:maskText,eyeButton:eyeButton,
   getLocal:getLocal,save:save,registerMerge:registerMerge,versions:versions,versionAt:versionAt,getBackup:getBackup,pull:pull,push:push,autoPull:autoPull,
   onStatus:onStatus,paintStatus:paintStatus,topbar:topbar,

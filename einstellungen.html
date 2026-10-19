@@ -21,9 +21,10 @@
 var C=window.Cockpit;
 document.getElementById("top").innerHTML=C.topbar({title:"Einstellungen",icon:"⚙",sub:"Sync & Daten",accent:"#00bcd4",base:""});
 var msg=null,rsv=null;
-var AREAS=["energie","auto","edelmetall","finanzen","einkaeufe","ferienwohnung","haus","steuer","dokumente","vertraege","training"];
-var NAMES={energie:"Energie",auto:"Auto",edelmetall:"Edelmetalle",finanzen:"Finanzen",einkaeufe:"Einkäufe",ferienwohnung:"Ferienwohnung",haus:"Haus",steuer:"Steuer",dokumente:"Dokumente",vertraege:"Verträge & Fristen",training:"Training"};
+var AREAS=["energie","auto","edelmetall","finanzen","einkaeufe","ferienwohnung","haus","steuer","dokumente","vertraege","zaehler","training"];
+var NAMES={energie:"Energie",auto:"Auto",edelmetall:"Edelmetalle",finanzen:"Finanzen",einkaeufe:"Einkäufe",ferienwohnung:"Ferienwohnung",haus:"Haus",steuer:"Steuer",dokumente:"Dokumente",vertraege:"Verträge & Fristen",zaehler:"ThingCounter",training:"Training"};
 
+function kopf(){document.getElementById("top").innerHTML=C.topbar({title:"Einstellungen",icon:"⚙",sub:"Sync & Daten",accent:"#00bcd4",base:""});try{C.paintStatus();}catch(e){}}
 function render(){
   var c=C.getConfig();
   var h='';
@@ -34,11 +35,24 @@ function render(){
     '<div class="field"><label>Access-Token (Fine-grained)</label><input id="f_token" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="github_pat_…" value="'+C.esc(c.token)+'"></div>'+
     '<div class="row2"><button class="btn" style="background:#00bcd4" onclick="CP.saveCfg()">🔌 Speichern &amp; testen</button><button class="btn ghost" style="flex:0 0 auto" onclick="CP.logout()">Token entfernen</button></div>'+
     '</div>';
-  var lk=C.lockCfg();
-  h+='<div class="panel"><h3>🔒 Gerätesperre</h3><div class="small muted" style="margin-bottom:12px;line-height:1.6">Beim Start fragt das Cockpit nach der Displaysperre dieses Geräts (PIN, Fingerabdruck oder Gesicht; am PC Windows Hello). Nach mehr als 5 Minuten im Hintergrund wird erneut gesperrt. Gilt nur für dieses Gerät – auf jedem Gerät einmal aktivieren.</div>'+
+  var lk=C.lockCfg(),pc=C.pinCfg();
+  h+='<div class="panel"><h3>🔒 Sperre</h3><div class="small muted" style="margin-bottom:12px;line-height:1.6">Beim Start und nach einer Pause fragt das Cockpit nach deiner PIN. Die PIN gilt nur für dieses Gerät – am Handy und am PC jeweils einmal festlegen (gern dieselbe). Gespeichert wird nur ein verschlüsselter Prüfwert, nicht die PIN selbst.</div>'+
+    (pc?'<div style="color:#69f0ae;margin-bottom:10px">✓ PIN aktiv seit '+new Date(pc.created).toLocaleDateString("de-DE")+" ("+pc.n+' Stellen)</div>'+
+        '<div class="field"><label>Automatisch sperren nach</label><select onchange="CP.pinMin(this.value)">'+[1,2,5,10,15,30].map(function(m){return '<option value="'+m+'"'+((pc.min||5)===m?" selected":"")+">"+m+" Minute"+(m>1?"n":"")+" ohne Bedienung</option>";}).join("")+"</select></div>"+
+        '<details style="margin-top:6px"><summary class="small muted" style="cursor:pointer">PIN ändern oder entfernen</summary>'+
+          '<div class="field" style="margin-top:10px"><label>Aktuelle PIN</label><input id="pin0" type="password" inputmode="numeric" autocomplete="off"></div>'+
+          '<div class="field"><label>Neue PIN (4–8 Ziffern)</label><input id="pin1" type="password" inputmode="numeric" autocomplete="off"></div>'+
+          '<div class="field"><label>Neue PIN wiederholen</label><input id="pin2" type="password" inputmode="numeric" autocomplete="off"></div>'+
+          '<div class="row2"><button class="btn" onclick="CP.pinNeu(true)">PIN ändern</button><button class="btn ghost" style="flex:0 0 auto" onclick="CP.pinWeg()">PIN entfernen</button></div></details>'+
+        '<button class="btn ghost full" style="margin-top:10px" onclick="Cockpit.lockNow()">🔒 Jetzt sperren</button>'
+      :(C.pinSupported()?'<div class="field"><label>PIN festlegen (4–8 Ziffern)</label><input id="pin1" type="password" inputmode="numeric" autocomplete="off"></div>'+
+        '<div class="field"><label>PIN wiederholen</label><input id="pin2" type="password" inputmode="numeric" autocomplete="off"></div>'+
+        '<button class="btn" onclick="CP.pinNeu(false)">PIN-Sperre einschalten</button>':'<div class="small" style="color:#ffb74d">Dieser Browser unterstützt die PIN-Sperre nicht.</div>'))+
+    '<details style="margin-top:14px"'+(lk?" open":"")+'><summary class="small muted" style="cursor:pointer">Alternativ: Displaysperre des Geräts (Fingerabdruck, Windows Hello)</summary><div style="margin-top:10px">'+
     (lk?'<div style="color:#69f0ae;margin-bottom:10px">✓ Aktiv seit '+new Date(lk.created).toLocaleDateString("de-DE")+'</div><button class="btn ghost" onclick="CP.lockOff()">Gerätesperre ausschalten</button>'
-       :(C.lockSupported()?'<button class="btn" onclick="CP.lockOn()">Gerätesperre einschalten</button>':'<div class="small" style="color:#ffb74d">Dieser Browser unterstützt die Gerätesperre leider nicht.</div>'))+
-    '<div class="small muted" style="margin-top:12px;line-height:1.6">Hinweis: Eine Zugangssperre für die Oberfläche, keine Verschlüsselung. Deine Daten im privaten Repo sind zusätzlich durch den Token geschützt. Der Diskretionsmodus ist bei jedem Start automatisch wieder aktiv.</div></div>';
+       :(C.lockSupported()?'<button class="btn ghost" onclick="CP.lockOn()">Gerätesperre einschalten</button>':'<div class="small" style="color:#ffb74d">Dieser Browser unterstützt die Gerätesperre leider nicht.</div>'))+
+    (lk&&pc?'<div class="small muted" style="margin-top:6px">Ist beides eingerichtet, fragt das Cockpit nach der PIN.</div>':"")+"</div></details>"+
+    '<div class="small muted" style="margin-top:12px;line-height:1.6">Hinweis: Eine Zugangssperre für die Oberfläche, keine Verschlüsselung. Deine Daten im privaten Repo sind zusätzlich durch den Token geschützt.</div></div>';
   h+='<div class="panel"><h3>🔑 So erstellst du den Token</h3><div class="small" style="line-height:1.7">'+
     '1. Am besten im Browser: <b>github.com → Profilbild → Settings → Developer settings → Personal access tokens → Fine-grained tokens</b><br>'+
     '2. <b>Generate new token</b>, Name z. B. „Cockpit", Ablauf nach Wunsch (max. 1 Jahr)<br>'+
@@ -57,7 +71,7 @@ function render(){
     '<div class="row2"><button class="btn" style="background:#ff9800" onclick="CP.rsGo()">Übernehmen</button><button class="btn ghost" style="flex:0 0 auto" onclick="CP.rsCancel()">Abbrechen</button></div></div>';}
   h+='</div>';
   h+='<div class="panel"><h3>ℹ Info</h3><div class="small muted" style="line-height:1.7">Status: <span id="stat"></span><br>Gespeicherte Bereiche auf diesem Gerät: '+
-    ["energie","auto","edelmetall","finanzen","ferienwohnung","haus","steuer","dokumente","training"].filter(function(a){return C.getLocal(a,null)!=null;}).join(", ")+'</div></div>';
+    AREAS.filter(function(a){return C.getLocal(a,null)!=null;}).map(function(a){return NAMES[a]||a;}).join(", ")+'</div></div>';
   document.getElementById("main").innerHTML=h;
   var st=document.getElementById("stat");if(st){var el=document.getElementById("cp-sync");st.textContent=el?el.textContent:"";}
 }
@@ -77,6 +91,14 @@ window.CP={
     }).catch(function(e){msg={t:"⚠ "+e.message,warn:true};render();});
   },
   lockOn:function(){msg={t:"Bitte am Gerät bestätigen …"};render();C.lockEnable().then(function(){msg={t:"✓ Gerätesperre aktiv. Beim nächsten Start wird nach PIN oder Fingerabdruck gefragt."};render();},function(e){msg={t:"⚠ "+(e&&e.name==="NotAllowedError"?"Abgebrochen oder nicht bestätigt.":(e&&e.message||e)),warn:true};render();});},
+  pinNeu:function(aendern){var g=function(id){var el=document.getElementById(id);return el?el.value.trim():"";},p1=g("pin1"),p2=g("pin2");
+    if(!C.pinOk(p1)){msg={t:"⚠ Die PIN muss aus 4 bis 8 Ziffern bestehen.",warn:true};render();return;}
+    if(p1!==p2){msg={t:"⚠ Die beiden Eingaben stimmen nicht überein.",warn:true};render();return;}
+    (aendern?C.pinCheck(g("pin0")):Promise.resolve(true)).then(function(ok){if(!ok)throw new Error("Aktuelle PIN falsch.");return C.pinSet(p1);})
+      .then(function(){kopf();msg={t:aendern?"✓ PIN geändert.":"✓ PIN-Sperre aktiv. Das Cockpit sperrt sich nach "+(C.pinCfg().min||5)+" Minuten ohne Bedienung."};render();})
+      .catch(function(e){msg={t:"⚠ "+(e.message||e),warn:true};render();});},
+  pinWeg:function(){var el=document.getElementById("pin0");C.pinRemove(el?el.value.trim():"").then(function(){kopf();msg={t:"PIN-Sperre ausgeschaltet."};render();}).catch(function(e){msg={t:"⚠ "+(e.message||e),warn:true};render();});},
+  pinMin:function(m){C.pinMinuten(m);msg={t:"✓ Sperrt nach "+m+" Minute"+(+m>1?"n":"")+" ohne Bedienung."};render();},
   lockOff:function(){if(!confirm("Gerätesperre auf diesem Gerät ausschalten?"))return;C.lockDisable();msg={t:"Gerätesperre ausgeschaltet."};render();},
   bk:function(share){C.saveBackup(C.makeBackup(AREAS,"cockpit"),"cockpit",share).then(function(ok){msg=ok?{t:"✓ Sicherung erstellt"}:{t:"⚠ Sicherung konnte nicht gespeichert werden",warn:true};render();},function(e){if(e&&e.name==="AbortError")return;msg={t:"⚠ "+(e&&e.message||"Teilen nicht möglich"),warn:true};render();});},
   rs:function(inp){var f=inp.files&&inp.files[0];inp.value="";if(!f)return;C.readFile(f).then(function(t){rsv=C.parseBackup(t);

@@ -45,6 +45,7 @@
 <script src="finanzen/logic.js"></script>
 <script src="vertraege/logic.js"></script>
 <script src="steuer/logic.js"></script>
+<script src="zaehler/logic.js"></script>
 <script>
 (function(){
 "use strict";
@@ -60,6 +61,7 @@ var AREAS=[
   {id:"steuer",name:"Steuer",icon:"🧾",color:"#a78bfa",href:"steuer/index.html"},
   {id:"dokumente",name:"Dokumente",icon:"📂",color:"#38bdf8",href:"dokumente/index.html"},
   {id:"vertraege",name:"Verträge & Fristen",icon:"📑",color:"#f59e0b",href:"vertraege/index.html"},
+  {id:"zaehler",name:"ThingCounter",icon:"🎯",color:"#a855f7",href:"zaehler/index.html"},
   {id:"training",name:"Training",icon:"🏋️",color:"#f43f5e",href:"training/index.html"}
 ];
 
@@ -68,6 +70,7 @@ function summary(area){
   var d=C.getLocal(area.id,null);
   if(area.id==="auto"&&d)return autoSummary(d);
   if(area.id==="vertraege"&&d&&window.VERTR)return VERTR.summary(d,C.getLocal("haus",null));
+  if(area.id==="zaehler"&&d&&window.ZAEHLER)return ZAEHLER.summary(d,Date.now()); /* bewusst ohne Namen */
   if(d&&d._summary)return d._summary;
   return {k:"—",s:d?"Daten vorhanden":"Noch keine Daten"};
 }
