@@ -43,12 +43,12 @@ function parse(s){s=String(s||"").trim();var m=/^(\d{1,2})\.(\d{1,2})\.(\d{4}|\d
 function wann(n){return n<0?(n===-1?"seit gestern":"seit "+(-n)+" Tagen"):n===0?"heute":n===1?"morgen":"in "+n+" Tagen";}
 
 /* ---------- Daten ---------- */
-function blank(){return {vertraege:{},fristen:{},auto:{},ignFix:{}};}
-function norm(x){x=x&&typeof x==="object"?x:blank();["vertraege","fristen","auto","ignFix"].forEach(function(k){if(!x[k]||typeof x[k]!=="object"||Array.isArray(x[k]))x[k]={};});return x;}
+function blank(){return {vertraege:{},fristen:{},auto:{},ignFix:{},preis:{}};}
+function norm(x){x=x&&typeof x==="object"?x:blank();["vertraege","fristen","auto","ignFix","preis"].forEach(function(k){if(!x[k]||typeof x[k]!=="object"||Array.isArray(x[k]))x[k]={};});return x;}
 function byT(a,b){a=a||{};b=b||{};var o={};Object.keys(Object.assign({},a,b)).forEach(function(k){var x=a[k],y=b[k];o[k]=!x?y:!y?x:((x.t||0)>=(y.t||0)?x:y);});return o;}
 /* Zwei Geräte: je Eintrag gewinnt die jüngere Änderung, gelöschte bleiben als {del:true} erhalten */
 function merge(l,r){l=norm(JSON.parse(JSON.stringify(l)));r=norm(JSON.parse(JSON.stringify(r)));
-  var o={vertraege:byT(l.vertraege,r.vertraege),fristen:byT(l.fristen,r.fristen),auto:byT(l.auto,r.auto),ignFix:byT(l.ignFix,r.ignFix)};o._summary=summary(o);return o;}
+  var o={vertraege:byT(l.vertraege,r.vertraege),fristen:byT(l.fristen,r.fristen),auto:byT(l.auto,r.auto),ignFix:byT(l.ignFix,r.ignFix),preis:byT(l.preis,r.preis)};o._summary=summary(o);return o;}
 function aktiv(o){return Object.keys(o).map(function(k){return o[k];}).filter(function(x){return x&&!x.del;});}
 function neueId(p){return p+Date.now().toString(36)+Math.random().toString(36).slice(2,5);}
 
@@ -90,6 +90,31 @@ function autoFristen(haus,t){t=t||heute();var out=[],jetzt=+t.slice(0,4);
       out.push({id:"nka:"+y+":"+b.id,titel:"Nebenkostenabrechnung "+y+" an "+(b.name||"Mieter"),datum:(y+1)+"-12-31",vorlauf:60,quelle:"haus",href:"haus/index.html"});}});
   return out;}
 
+/* ---------- Preiserhöhung → Sonderkündigungsrecht prüfen ----------
+   Erkennt Finanzen bei einem verknüpften Strom/Gas-, Telefon- oder Versicherungsvertrag eine höhere Abbuchung,
+   wird das in preis[Vertrag] festgehalten (auch für die Wochenvorschau) und erscheint als Termin, bis es als geprüft markiert ist. */
+var PREIS_TAGE=90,PREIS_GRUPPEN=["Strom & Gas","Telefon & Internet","Versicherung"];
+function preisRelevant(v){return !!(v&&!v.del&&v.fixKey&&v.status!=="gekuendigt"&&v.status!=="beendet"&&v.vorlage!=="nk"&&
+  (PREIS_GRUPPEN.indexOf(v.gruppe)>-1||["vers","kfz","telko"].indexOf(v.vorlage)>-1));}
+function preisSync(x,fix,t){x=norm(x);t=t||heute();var fk={},n=0;(fix||[]).forEach(function(f){fk[f.key]=f;});
+  aktiv(x.vertraege).forEach(function(v){if(!preisRelevant(v))return;var f=fk[v.fixKey],c=f&&f.change;if(!c||f.variable)return;
+    var alter=tage(c.d,t);if(!(c.to-c.from>=0.5)||alter<0||alter>PREIS_TAGE)return;
+    var cur=x.preis[v.id];if(cur&&cur.d===c.d)return;
+    x.preis[v.id]={d:c.d,von:Math.round(c.from*100)/100,auf:Math.round(c.to*100)/100,t:Date.now()};n++;});
+  return n;}
+function preisHinweis(v){var g=v.gruppe||"",vl=v.vorlage||"";
+  if(g==="Strom & Gas")return "Strom/Gas: kündbar zum Wirksamwerden der Erhöhung – Datum im Ankündigungsschreiben prüfen (ein höherer Abschlag kann auch am Verbrauch liegen)";
+  if(g==="Telefon & Internet"||vl==="telko")return "Telefon/Internet: Sonderkündigung innerhalb von 3 Monaten ab Zugang der Mitteilung";
+  return "Versicherung: Kündigung meist innerhalb 1 Monats ab Zugang der Mitteilung (Krankenversicherung 2 Monate)";}
+function betragTxt(n){return (Math.round(n*100)/100).toFixed(2).replace(".",",")+" €";}
+function preisTermine(x,t){var out=[];
+  Object.keys(x.preis).forEach(function(vid){var p=x.preis[vid],v=x.vertraege[vid];if(!p||!p.d||!preisRelevant(v))return;
+    var id="pe:"+vid+":"+p.d,s=x.auto[id];if(s&&s.erledigt)return;if(tage(p.d,t)>PREIS_TAGE)return;
+    var D=plusT(p.d,14),E=p.t?plusT(iso(new Date(p.t)),7):"";if(E>D)D=E; /* spät erkannt: eine Woche ab Erkennung */
+    out.push({typ:"preis",id:id,vid:vid,titel:"Teurer: "+(v.name||"Vertrag")+" – Sonderkündigung prüfen",datum:D,tage:tage(t,D),faellig:true,
+      info:"Abbuchung "+betragTxt(p.von)+" → "+betragTxt(p.auf)+" seit "+de(p.d)+" · "+preisHinweis(v),href:"vertraege/index.html#v-"+vid});});
+  return out;}
+
 /* ---------- Sammelliste: alles mit Datum ----------
    ctx: {haus, t, tageVorlauf}; liefert sortierte Einträge {typ, id, titel, datum, tage, faellig, info, href} */
 function termine(x,ctx){x=norm(x);ctx=ctx||{};var t=ctx.t||heute(),out=[];
@@ -99,6 +124,7 @@ function termine(x,ctx){x=norm(x);ctx=ctx||{};var t=ctx.t||heute(),out=[];
       info:(+v.verl?"sonst verlängert bis "+de(plusM(r.ende,+v.verl)):"danach jederzeit kündbar")+" · Frist "+fristText(v),href:"vertraege/index.html#v-"+v.id,erledigt:ok});});
   aktiv(x.fristen).forEach(function(f){var D=naechste(f);if(!D)return;var n=tage(t,D);
     out.push({typ:"frist",id:f.id,titel:f.titel||"Frist",datum:D,tage:n,faellig:n<=(f.vorlauf!=null?+f.vorlauf:14),info:[+f.wdh?rhText(f.wdh):"",f.notiz||""].filter(Boolean).join(" · "),href:"vertraege/index.html#fristen"});});
+  preisTermine(x,t).forEach(function(e){out.push(e);});
   autoFristen(ctx.haus,t).forEach(function(a){var s=x.auto[a.id];if(s&&s.erledigt)return;var n=tage(t,a.datum);
     out.push({typ:"auto",id:a.id,titel:a.titel,datum:a.datum,tage:n,faellig:n<=a.vorlauf,info:"automatisch aus Haus",href:a.href});});
   return out.sort(function(a,b){return a.datum.localeCompare(b.datum);});
@@ -116,6 +142,39 @@ function gruppeAus(name){var s=String(name||"").toLowerCase();
 function vorlageFuer(g){return g==="Steuern & Abgaben"?"nk":g==="Versicherung"?"vers":g==="Streaming & Abos"?"abo":g==="Mitgliedschaften"?"jahr":(g==="Strom & Gas"||g==="Telefon & Internet")?"telko":"frei";}
 function vorschlaege(x,fix){x=norm(x);var link={};aktiv(x.vertraege).forEach(function(v){if(v.fixKey)link[v.fixKey]=1;});
   return (fix||[]).filter(function(f){return f.status==="ok"&&f.active&&!link[f.key]&&!(x.ignFix[f.key]&&!x.ignFix[f.key].del);});}
+
+/* ---------- Steuerliche Zuordnung ----------
+   Verträge mit Art landen im Bereich Steuer (Quelle „Verträge“): gezahlte Beiträge minus Erstattungen laut Konto. */
+var STEUER_ARTEN=[
+  {k:"kv",n:"Kranken- und Pflegeversicherung",a:"SA",hint:"Die Versicherer melden die Basisbeiträge meist elektronisch ans Finanzamt – die Summe dient zum Abgleich mit der Beitragsbescheinigung."},
+  {k:"vorsorge",n:"Weitere Versicherungen (Haftpflicht, Unfall, BU, Risikoleben)",a:"SA"},
+  {k:"basis",n:"Basisrente (Rürup)",a:"SA"},
+  {k:"riester",n:"Altersvorsorge (Riester) – eigene Beiträge",a:"SA",hint:"Maßgeblich ist die Altersvorsorge-Bescheinigung des Anbieters."},
+  {k:"n",n:"Werbungskosten Arbeit (Gewerkschaft, Berufsverband)",a:"N"},
+  {k:"kind",n:"Kinderbetreuung",a:"KIND",hint:"Essensgeld zählt nicht – solche Buchungen in der Liste abwählen."},
+  {k:"v",n:"Verträge Vermietung (z. B. Gebäudeversicherung)",a:"V"},
+  {k:"euer",n:"Betriebliche Verträge (EÜR)",a:"G"}
+];
+function steuerArt(k){return STEUER_ARTEN.filter(function(a){return a.k===k;})[0]||null;}
+/* Vorschlag aus Name und Verwendungszweck (z. B. „BU“, „FoerderRente“, „Kiga Beitrag“) */
+function steuerVorschlag(txt){var s=" "+String(txt||"").toLowerCase().replace(/[^a-z0-9äöüß]+/g," ")+" ";
+  if(/ (riester|f(ö|oe)rderrente|altersvorsorgevertrag)/.test(s))return "riester";
+  if(/ (r(ü|ue)rup|basisrente)/.test(s))return "basis";
+  if(/(kranken|pflegev|krankenv)/.test(s))return "kv";
+  if(/ (bu|berufsunf\w*|haftpflicht\w*|unfall\w*|risikoleben\w*|risiko lv) /.test(s))return "vorsorge";
+  if(/(gewerkschaft|berufsverband)/.test(s))return "n";
+  if(/ (kita|kiga|kindergarten|hort|kindertages\w*|krippe) /.test(s))return "kind";
+  return "";}
+/* Zahlungen zu einem Vertrag aus den Kontodaten (über die verknüpften Fixkosten).
+   Gleicher Empfänger, aber mehrere Verträge (z. B. zwei Tarife beim selben Versicherer): nur die Abbuchungen dieser Reihe, keine Erstattungen. */
+function zahlungen(v,fin,F,fix,alle){if(!v||!v.fixKey||!fin||!F)return null;var key=v.fixKey,tx=fin.tx||[],ids={};
+  var f=(fix||[]).filter(function(x){return x.key===key;})[0];((f&&f.ids)||[]).forEach(function(i){ids[i]=1;});
+  if(key.indexOf("p:")===0){var pk=key.slice(2).split("|")[0];
+    var geteilt=key.indexOf("|")>-1||(alle||[]).some(function(o){return o&&o!==v&&o.id!==v.id&&!o.del&&o.fixKey&&o.fixKey.indexOf("p:")===0&&o.fixKey.slice(2).split("|")[0]===pk;});
+    return tx.filter(function(t){if(F.partnerKey(t.p)!==pk)return false;return t.b<0?(!geteilt||!!ids[t.id]):!geteilt;});}
+  return tx.filter(function(t){return !!ids[t.id];});}
+function jahresSumme(z,y){var o={aus:0,ein:0,n:0};(z||[]).forEach(function(t){if(String(t.d).slice(0,4)!==String(y))return;o.n++;if(t.b<0)o.aus+=-t.b;else o.ein+=t.b;});
+  o.netto=Math.round((o.aus-o.ein)*100)/100;return o;}
 
 /* ---------- Vertrags- und Kundennummern aus dem Verwendungszweck ----------
    zs = Verwendungszwecke der letzten Abbuchungen, neueste zuerst. Kandidat = Zeichenkette mit mind. 5 Ziffern.
@@ -138,6 +197,8 @@ function nummernAus(zs){zs=(zs||[]).filter(Boolean).map(String);var cnt={},info=
 
 return {GRUPPEN:GRUPPEN,VORLAGEN:VORLAGEN,RHYTHMUS:RHYTHMUS,FRIST_VORLAGEN:FRIST_VORLAGEN,heute:heute,plusM:plusM,plusT:plusT,tage:tage,de:de,deKurz:deKurz,parse:parse,wann:wann,
   blank:blank,norm:norm,merge:merge,aktiv:aktiv,neueId:neueId,termin:termin,fristText:fristText,rhText:rhText,monatlich:monatlich,naechste:naechste,autoFristen:autoFristen,
-  termine:termine,ohneDatum:ohneDatum,summary:summary,gruppeAus:gruppeAus,vorlageFuer:vorlageFuer,vorschlaege:vorschlaege,nummernAus:nummernAus};
+  termine:termine,ohneDatum:ohneDatum,summary:summary,gruppeAus:gruppeAus,vorlageFuer:vorlageFuer,vorschlaege:vorschlaege,nummernAus:nummernAus,
+  preisSync:preisSync,preisRelevant:preisRelevant,PREIS_TAGE:PREIS_TAGE,
+  STEUER_ARTEN:STEUER_ARTEN,steuerArt:steuerArt,steuerVorschlag:steuerVorschlag,zahlungen:zahlungen,jahresSumme:jahresSumme};
 })();
 if(typeof window!=="undefined")window.VERTR=VERTR;

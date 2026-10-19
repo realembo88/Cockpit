@@ -216,6 +216,22 @@ function recurring(txs,rules,opt){
   return out.sort(function(a,b){return b.monthly-a.monthly;});
 }
 
+/* ---------- Stand je Konto ----------
+   tx = letzte Buchung, imp = letzter Import (Datum), stand = das Jüngere von beiden.
+   Lücke: Konto war beim letzten Import-Durchgang nicht dabei (Stand > 7 Tage hinter dem neuesten Konto
+   und älter als 14 Tage). Konten ohne Buchung seit 180 Tagen gelten als ruhend und werden nicht gemeldet. */
+function isoTag(ts){var x=new Date(ts);return x.getFullYear()+"-"+("0"+(x.getMonth()+1)).slice(-2)+"-"+("0"+x.getDate()).slice(-2);}
+function importStand(d){d=d||{};var ko=d.konten||{},byName={},o={};
+  Object.keys(ko).forEach(function(k){byName[(ko[k]&&ko[k].name)||k]=k;});
+  (d.tx||[]).forEach(function(t){var x=o[t.k]=o[t.k]||{k:t.k,tx:"",imp:""};if(t.d>x.tx)x.tx=t.d;});
+  (d.imports||[]).forEach(function(i){if(!i||!i.ts)return;var k=byName[i.konto]||(ko[i.konto]?i.konto:null);if(!k)return;
+    var x=o[k]=o[k]||{k:k,tx:"",imp:""},di=isoTag(i.ts);if(di>x.imp)x.imp=di;});
+  return Object.keys(o).map(function(k){var x=o[k],kk=ko[k]||{};x.name=kk.name||k;x.ber=kk.bereich||"privat";x.stand=x.imp>x.tx?x.imp:x.tx;return x;})
+    .sort(function(a,b){return (a.ber==="geschaeft"?0:1)-(b.ber==="geschaeft"?0:1)||String(a.name).localeCompare(String(b.name));});}
+function importLuecken(d,today){var l=importStand(d);if(!l.length)return [];
+  var neu=l.reduce(function(m,x){return x.stand>m?x.stand:m;},"");
+  return l.filter(function(x){return x.tx&&dDiff(x.tx,today)<=180&&dDiff(x.stand,neu)>7&&dDiff(x.stand,today)>14;});}
+
 /* ---------- Automatischer Import (Kontoauszüge aus dem Eingang) ----------
    Übernimmt nur in bekannte Konten (oder Dateien, deren Buchungen zu mind. 30 % schon in einem Konto stehen).
    Gelöschte Buchungen bleiben gelöscht. Neue Konten bleiben „unbekannt“ und werden einmal von Hand zugeordnet. */
@@ -267,5 +283,5 @@ function report(txs,rules,opt){
 function sum(a){return a.reduce(function(s,v){return s+v;},0);}
 
 return {MON:MON,UNKAT:UNKAT,DEFAULT_RULES:DEFAULT_RULES,kwRe:kwRe,matchRule:matchRule,category:category,parseFile:parseFile,parseCSV:parseCSV,
-  decode:decode,assignIds:assignIds,recurring:recurring,addMonths:addMonths,dDiff:dDiff,RHY:RHY,setPartnerMap:setPartnerMap,partnerKey:partnerKey,typeKey:typeKey,report:report,sum:sum,isNeutral:isNeutral,hash:hash,zweckRegel:zweckRegel,zweckVorschlag:zweckVorschlag,kompakt:kompakt,fixkosten:fixkosten,autoImport:autoImport,fp:fp};
+  decode:decode,assignIds:assignIds,recurring:recurring,addMonths:addMonths,dDiff:dDiff,RHY:RHY,setPartnerMap:setPartnerMap,partnerKey:partnerKey,typeKey:typeKey,report:report,sum:sum,isNeutral:isNeutral,hash:hash,zweckRegel:zweckRegel,zweckVorschlag:zweckVorschlag,kompakt:kompakt,fixkosten:fixkosten,autoImport:autoImport,fp:fp,importStand:importStand,importLuecken:importLuecken};
 })();

@@ -19,8 +19,8 @@ var ANLAGEN=[
   {k:"UST",n:"Umsatzsteuer-Erklärungen",i:"🧾"},
   {k:"SON",n:"Sonstiges",i:"📎"}
 ];
-var QUELLEN={manuell:"Eingabe je Jahr",fest:"Fester Wert (jedes Jahr gleich)",finanzen:"Finanzen (Kontobuchungen)",haus:"Haus (Kostenaufteilung)",smoobu:"Ferienwohnung (Smoobu)",energie:"Energie (Zähler)",formel:"Berechnet aus anderen Posten"};
-var QICON={manuell:"✍️",fest:"📌",finanzen:"💶",haus:"🏘️",smoobu:"🛏️",energie:"⚡",formel:"🧮"};
+var QUELLEN={manuell:"Eingabe je Jahr",fest:"Fester Wert (jedes Jahr gleich)",finanzen:"Finanzen (Kontobuchungen)",haus:"Haus (Kostenaufteilung)",smoobu:"Ferienwohnung (Smoobu)",energie:"Energie (Zähler)",vertraege:"Verträge (Beiträge laut Konto)",formel:"Berechnet aus anderen Posten"};
+var QICON={manuell:"✍️",fest:"📌",finanzen:"💶",haus:"🏘️",smoobu:"🛏️",energie:"⚡",vertraege:"📑",formel:"🧮"};
 var EINHEITEN=["€","Tage","kWh","km","%","Anzahl"];
 var HAUSF={
   "kosten:miete":"Umlagefähige Hauskosten – Anteil Dauervermietung",
@@ -153,6 +153,27 @@ function energie(p,y,ctx){
   return {v:Math.round(last-start),info:"Zähler bis Ende "+["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"][mon-1]+(mon<12?" (Jahr noch nicht vollständig)":"")};
 }
 
+/* ---------- Quelle Verträge ----------
+   Alle Verträge mit dieser steuerlichen Art (bei Posten mit Person: nur Verträge dieser Person).
+   Wert = Beiträge minus Erstattungen im Jahr laut Konto; einzelne Buchungen lassen sich abwählen. */
+function vertraegeListe(ctx){var vt=ctx.vt||{},o=vt.vertraege||{};return Object.keys(o).map(function(k){return o[k];}).filter(function(v){return v&&!v.del;});}
+function vertraege(p,y,ctx,ex){
+  var c=p.c||{},VT=ctx.VT,art=VT&&VT.steuerArt(c.art);if(!art)return {v:null,info:"Keine Art gewählt",list:[]};
+  var alle=vertraegeListe(ctx),vs=alle.filter(function(v){return v.steuer===c.art&&(!p.pers||v.stPers===p.pers);});
+  if(!vs.length)return {v:null,info:"Noch kein Vertrag als „"+art.n+"“ markiert (im Bereich Verträge)",list:[]};
+  var exl={},list=[],aus=0,ein=0,ohne=[],ys=String(y),fix=ctx.fix?ctx.fix():[];(ex||[]).forEach(function(id){exl[id]=1;});
+  vs.forEach(function(v){var z=VT.zahlungen(v,ctx.fin,ctx.F,fix,alle);if(!z){ohne.push(v.name||"Vertrag");return;}
+    z.forEach(function(t){if(String(t.d).slice(0,4)!==ys)return;
+      /* Kinderbetreuung: Verpflegung zählt nicht – solche Buchungen sind vorab abgewählt („+id“ = trotzdem mitzählen) */
+      var def=c.art==="kind"&&/(^|[^a-zäöü])(essen\w*|verpflegung\w*|mittagessen|essensgeld)/i.test(String(t.z||"")),a=def?!exl["+"+t.id]:!!exl[t.id];
+      list.push({id:t.id,d:t.d,b:t.b,p:t.p,z:t.z,cat:v.name||"Vertrag",aus:a,def:def});if(!a){if(t.b<0)aus+=-t.b;else ein+=t.b;}});});
+  list.sort(function(a,b){return a.d.localeCompare(b.d);});
+  var fe=function(n){return r2(n).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})+" €";},nd=list.filter(function(x){return x.def&&x.aus;}).length;
+  var info=vs.length+(vs.length===1?" Vertrag":" Verträge")+" · Beiträge "+fe(aus)+(ein?" − Erstattungen "+fe(ein):"")+(nd?" · "+nd+" × Verpflegung abgewählt":"")+
+    (ohne.length?" · ohne Kontoverknüpfung: "+ohne.join(", "):"");
+  return {v:list.some(function(x){return !x.aus;})?r2(aus-ein):(ohne.length?null:0),list:list,info:info};
+}
+
 /* ---------- Hauptrechnung ---------- */
 function compute(data,y,ctx){
   ctx=ctx||{};y=+y;var J=jahr(data,y),out={},posten=aktiv(data),m=J.m||{},ex=J.ex||{};
@@ -163,6 +184,7 @@ function compute(data,y,ctx){
     else if(p.q==="haus")res=haus(p,y,ctx);
     else if(p.q==="smoobu")res=smoobu(p,y,ctx);
     else if(p.q==="energie")res=energie(p,y,ctx);
+    else if(p.q==="vertraege")res=vertraege(p,y,ctx,ex[p.id]);
     else if(p.q==="formel")res={v:null,info:"",formel:true};
     else res={v:null,info:"Unbekannte Quelle"};
     /* Eingabe überschreibt berechnete Werte (z. B. Korrektur laut Beleg) */
@@ -190,6 +212,6 @@ function status(data,y,comp){
 }
 
 return {ANLAGEN:ANLAGEN,QUELLEN:QUELLEN,QICON:QICON,EINHEITEN:EINHEITEN,HAUSF:HAUSF,SMOOF:SMOOF,ENF:ENF,BELEGE_STD:BELEGE_STD,
-  compute:compute,vorjahr:vorjahr,belegDocs:belegDocs,status:status,aktiv:aktiv,anlage:anlage,finKategorien:finKategorien,num:num,r2:r2,words:words};
+  compute:compute,vorjahr:vorjahr,vertraegeListe:vertraegeListe,vtWert:vertraege,belegDocs:belegDocs,status:status,aktiv:aktiv,anlage:anlage,finKategorien:finKategorien,num:num,r2:r2,words:words};
 })();
 if(typeof window!=="undefined")window.STEUER=STEUER;

@@ -86,8 +86,13 @@ function heuteListe(){
   var t=V.heute(),out=[];
   function add(ic,txt,sub,prio,href,rot){out.push({ic:ic,txt:txt,sub:sub,prio:prio,href:href,rot:!!rot});}
   /* Fristen, Kündigungstermine, Nebenkostenabrechnungen */
-  try{V.termine(C.getLocal("vertraege",null),{haus:C.getLocal("haus",null),t:t}).forEach(function(e){if(!e.faellig)return;
-    add(e.typ==="kuendigung"?"✂️":e.typ==="auto"?"🏘️":"📌",e.titel,V.wann(e.tage)+" · "+V.de(e.datum)+(e.typ==="kuendigung"&&e.ende?" (zum "+V.de(e.ende)+")":""),e.tage,e.href,e.tage<0);});}catch(x){}
+  var vt=C.getLocal("vertraege",null),fin=C.getLocal("finanzen",null),fixL=null,belegt={};
+  /* Preiserhöhungen bei Verträgen festhalten (Termin „Sonderkündigung prüfen“, auch für die Wochenvorschau) */
+  if(vt&&fin&&Array.isArray(fin.tx)&&window.FIN){try{FIN.setPartnerMap(fin.pmap,fin.tmap,fin.zmap);fixL=FIN.fixkosten(fin).list;vt=V.norm(vt);
+    if(V.preisSync(vt,fixL,t)){vt._summary=V.summary(vt,C.getLocal("haus",null));C.save("vertraege",vt);}
+    V.aktiv(vt.vertraege).forEach(function(v){var p=vt.preis[v.id];if(p&&v.fixKey&&V.preisRelevant(v))belegt[v.fixKey+"|"+p.d]=1;});}catch(x){}}
+  try{V.termine(vt,{haus:C.getLocal("haus",null),t:t}).forEach(function(e){if(!e.faellig)return;
+    add(e.typ==="kuendigung"?"✂️":e.typ==="auto"?"🏘️":e.typ==="preis"?"📈":"📌",e.titel,V.wann(e.tage)+" · "+V.de(e.datum)+(e.typ==="kuendigung"&&e.ende?" (zum "+V.de(e.ende)+")":""),e.tage,e.href,e.tage<0);});}catch(x){}
   /* Ferienwohnung: An- und Abreisen der nächsten Tage (ohne Gästenamen) */
   var fw=C.getLocal("ferienwohnung",null);
   if(fw&&fw.bookings)Object.keys(fw.bookings).forEach(function(k){var b=fw.bookings[k];if(!b||b.cancelled||b.blocked||!b.arr)return;
@@ -99,15 +104,17 @@ function heuteListe(){
   if(dok&&dok.kontoCsv>0)add("🏦",dok.kontoCsv+(dok.kontoCsv===1?" Kontoauszug":" Kontoauszüge")+" im Eingang","am PC Finanzen öffnen – wird automatisch übernommen",5,"finanzen/index.html#import");
   if(dok&&dok.eingang>0)add("📥",dok.eingang+(dok.eingang===1?" Dokument":" Dokumente")+" im Eingang","am PC unter Dokumente analysieren und ablegen",6,"dokumente/index.html");
   /* Finanzen: veraltete Buchungen, fehlende Kategorien, Preiserhöhungen */
-  var fin=C.getLocal("finanzen",null);
   if(fin&&Array.isArray(fin.tx)&&fin.tx.length&&window.FIN){try{
     var R=fin.rules||FIN.DEFAULT_RULES;FIN.setPartnerMap(fin.pmap,fin.tmap,fin.zmap);
     var neu=fin.tx.reduce(function(m,x){return x.d>m?x.d:m;},"0000"),alt=V.tage(neu,t);
     if(alt>14)add("🏦","Kontoauszüge holen","neueste Buchung vom "+V.de(neu)+" ("+alt+" Tage alt)",9,"finanzen/index.html#import");
+    /* einzelne Konten, die beim letzten Import nicht dabei waren – Geschäftskonto zuerst */
+    else FIN.importLuecken(fin,t).forEach(function(x){add("🏦","Kontoauszug fehlt: "+x.name,"Stand "+V.de(x.stand)+" – beim letzten Import nicht dabei"+(x.ber==="geschaeft"?" · Geschäftskonto":""),x.ber==="geschaeft"?8:9,"finanzen/index.html#import");});
     var ab=V.plusT(t,-90),unk=fin.tx.filter(function(x){return x.d>=ab&&FIN.category(x,R)===FIN.UNKAT;}).length;
     if(unk)add("🏷️",unk+" Buchungen ohne Kategorie","letzte 90 Tage – einmal zuordnen",12,"finanzen/index.html#unkat");
     var seit=V.plusT(t,-45);
-    FIN.fixkosten(fin).list.forEach(function(x){if(x.status!=="ok"||!x.active||!x.change||x.change.to<=x.change.from||x.change.d<seit)return;
+    (fixL||FIN.fixkosten(fin).list).forEach(function(x){if(x.status!=="ok"||!x.active||!x.change||x.change.to<=x.change.from||x.change.d<seit)return;
+      if(belegt[x.key+"|"+x.change.d])return; /* steht schon als Termin „Sonderkündigung prüfen“ drin */
       var wechsel=/versicher|energie|strom|gas|telekom|telefon|internet|mobilfunk|abo|stream/i.test((x.grp||"")+" "+(x.cat||""));
       add("📈","Teurer: "+x.name,C.eur(x.change.from)+" → "+C.eur(x.change.to)+" seit "+V.de(x.change.d)+(wechsel?" – Wechsel prüfen?":""),10,"vertraege/index.html#vertraege");});
   }catch(x){}}

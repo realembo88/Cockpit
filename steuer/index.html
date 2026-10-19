@@ -100,6 +100,7 @@ body.doc-on .wrap{display:none;}
 <script src="../finanzen/logic.js"></script>
 <script src="../haus/logic.js"></script>
 <script src="../dokumente/logic.js"></script>
+<script src="../vertraege/logic.js"></script>
 <script src="logic.js"></script>
 <script>
 (function(){
@@ -140,7 +141,8 @@ function ctx(){
   var f=C.getLocal("finanzen",null)||{},R=Array.isArray(f.rules)?f.rules:FIN.DEFAULT_RULES;FIN.setPartnerMap(f.pmap||{},f.tmap||{},f.zmap||{});
   var h=C.getLocal("haus",null),fw=C.getLocal("ferienwohnung",null);
   return {fin:{tx:Array.isArray(f.tx)?f.tx:[],rules:R,konten:f.konten||{}},F:FIN,haus:h,HS:window.HAUS,
-    bookings:fw&&fw.bookings?Object.keys(fw.bookings).map(function(k){return fw.bookings[k];}):[],apt:h&&h.einst?h.einst.apt:null,en:C.getLocal("energie",null)};
+    bookings:fw&&fw.bookings?Object.keys(fw.bookings).map(function(k){return fw.bookings[k];}):[],apt:h&&h.einst?h.einst.apt:null,en:C.getLocal("energie",null),
+    vt:C.getLocal("vertraege",null),VT:window.VERTR,fix:(function(){var l=null;return function(){if(!l){try{l=FIN.fixkosten(f).list;}catch(e){l=[];}}return l;};})()};
 }
 var CTX=null,COMP=null,VJ=null;
 function calc(){CTX=ctx();COMP=S.compute(data,st.y,CTX);VJ=S.vorjahr(data,st.y,CTX);}
@@ -179,6 +181,7 @@ function vDash(){
   var s=S.status(data,st.y,COMP),bl=belegListe(),dd=docs(),bok=bl.filter(function(b){return vorhanden(b,dd);}).length,of=data.offen.filter(function(x){return !x.del&&!x.done;}).length;
   var h=yearBar();
   h+='<div class="grid2" style="margin-bottom:14px">'+kpi("🧮","Posten mit Wert",s.tot.wert+" / "+s.tot.n)+kpi("✅","Geprüft",s.tot.ok+" / "+s.tot.n)+kpi("📎","Belege beisammen",bok+" / "+bl.length)+kpi("❓","Offene Fragen",of)+"</div>";
+  h+=vtVorschlaege();
   h+='<div class="panel"><h3>Stand je Anlage '+st.y+"</h3>"+S.ANLAGEN.filter(function(a){return s.by[a.k];}).map(function(a){var b=s.by[a.k];
     return '<div class="arow" onclick="T2.goAnl(\''+a.k+'\')"><div class="i">'+a.i+'</div><div class="n">'+esc(a.n)+'<div>'+b.wert+" von "+b.n+" Posten mit Wert · "+b.ok+' geprüft</div><div class="bar"><i class="'+(b.ok===b.n?"ok":"")+'" style="width:'+Math.round(b.wert/b.n*100)+'%"></i></div></div><div class="small muted">›</div></div>';}).join("")+"</div>";
   /* Größte Abweichungen zum Vorjahr */
@@ -189,6 +192,23 @@ function vDash(){
   h+='<div class="note">Zeitplan: im Januar/Februar '+(st.y+1)+' Lohnsteuer- und Jahresbescheinigungen sowie die Nebenkostenabrechnung, ab März '+(st.y+1)+' die Mappe an die Steuerberatung. Diese Übersicht ist eine Arbeitsgrundlage und ersetzt keine steuerliche Beratung.</div>';
   return h;
 }
+
+/* ---------- Verträge mit steuerlicher Art, für die es noch keinen Posten gibt ---------- */
+function vtGruppen(){if(!window.VERTR)return [];var g={},posten=S.aktiv(data);
+  S.vertraegeListe(CTX).forEach(function(v){if(!v.steuer||!VERTR.steuerArt(v.steuer))return;var k=v.steuer+"|"+(v.stPers||"");(g[k]=g[k]||{art:v.steuer,pers:v.stPers||"",vs:[]}).vs.push(v);});
+  return Object.keys(g).map(function(k){return g[k];}).filter(function(x){
+    return !posten.some(function(p){return p.q==="vertraege"&&(p.c||{}).art===x.art&&(!p.pers||p.pers===x.pers);});});}
+function vtVorschlaege(){if(!window.VERTR)return "";var l=vtGruppen();
+  if(!l.length){var offen=S.vertraegeListe(CTX).filter(function(v){return !v.steuer&&v.status!=="beendet"&&(v.gruppe==="Versicherung"||v.gruppe==="Mitgliedschaften");}).length;
+    return offen&&!S.aktiv(data).some(function(p){return p.q==="vertraege";})?'<div class="note" style="margin-bottom:12px">💡 Tipp: Bei Versicherungen im Bereich Verträge „Steuerlich“ wählen – dann rechnet das Cockpit die gezahlten Beiträge hier automatisch zusammen.</div>':"";}
+  return '<div class="panel" style="border-color:#a78bfa66"><h3>📑 Aus deinen Verträgen</h3><div class="note" style="margin-bottom:8px">Diese Verträge sind steuerlich zugeordnet, haben aber noch keinen Posten. Übernehmen legt einen Posten an oder stellt einen bestehenden (z. B. bisher von Hand eingetragen) auf die automatische Summe um.</div>'+
+    l.map(function(x,i){var a=VERTR.steuerArt(x.art),sum=S.vtWert({c:{art:x.art},pers:x.pers},st.y,CTX,[]).v||0;
+      var kand=S.aktiv(data).filter(function(p){return p.a===a.a&&p.q!=="vertraege"&&p.q!=="formel";});
+      return '<div class="arow" style="cursor:default;align-items:flex-start"><div class="i">'+S.anlage(a.a).i+'</div><div class="n">'+esc(a.n)+(x.pers?' <span class="pers">'+esc(persName(x.pers))+"</span>":"")+
+        "<div>"+x.vs.map(function(v){return esc(v.name||"Vertrag");}).join(", ")+" · "+st.y+": "+eur(sum)+"</div>"+
+        '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><select class="sel" id="vtz'+i+'" style="width:auto;max-width:100%;padding:6px 8px;font-size:12px"><option value="">als neuen Posten</option>'+
+          kand.map(function(p){return '<option value="'+esc(p.id)+'">statt „'+esc(p.n)+'“'+(p.pers?" ("+esc(persName(p.pers))+")":"")+"</option>";}).join("")+
+        '</select><button class="mini on" onclick="T2.vtUeber(\''+x.art+'\',\''+esc(x.pers)+'\','+i+')">Übernehmen</button></div></div></div>';}).join("")+"</div>";}
 
 /* ---------- Anlagen mit Posten ---------- */
 function vAnl(){
@@ -207,7 +227,7 @@ function vAnl(){
 function card(p){
   var c=COMP[p.id]||{},v=VJ[p.id],j=J(),ok=!!j.ok[p.id],o=st.open[p.id]||"",e=p.e||"€";
   var h='<div class="pst'+(ok?" ok":c.v!=null?" wert":"")+'" id="p_'+esc(p.id)+'"><div class="h"><div style="min-width:0"><b>'+esc(p.n)+"</b>"+(p.pers?'<span class="pers">'+esc(persName(p.pers))+"</span>":"")+
-    '<div class="s">'+S.QICON[p.q]+" "+esc(qText(p))+(c.info?" · "+esc(c.info):"")+(c.korr?' · <span style="color:#fbbf24">korrigiert, berechnet '+fmt(c.auto,e)+"</span>":"")+"</div></div>"+
+    '<div class="s">'+S.QICON[p.q]+" "+esc(qText(p))+(c.info?" · "+esc(C.maskText(c.info)):"")+(c.korr?' · <span style="color:#fbbf24">korrigiert, berechnet '+fmt(c.auto,e)+"</span>":"")+"</div></div>"+
     '<div class="r"><div class="val'+(c.v==null?" leer":"")+'">'+(c.v==null?"offen":fmt(c.v,e))+'</div><div class="s">'+(v?(st.y-1)+": "+fmt(v.v,e)+(v.ref?"":" (berechnet)")+" "+delta(c.v,v.v):"kein Vorjahreswert")+"</div></div></div>";
   if(p.q==="manuell")h+='<div style="margin-top:8px"><input class="inp" inputmode="decimal" placeholder="Wert '+st.y+(e!=="€"?" in "+e:" in €")+'" value="'+(j.m[p.id]!=null&&j.m[p.id]!==""?esc(e==="€"?C.num(+j.m[p.id],2):String(j.m[p.id]).replace(".",",")):"")+'" onchange="T2.wert(\''+p.id+'\',this.value)"></div>';
   if(p.hint)h+='<div class="s" style="margin-top:6px;color:#a5b4fc">💡 '+esc(p.hint)+"</div>";
@@ -219,13 +239,14 @@ function card(p){
   if(o==="note")h+='<div class="box"><textarea class="inp" rows="2" placeholder="Notiz für die Steuerberatung, z. B. Erläuterung oder fehlender Beleg" onchange="T2.note(\''+p.id+'\',this.value)">'+esc(j.note[p.id]||"")+"</textarea></div>";
   if(o==="korr")h+='<div class="box"><div class="lbl">Wert '+st.y+' von Hand festlegen (überschreibt die Berechnung, z. B. laut Beleg)</div><input class="inp" inputmode="decimal" placeholder="leer = berechneter Wert" value="'+(j.m[p.id]!=null&&j.m[p.id]!==""?esc(String(j.m[p.id]).replace(".",",")):"")+'" onchange="T2.wert(\''+p.id+'\',this.value)"></div>';
   if(o==="tx"&&c.list)h+='<div class="box">'+(c.list.length?'<div class="note" style="margin-bottom:6px">Haken entfernen, um eine Buchung für diesen Posten auszuschließen.</div><div class="txl">'+c.list.map(function(t){
-      return '<label class="tx'+(t.aus?" aus":"")+'"><input type="checkbox" '+(t.aus?"":"checked ")+'onchange="T2.ex(\''+p.id+'\',\''+esc(t.id)+'\',!this.checked)"><span class="m">'+esc(HAUS.de(t.d))+" · "+esc(t.p||"–")+"<div>"+esc(t.z||"")+" · "+esc(t.cat)+'</div></span><span class="b">'+eur(t.b)+"</span></label>";}).join("")+"</div>":'<div class="note">Keine passenden Buchungen in '+st.y+". Kategorien oder Suchwörter unter „Einstellen“ prüfen.</div>")+"</div>";
+      return '<label class="tx'+(t.aus?" aus":"")+'"><input type="checkbox" '+(t.aus?"":"checked ")+'onchange="T2.ex(\''+p.id+'\',\''+(t.def?"+":"")+esc(t.id)+'\','+(t.def?"this.checked":"!this.checked")+')"><span class="m">'+esc(HAUS.de(t.d))+" · "+esc(t.p||"–")+"<div>"+esc(t.z||"")+" · "+esc(t.cat)+(t.def?" · Verpflegung – vorab abgewählt":"")+'</div></span><span class="b">'+eur(t.b)+"</span></label>";}).join("")+"</div>":'<div class="note">Keine passenden Buchungen in '+st.y+". Kategorien oder Suchwörter unter „Einstellen“ prüfen.</div>")+"</div>";
   if(o==="edit")h+=editor(p);
   return h+"</div>";
 }
 function qText(p){var c=p.c||{};
   if(p.q==="haus")return S.HAUSF[c.f]||"Haus";if(p.q==="smoobu")return S.SMOOF[c.f]||"Ferienwohnung";if(p.q==="energie")return S.ENF[c.f]||"Energie";
   if(p.q==="finanzen"){var a=[];if(c.cats&&c.cats.length)a.push(c.cats.join(", "));if(c.such)a.push("„"+c.such+"“");return "Finanzen"+(a.length?": "+a.join(" oder "):"")+(c.dir>0?" · Eingänge":c.dir<0?" · Ausgaben":"");}
+  if(p.q==="vertraege"){var va=window.VERTR&&VERTR.steuerArt(c.art);return "Verträge: "+(va?va.n:"Art wählen");}
   if(p.q==="formel")return "Berechnet: "+((c.t||[]).map(function(t,i){var q=post(t.id),f=S.num(t.f);if(f==null)f=1;
     return (i?(f<0?" − ":" + "):(f<0?"− ":""))+(Math.abs(f)!==1?C.num(Math.abs(f),Math.abs(f)%1?4:0).replace(/0+$/,"").replace(/,$/,"")+" × ":"")+(q?q.n:"?");}).join("")||"–");
   return S.QUELLEN[p.q]||p.q;}
@@ -246,6 +267,9 @@ function editor(p){
   if(p.q==="haus")h+='<div style="margin-top:8px">'+f("Kennzahl aus dem Bereich Haus",sel("c.f",[["","bitte wählen"]].concat(Object.keys(S.HAUSF).map(function(k){return [k,S.HAUSF[k]];})),c.f||""))+"</div>";
   if(p.q==="smoobu")h+='<div style="margin-top:8px">'+f("Kennzahl aus Smoobu",sel("c.f",[["","bitte wählen"]].concat(Object.keys(S.SMOOF).map(function(k){return [k,S.SMOOF[k]];})),c.f||""))+"</div>";
   if(p.q==="energie")h+='<div style="margin-top:8px">'+f("Kennzahl aus dem Bereich Energie",sel("c.f",[["","bitte wählen"]].concat(Object.keys(S.ENF).map(function(k){return [k,S.ENF[k]];})),c.f||""))+"</div>";
+  if(p.q==="vertraege"&&window.VERTR){var vl=S.vertraegeListe(CTX).filter(function(v){return c.art&&v.steuer===c.art&&(!p.pers||v.stPers===p.pers);});
+    h+='<div style="margin-top:8px">'+f("Steuerliche Art (wird im Bereich Verträge je Vertrag gewählt)",sel("c.art",[["","bitte wählen"]].concat(VERTR.STEUER_ARTEN.map(function(a){return [a.k,a.n];})),c.art||""))+"</div>"+
+      '<div class="note" style="margin-top:6px">'+(vl.length?"Zählt: "+vl.map(function(v){return esc(v.name||"Vertrag");}).join(", "):"Noch kein Vertrag mit dieser Art"+(p.pers?" für "+esc(persName(p.pers)):""))+' · <a href="../vertraege/index.html#vertraege" style="color:#c4b5fd">Verträge öffnen</a></div>';}
   if(p.q==="fest")h+='<div style="margin-top:8px">'+f("Fester Wert",'<input class="inp" inputmode="decimal" value="'+esc(c.v!=null?String(c.v).replace(".",","):"")+'" onchange="T2.set(\''+p.id+'\',\'c.v\',this.value)">')+"</div>";
   if(p.q==="formel"){var others=S.aktiv(data).filter(function(x){return x.id!==p.id;});
     h+='<div style="margin-top:8px"><div class="lbl">Summe aus Faktor × Posten (z. B. 1 × Einnahmen, −1 × Ausgaben)</div>'+(c.t||[]).map(function(t,i){
@@ -358,12 +382,16 @@ window.T2={
   ref:function(id,v){var j=J(st.y-1),n=pnum(v);if(n==null)delete j.ref[id];else j.ref[id]=n;touchY(st.y-1);persist();render();},
   set:function(id,k,v){var p=post(id);if(!p)return;
     if(k==="c.dir")v=+v;if(k==="c.v")v=pnum(v);if(k==="c.ohne")v=[];
-    if(k==="q"&&v!==p.q){p.c={};if(v==="finanzen")p.c={dir:-1,ber:"alle",cats:[],such:""};if(v==="formel")p.c={t:[]};}
+    if(k==="q"&&v!==p.q){p.c={};if(v==="finanzen")p.c={dir:-1,ber:"alle",cats:[],such:""};if(v==="formel")p.c={t:[]};if(v==="vertraege")p.c={art:""};}
     setPath(p,k,v);upd(p);},
   cat:function(id,k,on){var p=post(id);if(!p)return;p.c=p.c||{};var l=(p.c.cats||[]).filter(function(x){return x!==k;});if(on)l.push(k);p.c.cats=l;upd(p);},
   term:function(id,i,k,v){var p=post(id);if(!p)return;p.c=p.c||{};var t=p.c.t=p.c.t||[];
     if(k==="add"){var o=S.aktiv(data).filter(function(x){return x.id!==id;})[0];if(!o)return;t.push({id:o.id,f:1});}
     else if(k==="del")t.splice(i,1);else if(k==="f")t[i].f=pnum(v)==null?1:pnum(v);else t[i][k]=v;upd(p);},
+  vtUeber:function(art,pers,i){var a=window.VERTR&&VERTR.steuerArt(art);if(!a)return;var el=document.getElementById("vtz"+i),pid=el?el.value:"",p=pid?post(pid):null;
+    if(p){p.q="vertraege";p.c={art:art};if(pers&&!p.pers)p.pers=pers;if(!p.hint&&a.hint)p.hint=a.hint;upd(p);flash("✓ „"+p.n+"“ rechnet jetzt automatisch aus den Verträgen");return;}
+    var id="vt-"+art+(pers?"-"+pers:"");if(post(id))id+="-"+Date.now().toString(36);
+    data.posten.push({id:id,a:a.a,n:a.n,pers:pers||"",q:"vertraege",c:{art:art},e:"€",hint:a.hint||"",ord:50,upd:Date.now()});persist();flash("✓ Posten „"+a.n+"“ angelegt");},
   addPost:function(){var id="p"+Date.now().toString(36),a=st.anl!=="alle"?st.anl:"SON";data.posten.push({id:id,a:a,n:"Neuer Posten",pers:"",q:"manuell",c:{},e:"€",ord:999,upd:Date.now()});
     st.open[id]="edit";st.tab="anlagen";st.anl=a;st.nur="alle";persist();render();var el=document.getElementById("p_"+id);if(el)el.scrollIntoView({block:"center"});},
   delPost:function(id){if(!confirm("Diesen Posten löschen?"))return;var p=post(id);p.del=true;upd(p);},
@@ -395,7 +423,7 @@ window.T2={
 };
 document.addEventListener("keydown",function(e){if(e.key==="Escape"&&document.body.classList.contains("doc-on"))T2.closeDoc();});
 render();
-C.autoPull([AREA,"finanzen","haus","ferienwohnung","energie","dokumente"],function(a,d){if(a===AREA)data=norm(d);render();});
+C.autoPull([AREA,"finanzen","haus","ferienwohnung","energie","dokumente","vertraege"],function(a,d){if(a===AREA)data=norm(d);render();});
 })();
 </script>
 </body>

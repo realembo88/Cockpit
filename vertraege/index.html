@@ -99,10 +99,11 @@ function vTermine(){
   return h;
 }
 function terminRow(e){
-  var ic=e.typ==="kuendigung"?"✂️":e.typ==="auto"?"🏘️":"📌",id=jsq(e.id);
-  var h='<div class="row"><div class="l"><b>'+ic+" "+esc(e.titel)+"</b>"+whenChip(e.tage,e.faellig)+'<div class="s">'+V.deKurz(e.datum)+" "+e.datum.slice(0,4)+(e.info?" · "+esc(e.info):"")+"</div>";
+  var ic=e.typ==="kuendigung"?"✂️":e.typ==="auto"?"🏘️":e.typ==="preis"?"📈":"📌",id=jsq(e.id);
+  var h='<div class="row"><div class="l"><b>'+ic+" "+esc(e.titel)+"</b>"+whenChip(e.tage,e.faellig)+'<div class="s">'+(e.typ==="preis"?"prüfen bis ":"")+V.deKurz(e.datum)+" "+e.datum.slice(0,4)+(e.info?" · "+esc(C.maskText(e.info)):"")+"</div>";
   if(e.typ==="kuendigung"&&data.vertraege[e.id])h+=nrZeile(data.vertraege[e.id]);
   if(e.typ==="kuendigung")h+='<div class="acts">'+(e.erledigt?'<span class="chip">behalten – Erinnerung erst wieder im nächsten Zeitraum</span>':'<button class="mini ok" onclick="V2.gekuendigt(\''+id+'\')">✓ gekündigt</button><button class="mini" onclick="V2.behalten(\''+id+'\')">behalten</button>')+'<button class="mini" onclick="V2.oeffne(\''+id+'\')">Vertrag</button></div>';
+  else if(e.typ==="preis")h+='<div class="acts"><button class="mini ok" onclick="V2.autoOk(\''+id+'\')">✓ geprüft</button><button class="mini" onclick="V2.oeffne(\''+jsq(e.vid)+'\')">Vertrag</button></div>';
   else if(e.typ==="auto")h+='<div class="acts"><button class="mini ok" onclick="V2.autoOk(\''+id+'\')">✓ erledigt</button><a class="mini" style="text-decoration:none" href="../'+e.href+'">Haus öffnen</a></div>';
   else{h+='<div class="acts"><button class="mini ok" onclick="V2.fristOk(\''+id+'\')">✓ erledigt</button><button class="mini" onclick="V2.fristEdit(\''+id+'\')">✏️ ändern</button></div>';
     if(st.fOpen===e.id)h+=fristForm(data.fristen[e.id],false);}
@@ -168,6 +169,7 @@ function vForm(v,fx,t){var id=jsq(v.id),r=V.termin(v,t);
   else if(r.art==="jederzeit")h+='<div class="prev">Jederzeit kündbar – heute gekündigt endet er am '+V.de(r.ende)+". Keine Erinnerung nötig.</div>";
   if(v.vorlage!=="nk"&&!v.jederzeit)h+='<div class="g2 mt"><div><label class="note" style="display:flex;gap:8px;align-items:center;font-size:13px;color:#e2e8f0"><input type="checkbox" '+(v.erinnern!==false?"checked ":"")+'onchange="V2.set(\''+id+'\',\'erinnern\',this.checked)"> rechtzeitig erinnern</label></div><div><div class="lbl">… Tage vor der Frist</div>'+inp("vorlauf",v.vorlauf!=null?v.vorlauf:30)+"</div></div>";
   h+='<div class="g2 mt"><div><div class="lbl">Status</div>'+sel("status",[["aktiv","läuft"],["gekuendigt","gekündigt"],["beendet","beendet"]],v.status||"aktiv")+"</div>"+(v.status==="gekuendigt"||v.status==="beendet"?'<div><div class="lbl">'+(v.status==="gekuendigt"?"endet am":"beendet am")+"</div>"+inp("endeAm",v.endeAm?V.de(v.endeAm):"","TT.MM.JJJJ")+"</div>":"<div></div>")+"</div>";
+  h+=steuerBlock(v,fx);
   var x=v.fixKey&&fx[v.fixKey];if(x)h+='<div class="note mt">Verknüpft mit Fixkosten „'+esc(x.name)+"“ · zuletzt "+C.eur(x.amount)+(x.last?" am "+V.de(x.last):"")+"</div>";
   h+=docBlock(v);
   h+='<div class="mt"><div class="lbl">Notiz (z. B. Ansprechpartner, Telefon)</div><textarea class="inp" rows="2" onchange="V2.set(\''+id+'\',\'notiz\',this.value)">'+esc(v.notiz||"")+"</textarea></div>"+
@@ -195,6 +197,18 @@ function docBlock(v){if(!window.DOKS)return "";var id=jsq(v.id),docs=dokumente(v
   return '<div class="mt"><div class="lbl">Dokumente</div>'+(docs.length?docs.map(function(e){var did=jsq(e.id);return '<div class="row" style="padding:6px 0"><div class="l"><span style="font-size:12px;color:#cbd5e1">📎 '+esc(DOKS.titel(e))+'</span><div class="s">'+DOKS.de(e.datum)+" · "+esc(e.kategorie)+'</div></div><div class="r"><div class="acts" style="margin-top:0;justify-content:flex-end"><button class="mini" onclick="V2.doc(\''+did+'\')">Öffnen</button><button class="mini" title="Gehört nicht zu diesem Vertrag" onclick="V2.docAus(\''+id+'\',\''+did+'\')">✕</button></div></div></div>';}).join(""):'<div class="note">Keine passenden Dokumente gefunden.</div>')+
     '<div class="mt"><div class="lbl">Dokumente finden über</div><input class="inp" value="'+esc(v.suchwort||"")+'" placeholder="'+esc(auto?"automatisch: „"+auto+"“":"Wort aus Absender/Betreff")+'" onchange="V2.set(\''+id+'\',\'suchwort\',this.value)">'+
     '<div class="note" style="margin-top:4px">Wort aus Absender oder Betreff – Treffer per Vertrags-/Kundennummer kommen immer dazu. ✕ blendet ein falsches Dokument aus.'+(nAus?' <a href="#" onclick="V2.docZurueck(\''+id+'\');return false" style="color:#fbbf24">'+nAus+" ausgeblendet – zurückholen</a>":"")+"</div></div></div>";}
+
+/* Steuerliche Zuordnung: Art, Person, gezahlte Beiträge laut Konto */
+function personen(){var s=C.getLocal("steuer",null);return s&&Array.isArray(s.personen)?s.personen.filter(function(p){return p&&p.k;}):[];}
+function steuerBlock(v,fx){var id=jsq(v.id),sa=V.steuerArt(v.steuer),pers=personen(),fl=Object.keys(fx).map(function(k){return fx[k];});
+  var vor=!v.steuer&&V.steuerVorschlag((v.name||"")+" "+((fx[v.fixKey]||{}).z||""));
+  var h='<div class="g2 mt"><div><div class="lbl">Steuerlich</div><select class="sel" onchange="V2.set(\''+id+'\',\'steuer\',this.value)">'+[["","– nicht relevant"]].concat(V.STEUER_ARTEN.map(function(a){return [a.k,a.n];})).map(function(o){return '<option value="'+o[0]+'"'+(o[0]===(v.steuer||"")?" selected":"")+">"+esc(o[1])+"</option>";}).join("")+"</select>"+
+    (vor?'<button class="mini warn" style="margin-top:6px" onclick="V2.set(\''+id+'\',\'steuer\',\''+vor+'\')">Vorschlag: '+esc(V.steuerArt(vor).n)+"</button>":"")+"</div>"+
+    (sa&&pers.length?'<div><div class="lbl">für</div><select class="sel" onchange="V2.set(\''+id+'\',\'stPers\',this.value)">'+[["","gemeinsam"]].concat(pers.map(function(p){return [p.k,p.n];})).map(function(o){return '<option value="'+esc(o[0])+'"'+(o[0]===(v.stPers||"")?" selected":"")+">"+esc(o[1])+"</option>";}).join("")+"</select></div>":"<div></div>")+"</div>";
+  if(sa){var z=V.zahlungen(v,fin(),window.FIN,fl,V.aktiv(data.vertraege)),y=new Date().getFullYear();
+    h+='<div class="note" style="margin-top:4px">'+(z?"Laut Konto gezahlt "+(y-1)+": "+C.eur(V.jahresSumme(z,y-1).netto)+" · "+y+" bis heute: "+C.eur(V.jahresSumme(z,y).netto):"Nicht mit Fixkosten verknüpft – im Bereich Steuer ohne Betrag")+
+      ' · erscheint im <a href="../steuer/index.html" style="color:#fbbf24">Bereich Steuer</a>.</div>';}
+  return h;}
 
 /* Vertrags-/Kundennummer: antippen = kopieren */
 function nrZeile(v){var a=[];if(v.vnr)a.push(["Vertr.-Nr.",v.vnr]);if(v.kdnr)a.push(["Kd.-Nr.",v.kdnr]);if(!a.length)return "";
@@ -227,6 +241,8 @@ window.V2={
     else if(k==="frist"||k==="vorlauf"){var m=parseInt(val,10);x[k]=isNaN(m)?null:Math.max(0,m);}
     else if(k==="erinnern")x.erinnern=!!val;
     else if(k==="jederzeit"){x.jederzeit=!!val;if(!val)delete x.jederzeit;}
+    else if(k==="steuer"){if(val)x.steuer=val;else{delete x.steuer;delete x.stPers;}}
+    else if(k==="stPers"){if(val)x.stPers=val;else delete x.stPers;}
     else if(k==="vorlage"){x.vorlage=val;var tpl=V.VORLAGEN.filter(function(y){return y.id===val;})[0];if(tpl&&tpl.verl!=null){x.verl=tpl.verl;x.frist=tpl.frist;x.einh=tpl.einh;}if(tpl&&tpl.erinnern===false)x.erinnern=false;if(tpl&&tpl.gruppe&&(val==="nk"||!x.gruppe||x.gruppe==="Sonstiges"))x.gruppe=tpl.gruppe;}
     else if(k==="status"){x.status=val;if(val==="aktiv")delete x.endeAm;else if(!x.endeAm){var r=V.termin(Object.assign({},x,{status:"aktiv"}),V.heute());x.endeAm=r.ende||"";}}
     else x[k]=String(val).trim();
@@ -251,9 +267,10 @@ window.V2={
   docZurueck:function(id){var x=v(id);if(!x)return;delete x.docAus;x.t=Date.now();persist();render();},
   doc:function(id){var e=DOKS.index().filter(function(x){return x.id===id;})[0];if(!e)return;DOKS.oeffnen(e).catch(function(err){flash("⚠ "+(err.message||err),true);});}
 };
+function preisSync(){try{if(V.preisSync(data,fixListe()))persist();}catch(e){}}
 window.addEventListener("cockpit:priv",render);
-render();
-C.autoPull([AREA,"finanzen","haus","dokumente"],function(a,d){if(a===AREA)data=V.norm(d);render();});
+preisSync();render();
+C.autoPull([AREA,"finanzen","haus","dokumente","steuer"],function(a,d){if(a===AREA)data=V.norm(d);if(a===AREA||a==="finanzen")preisSync();render();});
 })();
 </script>
 </body>

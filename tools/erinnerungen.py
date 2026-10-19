@@ -144,6 +144,11 @@ def auto_fristen(haus, t):
     return out
 
 
+def preis_relevant(v):
+    return bool(v and not v.get("del") and v.get("fixKey") and v.get("status") not in ("gekuendigt", "beendet") and v.get("vorlage") != "nk"
+                and (v.get("gruppe") in ("Strom & Gas", "Telefon & Internet", "Versicherung") or v.get("vorlage") in ("vers", "kfz", "telko")))
+
+
 def termine(vt, haus, t):
     vt = vt or {}
     out = []
@@ -164,6 +169,19 @@ def termine(vt, haus, t):
         out.append({"typ": "frist", "titel": f.get("titel") or "Frist", "datum": D, "tage": n, "faellig": n <= vorlauf,
                     "info": RHYTHMUS.get(int(f.get("wdh") or 0), "")})
     erl = vt.get("auto") or {}
+    # Preiserhoehung -> Sonderkuendigungsrecht pruefen (festgehalten vom Cockpit in vertraege.preis)
+    for vid, p in (vt.get("preis") or {}).items():
+        v = (vt.get("vertraege") or {}).get(vid)
+        if not isinstance(p, dict) or not p.get("d") or not preis_relevant(v):
+            continue
+        if (erl.get(f"pe:{vid}:{p['d']}") or {}).get("erledigt") or tage(p["d"], t) > 90:
+            continue
+        D = plus_t(p["d"], 14)
+        if p.get("t"):
+            from datetime import datetime
+            D = max(D, plus_t(datetime.fromtimestamp(p["t"] / 1000).date().isoformat(), 7))
+        out.append({"typ": "preis", "titel": f"Teurer: {v.get('name') or 'Vertrag'} – Sonderkündigung prüfen", "datum": D, "tage": tage(t, D),
+                    "faellig": True, "info": f"{eur(p.get('von') or 0, 2)} → {eur(p.get('auf') or 0, 2)} seit {de(p['d'])}"})
     for a in auto_fristen(haus, t):
         if (erl.get(a["id"]) or {}).get("erledigt"):
             continue
@@ -237,6 +255,31 @@ def kategorie(t, regeln, pmap, tmap, zmap=None):
     return UNKAT
 
 
+# ----------------------------------------------------------------------------- Stand je Konto (wie FIN.importStand/importLuecken)
+def import_luecken(fin, t):
+    from datetime import datetime
+    ko = fin.get("konten") or {}
+    by_name = {(v or {}).get("name") or k: k for k, v in ko.items()}
+    st = {}
+    for x in fin.get("tx") or []:
+        e = st.setdefault(x["k"], {"tx": "", "imp": ""})
+        e["tx"] = max(e["tx"], x["d"])
+    for i in fin.get("imports") or []:
+        k = by_name.get(i.get("konto")) or (i.get("konto") if i.get("konto") in ko else None)
+        if not k or not i.get("ts"):
+            continue
+        e = st.setdefault(k, {"tx": "", "imp": ""})
+        e["imp"] = max(e["imp"], datetime.fromtimestamp(i["ts"] / 1000).date().isoformat())
+    if not st:
+        return []
+    for k, e in st.items():
+        e["k"], e["name"], e["ber"] = k, (ko.get(k) or {}).get("name") or k, (ko.get(k) or {}).get("bereich") or "privat"
+        e["stand"] = max(e["tx"], e["imp"])
+    neu = max(e["stand"] for e in st.values())
+    out = [e for e in st.values() if e["tx"] and tage(e["tx"], t) <= 180 and tage(e["stand"], neu) > 7 and tage(e["stand"], t) > 14]
+    return sorted(out, key=lambda e: (e["ber"] != "geschaeft", e["name"]))
+
+
 # ----------------------------------------------------------------------------- Ferienwohnung
 def buchungen(fw):
     return [b for b in ((fw or {}).get("bookings") or {}).values()
@@ -260,8 +303,8 @@ def woche(ordner, t):
         zeilen.append("")
         zeilen.append("⏰ Fristen")
         for e in jetzt:
-            ic = "✂️" if e["typ"] == "kuendigung" else "🏘️" if e["typ"] == "auto" else "📌"
-            zeilen.append(f"{ic} {e['titel']} – {de_kurz(e['datum'])} ({wann(e['tage'])})" + (f", {e['info']}" if e["typ"] == "kuendigung" else ""))
+            ic = "✂️" if e["typ"] == "kuendigung" else "🏘️" if e["typ"] == "auto" else "📈" if e["typ"] == "preis" else "📌"
+            zeilen.append(f"{ic} {e['titel']} – {de_kurz(e['datum'])} ({wann(e['tage'])})" + (f", {e['info']}" if e["typ"] in ("kuendigung", "preis") else ""))
 
     an = sorted((b for b in buchungen(fw) if t <= b["arr"] <= ende), key=lambda b: b["arr"])
     ab = sorted((b for b in buchungen(fw) if t <= b["dep"] <= ende), key=lambda b: b["dep"])
@@ -286,6 +329,9 @@ def woche(ordner, t):
         neu = max(x["d"] for x in fin["tx"])
         if tage(neu, t) > 14:
             sonst.append(f"🏦 Kontoauszüge holen – neueste Buchung vom {de(neu)}")
+        else:
+            for e in import_luecken(fin, t):
+                sonst.append(f"🏦 Kontoauszug fehlt: {e['name']} (Stand {de(e['stand'])})" + (" – Geschäftskonto" if e["ber"] == "geschaeft" else ""))
         regeln = fin.get("rules") or standard_regeln()
         von = plus_t(t, -90)
         unk = sum(1 for x in fin["tx"] if x["d"] >= von and kategorie(x, regeln, fin.get("pmap") or {}, fin.get("tmap") or {}, fin.get("zmap")) == UNKAT)
