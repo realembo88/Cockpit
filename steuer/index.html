@@ -174,7 +174,7 @@ function docs(){return S.docsJahr(CTX.idx,st.y,CTX.over);}
 function bDocs(b,d){return S.belegDocs(b,d||docs(),CTX);}
 function zaehlt(b,e){return S.zaehlt(b,e,st.y,CTX.over);}
 function vorhanden(b,d){return !!J().belege[b.id]||bDocs(b,d).some(function(e){return zaehlt(b,e);});}
-function docLine(e,still){return '<div class="tx" style="padding:5px 0'+(still?";opacity:.55":"")+'"><span class="m">📄 '+esc(DOKS.titel(e))+"<div>"+esc(DOKS.de(e.datum))+(e.betrag!=null?" · "+eur(+e.betrag):"")+" · "+esc(e.belegart||e.kategorie||"")+(still?" · "+esc(still):"")+'</div></span><button class="mini" onclick="event.preventDefault();T2.docOpen(\''+esc(e.id)+'\')">Öffnen</button></div>';}
+function docLine(e,still,info){return '<div class="tx" style="padding:5px 0'+(still?";opacity:.55":"")+'"><span class="m">📄 '+esc(DOKS.titel(e))+"<div>"+esc(DOKS.de(e.datum))+(e.betrag!=null?" · "+eur(+e.betrag):"")+" · "+esc(info||e.belegart||e.kategorie||"")+(still?" · "+esc(still):"")+'</div></span><button class="mini" onclick="event.preventDefault();T2.docOpen(\''+esc(e.id)+'\')">Öffnen</button></div>';}
 
 /* ---------- Übersicht ---------- */
 function belegListe(){var std=S.BELEGE_STD.filter(function(b){return !data.belegeAus[b.id];}),own=data.belege.filter(function(b){return !b.del;});return std.concat(own);}
@@ -228,7 +228,7 @@ function vAnl(){
   return h;
 }
 function card(p){
-  var c=COMP[p.id]||{},v=VJ[p.id],j=J(),ok=!!j.ok[p.id],o=st.open[p.id]||"",e=p.e||"€",vd=p.q==="vertraege"&&window.DOKS?S.vtDocs(p,st.y,CTX):[];
+  var c=COMP[p.id]||{},v=VJ[p.id],j=J(),ok=!!j.ok[p.id],o=st.open[p.id]||"",e=p.e||"€",vd=p.q==="vertraege"&&window.DOKS?S.vtDocs(p,st.y,CTX):p.q==="haus"&&window.DOKS?hausBelege(p):[];
   var h='<div class="pst'+(ok?" ok":c.v!=null?" wert":"")+'" id="p_'+esc(p.id)+'"><div class="h"><div style="min-width:0"><b>'+esc(p.n)+"</b>"+(p.pers?'<span class="pers">'+esc(persName(p.pers))+"</span>":"")+
     '<div class="s">'+S.QICON[p.q]+" "+esc(qText(p))+(c.info?" · "+esc(C.maskText(c.info)):"")+(c.korr?' · <span style="color:#fbbf24">korrigiert, berechnet '+fmt(c.auto,e)+"</span>":"")+"</div></div>"+
     '<div class="r"><div class="val'+(c.v==null?" leer":"")+'">'+(c.v==null?"offen":fmt(c.v,e))+'</div><div class="s">'+(v?(st.y-1)+": "+fmt(v.v,e)+(v.ref?"":" (berechnet)")+" "+delta(c.v,v.v):"kein Vorjahreswert")+"</div></div></div>";
@@ -237,17 +237,22 @@ function card(p){
   if(j.note[p.id]&&o!=="note")h+='<div class="s" style="margin-top:6px;color:#e2e8f0">📝 '+esc(j.note[p.id])+"</div>";
   h+='<div class="acts"><button class="mini'+(ok?" on":"")+'" onclick="T2.ok(\''+p.id+'\')">'+(ok?"✓ geprüft":"☐ geprüft")+'</button><button class="mini" onclick="T2.open(\''+p.id+'\',\'note\')">📝 Notiz</button>'+
     (c.list?'<button class="mini" onclick="T2.open(\''+p.id+'\',\'tx\')">💶 '+c.list.length+" Buchungen "+(o==="tx"?"▴":"▾")+"</button>":"")+
-    (p.q==="vertraege"&&vd.length?'<button class="mini" onclick="T2.open(\''+p.id+'\',\'docs\')">📎 '+vd.length+" Dokument"+(vd.length>1?"e ":" ")+(o==="docs"?"▴":"▾")+"</button>":"")+
+    ((p.q==="vertraege"||p.q==="haus")&&vd.length?'<button class="mini" onclick="T2.open(\''+p.id+'\',\'docs\')">📎 '+vd.length+" Dokument"+(vd.length>1?"e ":" ")+(o==="docs"?"▴":"▾")+"</button>":"")+
     (p.q!=="manuell"?'<button class="mini" onclick="T2.open(\''+p.id+'\',\'korr\')">✏️ Korrektur</button>':"")+
     '<button class="mini" onclick="T2.open(\''+p.id+'\',\'edit\')">⚙️ Einstellen</button></div>';
   if(o==="note")h+='<div class="box"><textarea class="inp" rows="2" placeholder="Notiz für die Steuerberatung, z. B. Erläuterung oder fehlender Beleg" onchange="T2.note(\''+p.id+'\',this.value)">'+esc(j.note[p.id]||"")+"</textarea></div>";
-  if(o==="docs"&&vd.length)h+='<div class="box"><div class="note" style="margin-bottom:6px">Schreiben der zugeordneten Verträge im Steuerberater-Ordner '+st.y+'. Als Nachweis zählen Bescheinigungen und Erstattungen.</div>'+vd.map(function(x){return docLine(x,S.istNachweis(x)?"":"Schriftverkehr");}).join("")+"</div>";
+  if(o==="docs"&&vd.length&&p.q==="haus")h+='<div class="box"><div class="note" style="margin-bottom:6px">Belege der Nebenkosten '+st.y+' – verknüpft unter Haus → Kosten.</div>'+vd.map(function(x){return docLine(x,"","🏘️ "+(x._nk||""));}).join("")+"</div>";
+  else if(o==="docs"&&vd.length)h+='<div class="box"><div class="note" style="margin-bottom:6px">Schreiben der zugeordneten Verträge im Steuerberater-Ordner '+st.y+'. Als Nachweis zählen Bescheinigungen und Erstattungen.</div>'+vd.map(function(x){return docLine(x,S.istNachweis(x)?"":"Schriftverkehr");}).join("")+"</div>";
   if(o==="korr")h+='<div class="box"><div class="lbl">Wert '+st.y+' von Hand festlegen (überschreibt die Berechnung, z. B. laut Beleg)</div><input class="inp" inputmode="decimal" placeholder="leer = berechneter Wert" value="'+(j.m[p.id]!=null&&j.m[p.id]!==""?esc(String(j.m[p.id]).replace(".",",")):"")+'" onchange="T2.wert(\''+p.id+'\',this.value)"></div>';
   if(o==="tx"&&c.list)h+='<div class="box">'+(c.list.length?'<div class="note" style="margin-bottom:6px">Haken entfernen, um eine Buchung für diesen Posten auszuschließen.</div><div class="txl">'+c.list.map(function(t){
       return '<label class="tx'+(t.aus?" aus":"")+'"><input type="checkbox" '+(t.aus?"":"checked ")+'onchange="T2.ex(\''+p.id+'\',\''+(t.def?"+":"")+esc(t.id)+'\','+(t.def?"this.checked":"!this.checked")+')"><span class="m">'+esc(HAUS.de(t.d))+" · "+esc(t.p||"–")+"<div>"+esc(t.z||"")+" · "+esc(t.cat)+(t.def?" · Verpflegung – vorab abgewählt":"")+'</div></span><span class="b">'+eur(t.b)+"</span></label>";}).join("")+"</div>":'<div class="note">Keine passenden Buchungen in '+st.y+". Kategorien oder Suchwörter unter „Einstellen“ prüfen.</div>")+"</div>";
   if(o==="edit")h+=editor(p);
   return h+"</div>";
 }
+/* Belege, die unter Haus → Kosten mit den Kostenarten des Jahres verknüpft sind (für Haus-Kostenposten) */
+function hausBelege(p){var f=(p.c||{}).f||"";if(f.indexOf("kosten:")!==0||!window.HAUS||!CTX.haus)return [];var bi=HAUS.belegIndex(CTX.haus),by={},out=[];(CTX.idx||[]).forEach(function(e){by[e.id]=e;});
+  Object.keys(bi).forEach(function(id){var l=bi[id].filter(function(x){return x.y===st.y;});if(!l.length||!by[id])return;out.push(Object.assign({},by[id],{_nk:l.map(function(x){return x.n;}).join(", ")}));});
+  return out.sort(function(a,b){return String(a.datum).localeCompare(String(b.datum));});}
 function qText(p){var c=p.c||{};
   if(p.q==="haus")return S.HAUSF[c.f]||"Haus";if(p.q==="smoobu")return S.SMOOF[c.f]||"Ferienwohnung";if(p.q==="energie")return S.ENF[c.f]||"Energie";
   if(p.q==="finanzen"){var a=[];if(c.cats&&c.cats.length)a.push(c.cats.join(", "));if(c.such)a.push("„"+c.such+"“");return "Finanzen"+(a.length?": "+a.join(" oder "):"")+(c.dir>0?" · Eingänge":c.dir<0?" · Ausgaben":"");}

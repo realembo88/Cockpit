@@ -30,6 +30,17 @@
 .inp:focus,.sel:focus{outline:none;border-color:var(--accent);}
 .lbl{font-size:11px;color:var(--muted);margin:0 0 4px;}
 .chk{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5;}
+.bl{margin-top:8px;border-top:1px dashed #1e2b45;padding-top:8px;}
+.bl-h{font-size:11.5px;color:#7dd3fc;margin-bottom:4px;line-height:1.5;}
+.bl-r{display:flex;gap:6px;align-items:center;padding:4px 0;}
+.bl-r .l{flex:1;min-width:0;font-size:12px;color:#cbd5e1;line-height:1.35;}
+.bl-r .l .s{font-size:10.5px;color:var(--muted);}
+.bl-r .inp{width:92px;flex:0 0 92px;padding:6px 8px;font-size:12px;text-align:right;}
+.bl-r .mini,.bl-v .mini{padding:4px 8px;font-size:11px;}
+.bl-v{font-size:11.5px;color:#fde68a;padding:5px 0;line-height:1.45;}
+.bl-v .acts{display:inline-flex;gap:4px;margin-left:4px;vertical-align:middle;}
+.mini.ok{border-color:#22c55e;color:#4ade80;}
+.bl-a{font-size:11px;color:#7dd3fc;text-decoration:none;cursor:pointer;}
 .chk b{color:#cbd5e1;}
 .up{color:#ff8a80;} .dn{color:#69f0ae;}
 .note{font-size:11px;color:var(--muted);line-height:1.6;}
@@ -306,9 +317,40 @@ function vAbr(){
   return h;
 }
 
+/* ---------- Belege je Kostenart (Dokumente aus dem Archiv) ---------- */
+function belegKontext(tx){if(!window.DOKS)return null;var idx=DOKS.index(),by={},zu=null;idx.forEach(function(e){by[e.id]=e;});
+  try{zu=idx.length&&tx.length?DOKS.zuordnung(idx,tx,C.getLocal("zuordnung",null)):null;}catch(e){zu=null;}
+  return {idx:idx,by:by,zu:zu};}
+function jq(x){return esc(String(x).replace(/\\/g,"\\\\").replace(/'/g,"\\'"));}
+function belegCheck(r){var f=HS.belegFehlt(data,st.y),alle=r.pos.filter(function(p){var o=HS.kostObj(data,st.y,p.k,false);return p.betrag>0||HS.belegSumme(o).anz;}).length;
+  if(!alle&&!f.length)return "";var n=r.pos.filter(function(p){return HS.belegSumme(HS.kostObj(data,st.y,p.k,false)).anz;}).length;
+  return '<div class="panel" style="border-color:'+(f.length?"#38bdf855":"#22c55e55")+'"><b style="font-size:13px;color:'+(f.length?"#7dd3fc":"#4ade80")+'">📎 Belege '+st.y+": "+n+" von "+Math.max(alle,n+f.length)+" Kostenarten belegt</b>"+
+    (f.length?'<div class="chk">Noch ohne Beleg: '+f.map(function(p){return esc(p.n);}).join(", ")+'. Vorschläge stehen direkt bei der Kostenart; mit „＋ Beleg suchen“ findest du jedes Dokument im Archiv.</div>':'<div class="chk">Alle Kostenarten haben einen Beleg. ✓</div>')+"</div>";}
+function belegBlock(p,BX){if(!BX)return "";var k=jq(p.k),o=HS.kostObj(data,st.y,p.k,false)||{},L=HS.belegLinks(o),S=HS.belegSumme(o),h='<div class="bl">';
+  if(L.length){var diff=o.manuell&&S.n&&Math.abs(S.summe-p.betrag)>=0.01;
+    h+='<div class="bl-h">📎 '+L.length+(L.length===1?" Beleg":" Belege")+(S.n?" · Summe "+eur(S.summe):"")+(S.offen?" · "+S.offen+" ohne Betrag":"")+
+      (S.n?(o.manuell?(diff?' · <span style="color:#fbbf24">Betrag oben von Hand ('+eur(p.betrag)+')</span> · <a class="bl-a" onclick="H2.bSumme(\''+k+'\')">Summe der Belege übernehmen</a>':' · <span style="color:#4ade80">✓ passt zum Betrag</span>'):' · <span style="color:#4ade80">Betrag = Summe der Belege</span>'):"")+"</div>";
+    L.forEach(function(x){var e=BX.by[x.id],z=e&&BX.zu&&BX.zu.doc[x.id],tot=e?HS.belegBetrag(e):null,id=jq(x.id);
+      h+='<div class="bl-r"><div class="l">'+esc(x.ti||"Dokument")+'<div class="s">'+de(x.d)+(tot!=null&&x.b!=null&&Math.abs(tot-x.b)>0.01?" · Anteil von "+eur(tot):"")+(z&&z.art!=="vorschlag"?" · 💶 bezahlt "+de(z.t.d):"")+(!e?" · nicht mehr im Archiv":"")+"</div></div>"+
+        '<input class="inp" inputmode="decimal" placeholder="Betrag" value="'+(x.b!=null?C.num(x.b,2):"")+'" onchange="H2.bAnteil(\''+k+'\',\''+id+'\',this.value)">'+
+        (e?'<button class="mini" title="Öffnen" onclick="H2.docOpen(\''+id+'\')">📄</button>':"")+'<button class="mini" title="Verknüpfung lösen" onclick="H2.bLoes(\''+k+'\',\''+id+'\')">✕</button></div>';});}
+  HS.belegVorschlaege(data,st.y,p.k,BX.idx,3).forEach(function(v){var id=jq(v.e.id);
+    h+='<div class="bl-v">💡 '+esc(DOKS.titel(v.e))+' <span style="color:var(--muted)">('+DOKS.de(v.e.datum)+(v.betrag!=null?" · "+eur(v.betrag):" · ohne Betrag")+(v.hinweis?" · "+esc(v.hinweis):"")+")</span>"+
+      '<span class="acts"><button class="mini ok" onclick="H2.bLink(\''+k+'\',\''+id+'\')">✓ verknüpfen</button><button class="mini" title="Passt nicht" onclick="H2.bAus(\''+k+'\',\''+id+'\')">✕</button><button class="mini" title="Öffnen" onclick="H2.docOpen(\''+id+'\')">📄</button></span></div>';});
+  if(st.bs===p.k){var q=String(st.bq||"").trim(),treffer=q?belegSuche(q,BX.idx,o):[];
+    h+='<div style="margin-top:6px"><input class="inp" style="font-size:12px;padding:7px 9px" placeholder="Im Archiv suchen: Absender, Betreff, Jahr …" value="'+esc(q)+'" onchange="H2.bQ(this.value)"></div>'+
+      (q?(treffer.length?treffer.map(function(e){var id=jq(e.id);return '<div class="bl-v" style="color:#cbd5e1">'+esc(DOKS.titel(e))+' <span style="color:var(--muted)">('+DOKS.de(e.datum)+(HS.belegBetrag(e)!=null?" · "+eur(HS.belegBetrag(e)):"")+')</span><span class="acts"><button class="mini ok" onclick="H2.bLink(\''+k+'\',\''+id+'\')">✓ verknüpfen</button><button class="mini" onclick="H2.docOpen(\''+id+'\')">📄</button></span></div>';}).join(""):'<div class="chk">Nichts gefunden.</div>'):"")+
+      '<div style="margin-top:4px"><a class="bl-a" onclick="H2.bSuche(null)">Suche schließen</a></div>';}
+  else h+='<div style="margin-top:4px"><a class="bl-a" onclick="H2.bSuche(\''+k+'\')">＋ Beleg suchen</a></div>';
+  return h+"</div>";}
+function belegSuche(q,idx,o){var w=HS.de?String(q).toLowerCase().replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue").replace(/ß/g,"ss").split(/[^a-z0-9]+/).filter(Boolean):[],hat=(o&&o.belege)||{};
+  return idx.filter(function(e){if(!e||(hat[e.id]&&!hat[e.id].del))return false;var t=String([e.absender,e.betreff,e.datei,e.kategorie,e.datum,e.betrag].join(" ")).toLowerCase().replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue").replace(/ß/g,"ss");
+    return w.every(function(x){return t.indexOf(x)>-1;});}).sort(function(a,b){return String(b.datum||"").localeCompare(String(a.datum||""));}).slice(0,8);}
+
 /* ---------- Kosten ---------- */
 function vKosten(){
-  var r=R(),j=J(),prev=data.jahre[st.y-1]?R(st.y-1):null,tx=fin(),h=yearBar();
+  var r=R(),j=J(),prev=data.jahre[st.y-1]?R(st.y-1):null,tx=fin(),h=yearBar(),BX=belegKontext(tx);
+  if(BX)h+=belegCheck(r);
   h+='<div class="note" style="margin-bottom:12px">Maßgeblich sind die <b>Jahresrechnungen</b> der Versorger, nicht die monatlichen Abschläge. Die Kontosumme aus Finanzen dient nur zur Kontrolle.</div>';
   r.pos.forEach(function(p){var o=(j.kosten||{})[p.k]||{},q=prev&&prev.pos.filter(function(x){return x.k===p.k;})[0],ks=HS.kontoSumme(tx,st.y,p.such,-1);
     h+='<div class="pos"><div class="h"><b>'+esc(p.n)+'</b><span>'+esc(p.p)+(p.extra?' · <a href="#" style="color:#ff8a80" onclick="H2.delX(\''+p.k+'\');return false">entfernen</a>':"")+"</span></div>";
@@ -316,18 +358,11 @@ function vKosten(){
       '<div><div class="lbl">Verteilerschlüssel</div><select class="sel" onchange="H2.kost(\''+p.k+'\',\'s\',this.value)">'+Object.keys(HS.SCHL).map(function(s){return '<option value="'+s+'"'+(p.s===s?" selected":"")+">"+HS.SCHL[s]+"</option>";}).join("")+"</select></div></div>";
     h+='<div class="chk">'+(q&&q.betrag?"Vorjahr "+eur(q.betrag)+(p.betrag?' · <span class="'+(p.betrag>q.betrag?"up":"dn")+'">'+(p.betrag>=q.betrag?"+":"")+C.num((p.betrag/q.betrag-1)*100,0)+" %</span>":"")+" · ":"")+
       (ks?(ks.n?"Konto "+st.y+" („"+esc(p.such)+"“): <b>"+eur(ks.summe)+"</b> in "+ks.n+" Abbuchungen":"Keine Abbuchungen „"+esc(p.such)+"“ in "+st.y+" gefunden"):"Kein Suchwort für den Konto-Abgleich")+' · <a href="#" style="color:#fdba74" onclick="H2.such(\''+p.k+'\');return false">Suchwort</a></div>';
-    if(window.DOKS)DOKS.hausVorschlag(st.y,p.k).forEach(function(e){var v=e.betrag!=null?+e.betrag:null,gleich=v!=null&&Math.abs(v-p.betrag)<0.005;
-      h+='<div class="chk" style="color:#7dd3fc">📎 '+esc(DOKS.titel(e))+" ("+DOKS.de(e.datum)+")"+(v!=null?" · "+eur(v):"")+(gleich?" ✓ übernommen":"")+
-        (v!=null&&!gleich?' · <a href="#" style="color:#fdba74" onclick="H2.docBetrag(\''+p.k+'\',\''+esc(e.id)+'\');return false">Betrag übernehmen</a>':"")+' · <a href="#" style="color:#7dd3fc" onclick="H2.docOpen(\''+esc(e.id)+'\');return false">öffnen</a></div>';});
+    if(window.DOKS)h+=belegBlock(p,BX);
     if(p.k==="heizung")h+='<div class="chk" style="color:#ffcc80">Ohne Wärmemengenzähler wird nach Fläche verteilt. Die Heizkostenverordnung verlangt 50–70 % nach Verbrauch – Mieter dürfen dann um 15 % kürzen (§ 12 HeizkV).</div>';
     h+='<textarea class="inp" rows="2" style="margin-top:8px;font-size:12px" placeholder="Erläuterung für die Abrechnung, z. B. Gründe für eine Änderung (optional)" onchange="H2.kost(\''+p.k+'\',\'info\',this.value)">'+esc(o.info||p.info||"")+"</textarea></div>";});
   h+='<button class="btn ghost full" style="margin-bottom:14px" onclick="H2.addX()">＋ Weitere umlagefähige Kostenart</button>';
   h+='<div class="panel"><h3>Strom (nach Zähler)</h3><div class="g3"><div><div class="lbl">Preis je kWh (€)</div><input class="inp" inputmode="decimal" value="'+(j.strompreis!=null?String(j.strompreis).replace(".",","):"")+'" placeholder="z. B. 0,32" onchange="H2.preis(this.value)"></div><div class="note" style="align-self:end">Zählerstände unter „Zähler“. Abgerechnet wird nur der Verbrauch der Mieter.</div></div></div>';
-  if(window.DOKS){var vorg={};r.pos.forEach(function(p){DOKS.hausVorschlag(st.y,p.k).forEach(function(e){vorg[e.id]=1;});});
-    var weitere=DOKS.hausDocs(st.y).filter(function(e){return !vorg[e.id]&&["Wohnen","Energie_PV","Versicherungen","Steuern_Privat"].indexOf(e.kategorie)>-1;});
-    if(weitere.length)h+='<div class="panel"><h3>📎 Weitere Rechnungen '+st.y+' aus der Ablage</h3>'+weitere.map(function(e){return '<div class="row"><div class="l"><b>'+esc(DOKS.titel(e))+'</b><div class="s">'+DOKS.de(e.datum)+" · "+esc(e.kategorie)+'</div></div><div class="r">'+eur(+(e.betrag!=null?e.betrag:e.zahlbetrag))+
-      '<div><select class="sel" style="width:auto;padding:4px 6px;font-size:11px;margin-top:4px" onchange="if(this.value)H2.docBetrag(this.value,\''+esc(e.id)+'\')"><option value="">übernehmen als …</option>'+r.pos.map(function(p){return '<option value="'+p.k+'">'+esc(p.n)+"</option>";}).join("")+"</select></div></div></div>";}).join("")+
-      '<div class="note" style="margin-top:6px">Rechnungen aus dem Bereich Dokumente mit Bezugsjahr '+st.y+'. Maßgeblich ist der Gesamtbetrag der Jahresrechnung, nicht die Nachzahlung.</div></div>';}
   h+='<div class="panel"><h3>Summe '+st.y+'</h3><div class="big">'+eur(r.gesamt)+"</div>"+(prev?'<div class="note">Vorjahr '+eur(prev.gesamt)+"</div>":"")+"</div>";
   return h;
 }
@@ -458,7 +493,12 @@ function docHtml(id){
   notes.forEach(function(p){h+="<p><b>"+esc(p.n)+":</b> "+esc(p.info)+"</p>";});
   h+='<div class="box"><b>Hinweise zu den Verteilerschlüsseln:</b> Flächenabhängige Kosten werden nach Wohnfläche und Nutzungstagen verteilt (Gesamtfläche '+C.num(r.F,2)+" m², "+r.D+" Tage). Wasser und Abwasser werden nach Personentagen verteilt (Personen × Tage aller Wohnungen; die Ferienwohnung nach tatsächlicher Belegung"+(j.fewoFix!=null&&j.fewoFix!==""?", hier pauschal "+esc(j.fewoFix)+" Person pro Tag":" laut Buchungssystem: Nächte × Gäste")+"). Der Strom wird nach dem Zähler Ihrer Wohnung abgerechnet. "+
     "Die Rechnungen und Belege können Sie nach Terminabsprache einsehen. Einwendungen gegen diese Abrechnung sind spätestens bis zum Ablauf des zwölften Monats nach Zugang mitzuteilen (§ 556 Abs. 3 BGB).</div>";
-  h+='<p style="margin-top:26px">Mit freundlichen Grüßen</p><p style="margin-top:34px">'+esc(vm[0]||"")+"</p></div>";
+  h+='<p style="margin-top:26px">Mit freundlichen Grüßen</p><p style="margin-top:34px">'+esc(vm[0]||"")+"</p>";
+  var bv=[];r.pos.filter(function(p){return p.betrag;}).forEach(function(p){HS.belegLinks(HS.kostObj(data,st.y,p.k,false)).sort(function(a,b){return String(a.d).localeCompare(String(b.d));}).forEach(function(x){bv.push({p:p,x:x});});});
+  if(bv.length)h+='<h2 style="margin-top:30px">Anlage: Belegverzeichnis '+st.y+'</h2><table><tr><th>Kostenart</th><th>Beleg</th><th>Datum</th><th class="r">Betrag</th></tr>'+
+    bv.map(function(q){return "<tr><td>"+esc(q.p.n)+"</td><td>"+esc(q.x.ti||"")+"</td><td>"+de(q.x.d)+'</td><td class="r">'+(q.x.b!=null?raw(+q.x.b):"–")+"</td></tr>";}).join("")+
+    '</table><p class="sub" style="margin-top:6px">Die Belege können nach Terminabsprache eingesehen werden.</p>';
+  h+="</div>";
   return h;
 }
 
@@ -471,12 +511,25 @@ window.H2={
   m:function(id){st.mieter=id;render();},
   showM:function(id){st.mieter=id;st.tab="abrechnung";render();window.scrollTo(0,0);},
   kost:function(k,f,v){var j=J(),x=(j.extra||[]).filter(function(e){return e.k===k;})[0],o=x||(j.kosten[k]=j.kosten[k]||{});
-    if(f==="betrag"){var n=pnum(v);o.betrag=n==null?0:Math.round(n*100)/100;}else o[f]=v;touch();persist();render();},
+    if(f==="betrag"){var n=pnum(v),bs=HS.belegSumme(o);o.betrag=n==null?0:Math.round(n*100)/100;
+      if(bs.anz){o.manuell=n!=null&&!(bs.n&&Math.abs(bs.summe-o.betrag)<0.01);HS.belegSync(o);}}else o[f]=v;touch();persist();render();},
   such:function(k){var p=HS.posList(data,st.y).filter(function(x){return x.k===k;})[0],v=prompt("Suchwörter für den Konto-Abgleich (mehrere mit Leerzeichen):",p?p.such:"");if(v==null)return;H2.kost(k,"such",v.trim());},
   addX:function(){var n=prompt("Name der Kostenart (muss im Mietvertrag als umlagefähig vereinbart sein):");if(!n)return;var j=J();j.extra=j.extra||[];j.extra.push({k:"x"+Date.now().toString(36),n:n.trim(),p:"",s:"flaeche",betrag:0});touch();persist();render();},
   delX:function(k){if(!confirm("Kostenart entfernen?"))return;var j=J();(j.extra||[]).forEach(function(e){if(e.k===k)e.del=true;});touch();persist();render();},
   docBetrag:function(k,id){var e=DOKS.index().filter(function(x){return x.id===id;})[0];if(!e)return;var v=e.betrag!=null?+e.betrag:+e.zahlbetrag;if(isNaN(v))return;
     var j=J(),x=(j.extra||[]).filter(function(q){return q.k===k;})[0],o=x||(j.kosten[k]=j.kosten[k]||{});o.betrag=Math.round(v*100)/100;o.beleg=e.datei;touch();persist();flash("✓ "+C.eurRaw(v)+" übernommen");},
+  bLink:function(k,id){var e=DOKS.index().filter(function(x){return x.id===id;})[0];if(!e)return;var b=HS.belegRest(data,st.y,k,e),o0=HS.kostObj(data,st.y,k,false);
+    /* schon eingetragener Betrag und Beleg größer (Sammelbescheid, nicht umlagefähige Teile): Anteil = eingetragener Betrag */
+    if(b!=null&&o0&&+o0.betrag>0&&!HS.belegSumme(o0).anz&&+o0.betrag<b+0.01)b=+o0.betrag;
+    var o=HS.belegVerknuepfen(data,st.y,k,e,b);touch();persist();st.bs=null;st.bq="";
+    flash("✓ Verknüpft"+(b==null?" – Betrag beim Beleg eintragen":o.manuell?"":" – Betrag "+C.eurRaw(o.betrag)));},
+  bAus:function(k,id){var o=HS.kostObj(data,st.y,k,true);o.belegAus=o.belegAus||{};o.belegAus[id]=1;touch();persist();render();},
+  bLoes:function(k,id){HS.belegLoesen(data,st.y,k,id);touch();persist();render();},
+  bAnteil:function(k,id,v){var o=HS.kostObj(data,st.y,k,false),x=o&&o.belege&&o.belege[id];if(!x)return;x.b=pnum(v);if(x.b!=null)x.b=Math.round(x.b*100)/100;x.t=Date.now();
+    if(o.manuell&&Math.abs(HS.belegSumme(o).summe-(+o.betrag||0))<0.01)o.manuell=false;HS.belegSync(o);touch();persist();render();},
+  bSumme:function(k){var o=HS.kostObj(data,st.y,k,false);if(!o)return;o.manuell=false;HS.belegSync(o);touch();persist();flash("✓ Betrag = Summe der Belege");},
+  bSuche:function(k){st.bs=k;st.bq="";render();if(k)setTimeout(function(){var i=document.querySelector(".bl input.inp[placeholder^='Im Archiv']");if(i)i.focus();},30);},
+  bQ:function(v){st.bq=v;render();},
   docOpen:function(id){var e=DOKS.index().filter(function(x){return x.id===id;})[0];if(!e)return;DOKS.oeffnen(e).catch(function(err){flash("⚠ "+(err.message||err),true);});},
   preis:function(v){var n=pnum(v);J().strompreis=n;touch();persist();render();},
   fewoFix:function(v){var j=J();j.fewoFix=v===""?null:pnum(v);touch();persist();render();},
@@ -556,7 +609,7 @@ window.H2={
 };
 document.addEventListener("keydown",function(e){if(e.key==="Escape"&&document.body.classList.contains("doc-on"))H2.closeDoc();});
 render();
-C.autoPull([AREA,"finanzen","ferienwohnung","energie","dokumente"],function(a,d){if(a===AREA)data=norm(d);render();});
+C.autoPull([AREA,"finanzen","ferienwohnung","energie","dokumente","zuordnung"],function(a,d){if(a===AREA)data=norm(d);render();});
 })();
 </script>
 </body>

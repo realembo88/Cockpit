@@ -150,7 +150,82 @@ function fromEnergie(en,y,feld){
   return out;
 }
 
-return {POS:POS,SCHL:SCHL,ART:ART,calc:calc,segments:segments,units:units,smoobuPT:smoobuPT,readingAt:readingAt,verbrauch:verbrauch,
+
+/* ---------- Belege: Dokumente aus dem Archiv je Kostenart und Jahr ----------
+   je Kostenart (kosten[k] bzw. extra-Eintrag): belege {docId:{b,ti,d,t,del}} – b = Betrag/Anteil für diese Kostenart (null = noch offen),
+   ti/d = Titel und Datum zum Zeitpunkt der Verknüpfung (fürs Belegverzeichnis, auch ohne Dokumenten-Index),
+   belegAus {docId:1} = verworfene Vorschläge, manuell = Betrag von Hand statt Summe der Belege.
+   Absender stehen nicht im Code: Vorschläge kommen über Fachbegriffe, die Suchwörter je Kostenart und gelernte Absender aus anderen Jahren. */
+var SAMMEL=["grundbesitzabgabe","grundabgabe","abgabenbescheid","gebuehrenbescheid"]; /* Sammelbescheid der Gemeinde */
+var BELEG_KW={grundsteuer:["grundsteuer"].concat(SAMMEL),wasser:["wasserversorgung","trinkwasser","frischwasser","wasserabrechnung","wassergeld","wasser"],
+  abwasser:["abwasser","kanal","schmutzwasser","entwaesserung"],niederschlag:["niederschlag","regenwasser","oberflaechenwasser"].concat(SAMMEL),heizung:["erdgas","gas","heizung","heizkosten","waermemenge","fernwaerme","heizoel"],
+  muell:["abfall","muell","restmuell","entsorgung"].concat(SAMMEL),schornstein:["kaminkehrer","schornstein","feuerstaette","kehr"],gebaeudevers:["wohngebaeude","gebaeudeversicherung"],
+  haftpflicht:["grundbesitzerhaftpflicht","grundbesitzer","haus und grundbesitzer"]};
+var BELEG_RECHNUNG=["rechnung","bescheid","abrechnung","gebuehr","abgabe","beitrag","festsetzung","police","versicherungsschein"];
+var BELEG_NEIN=/(^| )(verdienst|lohn|gehalt|arbeitsvertrag|zulage|hoehergruppierung|kurtaxe|verwarnung|parkverstoss|bussgeld)/;
+var BELEG_OHNE={Arbeit_Einkommen:1,Gesundheit:1,LR_Arztrechnungen:1,Mobilitaet:1,Wertanlage_Kauf_Verkauf:1,Einkaeufe:1,Kind_Schule_Kita:1,Steuern_Geschaeft:1};
+function dn(s){return " "+String(s||"").toLowerCase().replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue").replace(/ß/g,"ss").replace(/[^a-z0-9]+/g," ").trim()+" ";}
+function dtx(e){return dn([e.absender,e.ki_absender,e.betreff,e.datei,e.art].join(" ").replace(/_/g," "));}
+function kwHit(t,w){if(w==="gas")return /(^| )(erd)?gas( |abrechnung|rechnung|tarif|liefer|komfort|preis|verbrauch|zaehler)/.test(t);return t.indexOf(" "+w)>-1;}
+function beleg_titel(e){var a=String(e.absender||"").replace(/_/g," "),b=String(e.betreff||"").replace(/_/g," ");return a&&b?a+" – "+b:(a||b||String(e.datei||"Dokument").replace(/\.pdf$/i,"").replace(/_/g," "));}
+function beleg_betrag(e){var v=e.betrag!=null?+e.betrag:e.zahlbetrag!=null?+e.zahlbetrag:null;return v==null||isNaN(v)?null:Math.abs(v);}
+/* Bezugsjahr: Abrechnungszeitraum im Titel (Jahr mit den meisten Monaten), sonst genau eine Jahreszahl, sonst Jahr laut Auslesen */
+function belegJahr(e){var t=String([e.betreff,e.datei].join(" ")),m=/(\d{2})\.?(\d{2})\.?((?:19|20)\d{2})\s*(?:-|–|bis)\s*(\d{2})\.?(\d{2})\.?((?:19|20)\d{2})/.exec(t);
+  if(m){var a=+m[3]*12+(+m[2]-1),b=+m[6]*12+(+m[5]-1);if(b>=a&&b-a<36){var cnt={};for(var i=a;i<=b;i++){var yy=Math.floor(i/12);cnt[yy]=(cnt[yy]||0)+1;}
+    return {y:+Object.keys(cnt).sort(function(p,q){return cnt[q]-cnt[p]||q-p;})[0],sicher:true};}}
+  var ys={};dn(t).split(" ").forEach(function(w){if(/^(19|20)\d{2}$/.test(w)&&+w>1990)ys[w]=1;});var k=Object.keys(ys);
+  if(k.length===1)return {y:+k[0],sicher:true};
+  if((e.quelle==="cockpit"||e.nachgelesen)&&e.jahr)return {y:+e.jahr,sicher:false};
+  /* Beitragsrechnungen und -anpassungen ab November gelten meist fürs Folgejahr */
+  var dat=String(e.datum||"");if(dat&&/beitrag/i.test(t)&&+dat.slice(5,7)>=11)return {y:+dat.slice(0,4)+1,sicher:false};
+  return {y:null,sicher:false};}
+function kostObj(data,y,k,neu){var J=(data.jahre||{})[y];if(!J){if(!neu)return null;J=data.jahre[y]={kosten:{},zaehler:{}};}if(!J.kosten)J.kosten={};
+  var x=(J.extra||[]).filter(function(q){return q.k===k&&!q.del;})[0];if(x)return x;if(!J.kosten[k]){if(!neu)return null;J.kosten[k]={};}return J.kosten[k];}
+function belegLinks(o){var l=(o&&o.belege)||{};return Object.keys(l).filter(function(id){return l[id]&&!l[id].del;}).map(function(id){return Object.assign({id:id},l[id]);});}
+function belegSumme(o){var n=0,sum=0,offen=0;belegLinks(o).forEach(function(x){if(x.b!=null&&!isNaN(x.b)){sum+=+x.b;n++;}else offen++;});return {summe:r2(sum),n:n,offen:offen,anz:n+offen};}
+function belegSync(o){var s=belegSumme(o);if(!o.manuell&&s.n)o.betrag=s.summe;return o;}
+/* alle Verknüpfungen: {docId:[{y,k,n,b}]} – für das Archiv und die Steuer */
+function belegIndex(data){var out={};Object.keys((data&&data.jahre)||{}).forEach(function(y){posList(data,+y).forEach(function(p){var o=kostObj(data,+y,p.k,false);
+  belegLinks(o).forEach(function(x){(out[x.id]=out[x.id]||[]).push({y:+y,k:p.k,n:p.n,b:x.b==null?null:+x.b,ti:x.ti,d:x.d});});});});return out;}
+/* Anteil eines Dokuments, der noch nicht auf andere Kostenarten desselben Jahres verteilt ist (Sammelbescheid) */
+function belegRest(data,y,k,e){var tot=beleg_betrag(e);if(tot==null)return null;var verteilt=0;
+  posList(data,y).forEach(function(p){if(p.k===k)return;var o=kostObj(data,y,p.k,false),x=o&&o.belege&&o.belege[e.id];if(x&&!x.del&&x.b!=null)verteilt+=+x.b;});
+  var r=r2(tot-verteilt);return r>0.004?r:null;}
+function belegVerknuepfen(data,y,k,e,b){var o=kostObj(data,y,k,true),vorher=belegSumme(o).anz;
+  if(!vorher&&+o.betrag>0&&!o.manuell)o.manuell=true;  /* schon von Hand eingetragen: Wert bleibt, bis „Summe der Belege“ gewählt wird */
+  o.belege=o.belege||{};o.belege[e.id]={b:b==null||isNaN(b)?null:r2(+b),ti:beleg_titel(e),d:e.datum||"",t:Date.now()};
+  if(o.belegAus)delete o.belegAus[e.id];delete o.beleg;
+  if(o.manuell&&r2(belegSumme(o).summe)===r2(+o.betrag||0))o.manuell=false;
+  return belegSync(o);}
+function belegLoesen(data,y,k,id){var o=kostObj(data,y,k,false);if(!o||!o.belege||!o.belege[id])return null;o.belege[id].del=true;o.belege[id].t=Date.now();
+  o.belegAus=o.belegAus||{};o.belegAus[id]=1;if(!belegSumme(o).anz)o.manuell=false;return belegSync(o);}
+/* Absender-Schlüssel eines Dokuments (die ersten zwei markanten Wörter) – zum Lernen aus anderen Jahren */
+var STOP=" gmbh co kg ag mbh und der die das von fuer se eg ev rechnung bescheid ";
+function absKey(s){var w=dn(String(s||"").split(" – ")[0]).trim().split(" ").filter(function(x){return x.length>=3&&STOP.indexOf(" "+x+" ")<0&&!/^\d+$/.test(x);});return w.slice(0,3).join(" ");}
+function belegVorschlaege(data,y,k,idx,max){y=+y;var p=posList(data,y).filter(function(q){return q.k===k;})[0];if(!p)return [];
+  var o=kostObj(data,y,k,false)||{},hat=(o.belege)||{},aus=o.belegAus||{},kw=BELEG_KW[k]||[],such={},lern={},anderswo={};
+  /* Suchwörter dieser Kostenart aus allen Jahren, gelernte Absender aus Verknüpfungen anderer Jahre */
+  Object.keys(data.jahre||{}).forEach(function(yy){var q=posList(data,+yy).filter(function(x){return x.k===k;})[0];if(q&&q.such)dn(q.such).trim().split(" ").forEach(function(w){if(w.length>=3)such[w]=1;});
+    var oo=kostObj(data,+yy,k,false);belegLinks(oo).forEach(function(x){if(+yy!==y)anderswo[x.id]=1;var a=absKey(x.ti);if(a&&+yy!==y)lern[a]=1;});});
+  var ziel=+(o.manuell||!belegSumme(o).n?o.betrag:0)||0,von=(y-1)+"-11-01",bis=(y+1)+"-06-30",out=[];
+  (idx||[]).forEach(function(e){if(!e||!e.id||hat[e.id]&&!hat[e.id].del||aus[e.id]||anderswo[e.id])return;if(e.bereich==="Geschaeftlich"||BELEG_OHNE[e.kategorie])return;
+    var t=dtx(e);if(BELEG_NEIN.test(t))return;
+    var kw1=kw.some(function(w){return kwHit(t,w);}),s1=Object.keys(such).some(function(w){return kw.indexOf(w)<0&&t.indexOf(" "+w)>-1;}),l1=Object.keys(lern).some(function(a){return a.split(" ").every(function(w){return t.indexOf(" "+w+" ")>-1;});}),
+      re=BELEG_RECHNUNG.some(function(w){return t.indexOf(w)>-1;});
+    if(!kw1&&!((s1||l1)&&re))return;
+    var bj=belegJahr(e),dat=String(e.datum||"").slice(0,10),sc=(kw1?40:0)+(s1?30:0)+(l1?35:0)+(re?10:0),hinweis="";
+    if(bj.y!=null){if(bj.y!==y)return;sc+=bj.sicher?30:15;}
+    else{if(!dat||dat<von||dat>bis)return;if(dat.slice(0,4)===String(y))sc+=15;else hinweis="Jahr prüfen";}
+    var bt=beleg_betrag(e);if(bt!=null&&ziel&&Math.abs(bt-ziel)<0.01){sc+=40;hinweis="entspricht dem eingetragenen Betrag";}
+    out.push({e:e,sc:sc,hinweis:hinweis,betrag:bt,rest:belegRest(data,y,k,e)});});
+  return out.sort(function(a,b){return b.sc-a.sc||String(b.e.datum||"").localeCompare(String(a.e.datum||""));}).slice(0,max||3);}
+/* Checkliste: Kostenarten mit Betrag bzw. Vorjahresbetrag, aber ohne Beleg */
+function belegFehlt(data,y){var prev=posList(data,y-1),out=[];posList(data,y).forEach(function(p){var o=kostObj(data,y,p.k,false),q=prev.filter(function(x){return x.k===p.k;})[0];
+  if(!(p.betrag>0||(q&&q.betrag>0)))return;if(!belegSumme(o).anz)out.push(p);});return out;}
+
+return {BELEG_KW:BELEG_KW,belegJahr:belegJahr,kostObj:kostObj,belegLinks:belegLinks,belegSumme:belegSumme,belegSync:belegSync,belegIndex:belegIndex,belegRest:belegRest,
+  belegVerknuepfen:belegVerknuepfen,belegLoesen:belegLoesen,belegVorschlaege:belegVorschlaege,belegFehlt:belegFehlt,belegTitel:beleg_titel,belegBetrag:beleg_betrag,
+  POS:POS,SCHL:SCHL,ART:ART,calc:calc,segments:segments,units:units,smoobuPT:smoobuPT,readingAt:readingAt,verbrauch:verbrauch,
   kontoSumme:kontoSumme,kontoZeitraum:kontoZeitraum,fromEnergie:fromEnergie,posList:posList,days:days,addD:addD,de:de,iso:iso,yearDays:yearDays,r2:r2};
 })();
 if(typeof window!=="undefined")window.HAUS=HAUS;

@@ -81,6 +81,7 @@ body.prev-on #prev{display:grid;position:fixed;inset:0;z-index:50;background:#06
 <script src="../finanzen/einkauf.js"></script>
 <script src="../vertraege/logic.js"></script>
 <script src="../auto/logic.js"></script>
+<script src="../haus/logic.js"></script>
 <script>
 (function(){
 "use strict";
@@ -228,16 +229,14 @@ function nachPanel(){var n=nNach();if(!n||st.perm==="unsupported"||st.run)return
   return '<div class="panel" style="border-color:#38bdf866"><b style="color:#7dd3fc">📚 '+n+' ältere Dokumente sind noch nicht ausgelesen</b><div class="note" style="margin:6px 0 10px">Sie stehen nur mit dem Dateinamen im Verzeichnis – ohne Betrag und Nummern. Einmal auslesen, dann lassen sie sich Buchungen, Verträgen und Fahrzeugen zuordnen. Läuft am PC im Konsolenfenster (etwa '+Math.max(1,Math.round(n*8/60))+' Min., verbraucht etwas API-Guthaben); Abbrechen ist jederzeit möglich, der nächste Lauf macht weiter.</div>'+
     '<button class="btn" style="background:#0ea5e9" onclick="D2.nachlesen()"'+(st.perm!=="granted"?" disabled":"")+'>📚 Altbestand auslesen</button></div>';}
 /* Bezüge je Dokument: Buchung (Finanzen), Vertrag, Fahrzeug, Haus-Nebenkosten – einmal berechnet, nach Änderungen neu */
-var HAUS_N={grundsteuer:"Grundsteuer",wasser:"Wasser",abwasser:"Abwasser",niederschlag:"Niederschlagswasser",heizung:"Heizung/Gas",muell:"Müll",schornstein:"Kaminkehrer",gebaeudevers:"Gebäudeversicherung",haftpflicht:"Haus-Haftpflicht"};
-var HAUS_KAT={Wohnen:1,Energie_PV:1,Versicherungen:1,Steuern_Privat:1,Behoerden_Ausweise:1,Vertraege:1};
 function hatBetrag(e){return (e.betrag!=null||e.zahlbetrag!=null)&&e.zahlart!=="bar"&&e.kategorie!=="Einkaeufe";}
 function bezuege(){var key=data.index.length+"|"+(data.aktualisiert||"")+"|"+(data.upd||0);if(st.bz&&st.bzKey===key)return st.bz;st.bzKey=key;var idx=data.index,o={};function add(id,c){(o[id]=o[id]||[]).push(c);}
   try{var fin=C.getLocal("finanzen",null);if(fin&&Array.isArray(fin.tx)){var z=D.zuordnung(idx,fin.tx,C.getLocal("zuordnung",null));
     Object.keys(z.doc).forEach(function(id){var p=z.doc[id];add(id,{k:"tx",art:p.art,t:p.t});});}}catch(x){}
   try{var vt=window.VERTR&&C.getLocal("vertraege",null);if(vt){vt=VERTR.norm(vt);VERTR.aktiv(vt.vertraege).forEach(function(v){VERTR.docMatch(v,idx).forEach(function(e){add(e.id,{k:"vt",v:v});});});}}catch(x){}
   try{var au=window.AUTO&&C.getLocal("auto",null);if(au)idx.forEach(function(e){var fz=AUTO.fahrzeugVon(au,e);if(fz)add(e.id,{k:"fz",fz:fz});});}catch(x){}
-  idx.forEach(function(e){if(!HAUS_KAT[e.kategorie]||e.bereich==="Geschaeftlich")return;var h=" "+D.norm([e.absender,e.betreff,e.datei].join(" "))+" ";
-    Object.keys(D.HAUS_KW).some(function(k){if(D.HAUS_KW[k].some(function(w){return h.indexOf(" "+w)>-1;})){add(e.id,{k:"haus",n:HAUS_N[k]||k});return true;}return false;});});
+  /* Nebenkosten: nur echte Verknüpfungen aus Haus → Kosten */
+  try{var hs=window.HAUS&&C.getLocal("haus",null);if(hs){var bi=HAUS.belegIndex(hs);Object.keys(bi).forEach(function(id){bi[id].forEach(function(x){add(id,{k:"haus",n:"NK "+x.y+": "+x.n});});});}}catch(x){}
   st.bz=o;return o;}
 function bezugChips(e,bz){var l=bz[e.id]||[],did=esc(e.id);if(!l.length)return "";
   return '<div class="bz">'+l.map(function(c){
@@ -366,7 +365,7 @@ window.D2={
 };
 document.addEventListener("keydown",function(e){if(e.key==="Escape"&&st.prevName)D2.closePrev();});
 render();init();
-C.autoPull([AREA,"einkaeufe","zuordnung","finanzen","vertraege","auto"],function(a,d){if(a===AREA)data=norm(d);if(a!=="einkaeufe"){st.bz=null;render();}});
+C.autoPull([AREA,"einkaeufe","zuordnung","finanzen","vertraege","auto","haus"],function(a,d){if(a===AREA)data=norm(d);if(a!=="einkaeufe"){st.bz=null;render();}});
 })();
 </script>
 </body>
