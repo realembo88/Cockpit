@@ -128,10 +128,11 @@ function heuteListe(){
     var zo=DOKS.zstOffen(dok,C.getLocal("energie",null)).length;
     if(zo)add("📷",zo+(zo===1?" Zählerstand":" Zählerstände")+" aus Fotos übernehmen","in Energie kurz prüfen – ein Tipp genügt",6.5,"energie/index.html#fotos");
     /* Zahlungsüberwachung: fällige Rechnungen ohne Abbuchung */
-    var op=DOKS.offenePosten(dok.index,fin,C.getLocal("zuordnung",null),t);
+    var op0=DOKS.offenePosten(dok.index,fin,C.getLocal("zuordnung",null),t),op=op0.filter(function(x){return !x.wv;});
     var kurz=function(e){return String(e.absender||e.betreff||"Rechnung").replace(/_/g," ").split(/\s+/).slice(0,2).join(" ");}; /* ohne Betreff – kann Persönliches enthalten */
     if(op.length===1)add("⏰","Rechnung offen? "+kurz(op[0].e),C.eur(op[0].b)+" · fällig seit "+V.de(op[0].e.faellig)+" – keine Abbuchung gefunden",7,"dokumente/index.html#offen",true);
-    else if(op.length)add("⏰",op.length+" Rechnungen offen?",op.slice(0,3).map(function(x){return kurz(x.e);}).join(", ")+" – keine Abbuchung gefunden",7,"dokumente/index.html#offen",true);
+    op0.filter(function(x){return x.wv;}).forEach(function(x){add("⚖️","Widerspruch "+kurz(x.e)+": Stand prüfen","Wiedervorlage "+V.de(x.wv.wv)+" – erledigt oder weiter beobachten",7.5,"dokumente/index.html#offen");});
+    if(op.length>1)add("⏰",op.length+" Rechnungen offen?",op.slice(0,3).map(function(x){return kurz(x.e);}).join(", ")+" – keine Abbuchung gefunden",7,"dokumente/index.html#offen",true);
     /* Hausmeister und Sicherung (Stand des letzten Abgleichs am PC) */
     var hm=dok.hm,ref=dok.upd?Math.min(Date.now(),dok.upd):Date.now();
     if(hm){

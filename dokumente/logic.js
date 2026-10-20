@@ -131,13 +131,19 @@ function monIdx(d){d=String(d||"");return (+d.slice(0,4))*12+(+d.slice(5,7))-1;}
 function absKey(e){return absenderWorte(e)[0]||"";}
 /* Rechnungs-/Belegnummern unterscheiden einzelne Rechnungen; Kunden- und Vertragsnummern nur den Absender */
 function refTreffer(e,hz,arten){return (e.refs||[]).some(function(r){if(arten.indexOf(r.art||"sonst")<0)return false;var k=kmp(r.wert);return k.length>=5&&hz.indexOf(k)>-1;});}
-var REF_EINZELN=["rechnung","beleg","sonst","mandat"],REF_STAMM=["kunde","vertrag"];
-function paarWert(t,e,off){var b=Math.abs(+t.b||0);
-  var ok=[e.zahlbetrag,e.betrag].some(function(v){return v!=null&&+v&&Math.abs(Math.abs(+v)-b)<=0.011;});if(!ok)return null;
+var REF_EINZELN=["rechnung","beleg","sonst","mandat"],REF_STAMM=["kunde","vertrag"],REF_RECHNUNG=["rechnung","beleg"];
+/* kleinste Abweichung zwischen Buchungsbetrag und Betrag/Zahlbetrag des Dokuments (null = kein Betrag) */
+function betragDiff(t,e){var b=Math.abs(+t.b||0),d=null;[e.zahlbetrag,e.betrag].forEach(function(v){if(v==null||!+v)return;var x=Math.abs(Math.abs(+v)-b);if(d==null||x<d)d=x;});return d;}
+/* Toleranz, wenn die Rechnungsnummer im Verwendungszweck steht: 2 %, mindestens 1 € (Rundung, Skonto, Lesefehler) */
+function tolOk(t,d){return d!=null&&d<=Math.max(1,0.02*Math.abs(+t.b||0));}
+function paarWert(t,e,off){var diff=betragDiff(t,e);if(diff==null)return null;
+  var hz=kmp(t.z),nr=refTreffer(e,hz,REF_EINZELN),nrR=refTreffer(e,hz,REF_RECHNUNG),exakt=diff<=0.011;
+  if(!exakt&&!(nrR&&tolOk(t,diff)))return null;
   var ref=e.faellig||e.datum;if(!ref)return null;var dd=(d0(t.d)-d0(e.datum||ref))/DAY,df=e.faellig?Math.abs((d0(t.d)-d0(e.faellig))/DAY):null;
-  if(dd<-14||dd>90)return null;
-  var sc=40,h=" "+norm((t.p||"")+" "+(t.z||""))+" ",hz=kmp(t.z),abs=absenderWorte(e).some(function(w){return h.indexOf(w)>-1;}),
-    nr=refTreffer(e,hz,REF_EINZELN),stamm=refTreffer(e,hz,REF_STAMM);
+  /* mit Rechnungsnummer darf das Dokumentdatum weit weg liegen (z. B. Abrechnungszeitraum statt Rechnungsdatum gelesen) */
+  if(nrR){if(dd<-120||dd>730)return null;}else if(dd<-14||dd>90)return null;
+  var sc=40,h=" "+norm((t.p||"")+" "+(t.z||""))+" ",abs=absenderWorte(e).some(function(w){return h.indexOf(w)>-1;}),
+    stamm=refTreffer(e,hz,REF_STAMM);
   if(abs||stamm)sc+=40;if(nr)sc+=60;
   /* Zeit: Fälligkeit, sonst Abstand zum Rechnungsdatum – Zahlungen kommen nach der Rechnung, typischerweise nach 1–4 Wochen */
   if(df!=null&&df<=5)sc+=30;else if(dd<-3)sc-=25;else sc+=Math.max(0,20-Math.abs(dd-14)/2);
@@ -146,8 +152,9 @@ function paarWert(t,e,off){var b=Math.abs(+t.b||0);
   /* Erstattung/Guthaben gehört zu einem Geldeingang, Rechnung zu einer Abbuchung */
   var zb=e.zahlbetrag!=null?+e.zahlbetrag:null,richtung=!(zb!=null&&((zb<0&&t.b<0)||(zb>0&&t.b>0&&e.kategorie!=="Arbeit_Einkommen")));
   if(!richtung)sc-=zb<0?30:15;
-  var zeit=mOk===true||(df!=null?df<=7:(dd>=-3&&dd<=45));
-  return {sc:sc,nr:nr,sicher:(abs||nr||stamm)&&richtung&&zeit&&mOk!==false};}
+  if(!exakt)sc-=10;
+  var zeit=(nrR&&exakt)||mOk===true||(df!=null?df<=7:(dd>=-3&&dd<=45));
+  return {sc:sc,nr:nr,abw:exakt?0:Math.round(diff*100)/100,sicher:exakt&&(abs||nr||stamm)&&richtung&&zeit&&mOk!==false};}
 /* Monatsversatz je Absender lernen: aus bestätigten Paaren und Treffern über die Rechnungsnummer */
 function versatz(paare,txById,docById,tx,by){var cnt={};
   function zaehle(t,e){var tm=titelMonat(e),k=absKey(e);if(tm==null||!k)return;var v=monIdx(t.d)-tm;if(v<-1||v>3)return;(cnt[k]=cnt[k]||{})[v]=(cnt[k][v]||0)+1;}
@@ -158,27 +165,37 @@ function versatz(paare,txById,docById,tx,by){var cnt={};
 function zuordnung(idx,tx,zu){var paare=(zu&&zu.paare)||{},byT={},byD={},liste=[];
   var docs=(idx||[]).filter(function(e){return e&&(e.betrag!=null||e.zahlbetrag!=null)&&e.zahlart!=="bar";}),by={};
   docs.forEach(function(e){[e.zahlbetrag,e.betrag].forEach(function(v){if(v==null||!+v)return;var c=Math.round(Math.abs(+v)*100);[c-1,c,c+1].forEach(function(k){if((by[k]=by[k]||[]).indexOf(e)<0)by[k].push(e);});});});
+  var byEuro=euroIndex(docs);
   var txById={},docById={};(tx||[]).forEach(function(t){txById[t.id]=t;});docs.concat(idx||[]).forEach(function(e){if(e)docById[e.id]=e;});
   var off=versatz(paare,txById,docById,tx,by);
   /* 1. bestätigte Paare stehen fest */
   Object.keys(paares(paare)).forEach(function(k){var p=paare[k];if(!p||!p.ok||p.del)return;var q=k.split("|"),t=txById[q[0]],e=docById[q[1]];if(!t||!e||byT[t.id]||byD[e.id])return;
     var z={t:t,e:e,sc:999,art:"ok"};byT[t.id]=z;byD[e.id]=z;});
   /* 2. Kandidaten bewerten, verworfene Paare auslassen, beste zuerst vergeben */
-  (tx||[]).forEach(function(t){if(byT[t.id])return;var l=by[Math.round(Math.abs(+t.b||0)*100)];if(!l)return;
+  (tx||[]).forEach(function(t){if(byT[t.id])return;var l=(by[Math.round(Math.abs(+t.b||0)*100)]||[]).concat(byEuro[Math.round(Math.abs(+t.b||0))]||[]);if(!l.length)return;
     var seen={};l.forEach(function(e){if(seen[e.id]||byD[e.id])return;seen[e.id]=1;var k=t.id+"|"+e.id;if(paare[k]&&paare[k].ok===false&&!paare[k].del)return;
-      var w=paarWert(t,e,off);if(w)liste.push({t:t,e:e,sc:w.sc+(w.sicher?100:0),sicher:w.sicher});});});
+      var w=paarWert(t,e,off);if(w)liste.push({t:t,e:e,sc:w.sc+(w.sicher?100:0),sicher:w.sicher,abw:w.abw});});});
   liste.sort(function(a,b){return b.sc-a.sc;});
   liste.forEach(function(z){if(byT[z.t.id]||byD[z.e.id])return;z.art=z.sicher?"sicher":"vorschlag";byT[z.t.id]=z;byD[z.e.id]=z;});
   /* bloße Betragsgleichheit ohne Absender und weit auseinander ist eher Zufall */
   Object.keys(byT).forEach(function(k){var z=byT[k];if(z.art==="vorschlag"&&z.sc<55){delete byT[k];delete byD[z.e.id];}});
   return {tx:byT,doc:byD,versatz:off,vorschlaege:Object.keys(byT).map(function(k){return byT[k];}).filter(function(z){return z.art==="vorschlag";}).sort(function(a,b){return String(b.t.d).localeCompare(String(a.t.d));})};}
+/* Dokumente mit Rechnungsnummer je Euro-Betrag (± Toleranz) – für Zuordnungen mit leicht abweichendem Betrag */
+function hatRechNr(e){return (e.refs||[]).some(function(r){return REF_RECHNUNG.indexOf(r.art||"sonst")>-1&&kmp(r.wert).length>=5;});}
+function euroIndex(docs){var o={};(docs||[]).forEach(function(e){if(!hatRechNr(e))return;[e.zahlbetrag,e.betrag].forEach(function(v){if(v==null||!+v)return;v=Math.abs(+v);var tol=Math.max(1,0.02*v);
+  for(var k=Math.floor(v-tol);k<=Math.ceil(v+tol);k++){if((o[k]=o[k]||[]).indexOf(e)<0)o[k].push(e);}});});return o;}
+/* Buchung mit der Rechnungsnummer des Dokuments im Verwendungszweck (Betrag gleich oder innerhalb der Toleranz) */
+function nrPasst(t,e){var d=betragDiff(t,e);return d!=null&&tolOk(t,d)&&refTreffer(e,kmp(t&&t.z),REF_RECHNUNG);}
 /* Kandidaten für die Handzuordnung: Buchungen zum Dokument bzw. Dokumente zur Buchung (Betrag ±1 ct, zeitlich plausibel) */
 function txKandidaten(e,tx){var vs=[e.zahlbetrag,e.betrag].filter(function(v){return v!=null&&+v;}).map(function(v){return Math.abs(+v);});if(!vs.length||!e.datum)return [];
-  var a=d0(e.datum)-45*DAY,z=d0(e.datum)+120*DAY;
-  return (tx||[]).filter(function(t){var b=Math.abs(+t.b||0),d=d0(t.d);return d>=a&&d<=z&&vs.some(function(v){return Math.abs(v-b)<=0.011;});}).sort(function(p,q){return String(p.d).localeCompare(String(q.d));});}
+  var a=d0(e.datum)-45*DAY,z=d0(e.datum)+120*DAY,rn=hatRechNr(e);
+  return (tx||[]).filter(function(t){var b=Math.abs(+t.b||0),d=d0(t.d);
+    if(d>=a&&d<=z&&vs.some(function(v){return Math.abs(v-b)<=0.011;}))return true;
+    return rn&&d>=d0(e.datum)-120*DAY&&d<=d0(e.datum)+730*DAY&&nrPasst(t,e);}).sort(function(p,q){return String(p.d).localeCompare(String(q.d));});}
 function docKandidaten(t,idx){var b=Math.abs(+t.b||0),d=d0(t.d);
-  return (idx||[]).filter(function(e){if(!e||!e.datum||e.zahlart==="bar")return false;var x=d0(e.datum);if(x<d-120*DAY||x>d+45*DAY)return false;
-    return [e.zahlbetrag,e.betrag].some(function(v){return v!=null&&+v&&Math.abs(Math.abs(+v)-b)<=0.011;});}).sort(function(p,q){return String(q.datum).localeCompare(String(p.datum));});}
+  return (idx||[]).filter(function(e){if(!e||!e.datum||e.zahlart==="bar")return false;var x=d0(e.datum);
+    if(x>=d-120*DAY&&x<=d+45*DAY&&[e.zahlbetrag,e.betrag].some(function(v){return v!=null&&+v&&Math.abs(Math.abs(+v)-b)<=0.011;}))return true;
+    return hatRechNr(e)&&x>=d-730*DAY&&x<=d+120*DAY&&nrPasst(t,e);}).sort(function(p,q){return String(q.datum).localeCompare(String(p.datum));});}
 /* Rechnungsnummer o. Ä. des Dokuments steht im Verwendungszweck der Buchung */
 function refPasst(t,e){return refTreffer(e,kmp(t&&t.z),REF_EINZELN);}
 /* abgelehnte Paare (✕) von Dokumenten desselben Absenders – zum gesammelten Zurücksetzen */
@@ -191,7 +208,7 @@ function paares(p){return p||{};}
 function zuBlank(){return {paare:{}};}
 function zuNorm(x){x=x&&typeof x==="object"?x:zuBlank();if(!x.paare||typeof x.paare!=="object")x.paare={};if(!x.erledigt||typeof x.erledigt!=="object")x.erledigt={};return x;}
 /* „anders bezahlt“ (bar, Karte, anderes Konto): Rechnung nicht mehr als offen melden */
-function zuErledigt(zu,did,an){zu=zuNorm(zu);zu.erledigt[did]=an?{t:Date.now()}:{del:true,t:Date.now()};return zu;}
+function zuErledigt(zu,did,an,art,wv){zu=zuNorm(zu);zu.erledigt[did]=an?{t:Date.now(),art:art||"bezahlt",wv:wv||null}:{del:true,t:Date.now()};return zu;}
 function zuMerge(l,r){l=zuNorm(JSON.parse(JSON.stringify(l)));r=zuNorm(JSON.parse(JSON.stringify(r)));var o={paare:{}};
   Object.keys(Object.assign({},l.paare,r.paare)).forEach(function(k){var a=l.paare[k],b=r.paare[k];o.paare[k]=!a?b:!b?a:((a.t||0)>=(b.t||0)?a:b);});
   o.erledigt={};Object.keys(Object.assign({},l.erledigt,r.erledigt)).forEach(function(k){var a=l.erledigt[k],b=r.erledigt[k];o.erledigt[k]=!a?b:!b?a:((a.t||0)>=(b.t||0)?a:b);});
@@ -203,19 +220,44 @@ function zuMerge(l,r){l=zuNorm(JSON.parse(JSON.stringify(l)));r=zuNorm(JSON.pars
    sonst fehlt womöglich nur der Auszug. Bar bezahlt, Guthaben und „anders bezahlt“ (zuordnung.erledigt) bleiben außen vor. */
 var ZAHL_ART=/rechnung|mahnung|zahlungserinnerung|zahlungsaufforderung|liquidation|honorar|kostennote|gebuehr|beitrag|forderung|bescheid/,ZAHL_NICHT=/gutschrift|erstattung|bescheinigung|angebot|kontoauszug|vertrag/;
 function isoHeute(){var x=new Date();return x.getFullYear()+"-"+("0"+(x.getMonth()+1)).slice(-2)+"-"+("0"+x.getDate()).slice(-2);}
+/* Ergebnis je Rechnung: {e, b, tage} und ggf.
+   kand – Buchung mit der Rechnungsnummer im Verwendungszweck, die keiner anderen Rechnung gehört (abgelehnt: von Hand verworfen)
+   wd   – Widerspruch im Archiv zum selben Vorgang (gemeinsame Nummer)
+   wv   – als strittig markiert und Wiedervorlage erreicht (erledigt[id] = {art:"streit", wv}) */
+
+function erlAktiv(x){return !!(x&&!x.del);}
+/* Nummern eines Dokuments für „gleicher Vorgang“ – ohne Kfz-Kennzeichen (die verbinden sonst alles rund ums Auto) */
+var KZ_RE=/^[a-zäöü]{1,3}[- ]?[a-z]{1,2} ?\d{1,4}[eh]?$/i;
+function refKeys(e){return (e.refs||[]).filter(function(r){return r&&r.wert&&!KZ_RE.test(String(r.wert).trim());}).map(function(r){return kmp(r.wert);}).filter(function(k){return k.length>=5;});}
+function istForderung(e){var a=norm(e&&e.art);return !!(e&&ZAHL_ART.test(a)&&!ZAHL_NICHT.test(a));}
 function offenePosten(idx,fin,zu,heute){heute=heute||isoHeute();var tx=(fin&&fin.tx)||[];if(!tx.length)return [];
   var ko=(fin&&fin.konten)||{},bis={},von="";
   tx.forEach(function(t){var b=((ko[t.k]||{}).bereich)||"privat";if(t.d>(bis[b]||""))bis[b]=t.d;if(!von||t.d<von)von=t.d;});
-  var z=zuordnung(idx,tx,zu),erl=(zu&&zu.erledigt)||{},out=[];
+  var z=zuordnung(idx,tx,zu),erl=(zu&&zu.erledigt)||{},paare=(zu&&zu.paare)||{},out=[];
+  var wds=(idx||[]).filter(function(x){return x&&/widerspruch|einspruch/.test(norm([x.betreff,x.art,x.datei].join(" ")));});
   (idx||[]).forEach(function(e){if(!e||!e.faellig||e.zahlart==="bar"||e.kategorie==="Einkaeufe")return;
     var art=norm(e.art);if(!ZAHL_ART.test(art)||ZAHL_NICHT.test(art))return;
     if(/bescheid/.test(art)&&e.zahlbetrag==null)return; /* Bescheide nur mit ausdrücklichem Zahlbetrag (Nachzahlung) */
     var b=e.zahlbetrag!=null?+e.zahlbetrag:(e.betrag!=null?+e.betrag:null);if(b==null||!(b>0))return;
-    if(erl[e.id]&&!erl[e.id].del)return;if(z.doc[e.id])return;
+    var x=erl[e.id];
+    if(erlAktiv(x)){if(x.art==="streit"&&x.wv&&x.wv<=heute&&!z.doc[e.id])out.push({e:e,b:b,tage:Math.round((d0(heute)-d0(e.faellig))/DAY),wv:x});return;}
+    if(z.doc[e.id])return;
     var tage=(d0(heute)-d0(e.faellig))/DAY;if(tage<5||tage>120)return;
     var stand=bis[e.bereich==="Geschaeftlich"?"geschaeft":"privat"];if(!stand||(d0(stand)-d0(e.faellig))/DAY<3||von>e.faellig)return;
-    out.push({e:e,b:b,tage:Math.round(tage)});});
+    var o={e:e,b:b,tage:Math.round(tage)};
+    if(hatRechNr(e)){var k=tx.filter(function(t){return !(z.tx[t.id]&&z.tx[t.id].art!=="vorschlag")&&nrPasst(t,e);})[0];
+      if(k){var p=paare[k.id+"|"+e.id];o.kand={t:k,abgelehnt:!!(p&&p.ok===false&&!p.del),abw:Math.round(betragDiff(k,e)*100)/100};}}
+    var rk=refKeys(e);if(rk.length){var w=wds.filter(function(x){return x.id!==e.id&&refKeys(x).some(function(k){return rk.indexOf(k)>-1;});}).sort(function(a,c){return String(c.datum).localeCompare(String(a.datum));})[0];if(w)o.wd=w;}
+    out.push(o);});
+  /* Wiedervorlage strittiger Vorgänge nur einmal je Vorgang (jüngstes Schreiben) */
+  out=out.filter(function(o){if(!o.wv)return true;var rk=refKeys(o.e);return !out.some(function(p){return p!==o&&p.wv&&String(p.e.datum)>String(o.e.datum)&&refKeys(p.e).some(function(k){return rk.indexOf(k)>-1;});});});
   return out.sort(function(a,b){return b.tage-a.tage;});}
+/* gleicher Vorgang (gemeinsame Nummer) – z. B. Zahlungsaufforderung, Mahnung, letzte Mahnung */
+function vorgang(idx,e){var rk=refKeys(e);if(!rk.length)return [e];return (idx||[]).filter(function(x){return x&&(x.id===e.id||refKeys(x).some(function(k){return rk.indexOf(k)>-1;}));});}
+/* Status für alle Forderungen desselben Vorgangs setzen – „streit“ (Widerspruch, mit Wiedervorlage), „erledigt“ oder aufheben (art null).
+   Ein Widerspruch gilt für den ganzen Vorgang: Zahlungsaufforderung, Mahnung, letzte Mahnung … */
+function vorgangSetzen(zu,idx,e,art,wv){zu=zuNorm(zu);var n=0;vorgang(idx,e).forEach(function(x){if(x.id===e.id||(istForderung(x)&&(x.betrag!=null||x.zahlbetrag!=null))){
+  zu.erledigt[x.id]=art?{t:Date.now(),art:art,wv:wv||null}:{del:true,t:Date.now()};n++;}});zu._n=n;return zu;}
 
 /* ---------- Zählerstände aus Fotos (Hausmeister → _cockpit/zaehlerstaende.json, über Dokumente synchronisiert) ----------
    offen = noch nicht in Energie übernommen oder verworfen (energie.fixed.zfoto {id: "ok"|"weg"}) */
@@ -239,8 +281,8 @@ function zstListe(f){if(!f||!Array.isArray(f.staende))return null;var w=Date.now
   return f.staende.filter(function(x){return x&&x.id&&x.stand!=null&&Date.parse(x.datum||x.gelesen)>w;}).slice(-80).map(function(x){
     return {id:x.id,art:x.art,nummer:x.nummer||null,obis:x.obis||null,stand:x.stand,einheit:x.einheit||null,datum:x.datum,zeit:x.zeit||null,unsicher:!!x.unsicher,hinweis:x.hinweis?String(x.hinweis).slice(0,120):null,foto:x.foto||null};});}
 /* Cockpit-Daten einmal täglich als _cockpit/cockpit-daten.json in die Ablage – so stecken sie in der ZIP-Sicherung des Hausmeisters.
-   Ohne Zugangsdaten (Token, Schlüssel) und ohne ThingCounter; nur wenn eine Sicherung eingerichtet ist. */
-var EXP_KEY="cockpit:dok:export",EXP_AREAS=["energie","auto","edelmetall","finanzen","einkaeufe","ferienwohnung","haus","steuer","dokumente","zuordnung","vertraege","training"];
+   Alle Bereiche, ohne Zugangsdaten (Token, Schlüssel); nur wenn eine Sicherung eingerichtet ist. */
+var EXP_KEY="cockpit:dok:export",EXP_AREAS=["energie","auto","edelmetall","finanzen","einkaeufe","ferienwohnung","haus","steuer","dokumente","zuordnung","vertraege","training","zaehler"];
 function datenExport(C,r,einst){if(!C||!r||!einst||!einst.sicherung_ziel)return;var t=0;try{t=+localStorage.getItem(EXP_KEY)||0;}catch(e){}if(Date.now()-t<20*3600e3)return;
   try{localStorage.setItem(EXP_KEY,String(Date.now()));}catch(e){}
   writeJSON(r,"_cockpit/cockpit-daten.json",C.makeBackup(EXP_AREAS,"cockpit")).catch(function(){try{localStorage.removeItem(EXP_KEY);}catch(e){}});}
@@ -268,6 +310,6 @@ function oeffnen(e){return root(true).then(function(r){if(!r)throw new Error("De
 
 return {listCSVs:listCSVs,verschiebe:verschiebe,kontoImport:kontoImport,supported:supported,mobil:mobil,state:state,root:root,pick:pick,forget:forget,dir:dir,file:file,exists:exists,readJSON:readJSON,writeJSON:writeJSON,listPDFs:listPDFs,blobUrl:blobUrl,
   newId:newId,start:start,poll:poll,clean:clean,fname:fname,valid:valid,isoDatum:isoDatum,stbJahr:stbJahr,index:index,zuordnung:zuordnung,txKandidaten:txKandidaten,docKandidaten:docKandidaten,zuSetzen:zuSetzen,refPasst:refPasst,abgelehnt:abgelehnt,zuZurueck:zuZurueck,absKey:absKey,titelMonat:titelMonat,paarWert:paarWert,zuBlank:zuBlank,zuNorm:zuNorm,zuMerge:zuMerge,norm:norm,titel:titel,de:de,steuerJahr:steuerJahr,stbDocs:stbDocs,
-  txMatcher:txMatcher,HAUS_KW:HAUS_KW,offenePosten:offenePosten,zstOffen:zstOffen,dokBlank:dokBlank,dokNorm:dokNorm,dokSummary:dokSummary,dokMerge:dokMerge,hmSumme:hmSumme,zstListe:zstListe,datenExport:datenExport,pcAbgleich:pcAbgleich,zuErledigt:zuErledigt,isoHeute:isoHeute,hausDocs:hausDocs,hausVorschlag:hausVorschlag,oeffnen:oeffnen};
+  txMatcher:txMatcher,HAUS_KW:HAUS_KW,offenePosten:offenePosten,vorgang:vorgang,vorgangSetzen:vorgangSetzen,nrPasst:nrPasst,betragDiff:betragDiff,zstOffen:zstOffen,dokBlank:dokBlank,dokNorm:dokNorm,dokSummary:dokSummary,dokMerge:dokMerge,hmSumme:hmSumme,zstListe:zstListe,datenExport:datenExport,pcAbgleich:pcAbgleich,zuErledigt:zuErledigt,isoHeute:isoHeute,hausDocs:hausDocs,hausVorschlag:hausVorschlag,oeffnen:oeffnen};
 })();
 if(typeof window!=="undefined")window.DOKS=DOKS;

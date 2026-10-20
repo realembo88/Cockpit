@@ -515,7 +515,13 @@ def offene_posten(dok, fin, zu, t):
         except (TypeError, ValueError):
             continue
         x = erl.get(e.get("id")) or {}
-        if b <= 0 or (x and not x.get("del")) or e.get("id") in fest:
+        titel = " ".join((str(e.get("absender") or "").replace("_", " ") or str(e.get("betreff") or "Rechnung").replace("_", " ")).split()[:2])
+        if x and not x.get("del"):
+            # strittig (Widerspruch): erst zur Wiedervorlage wieder melden
+            if x.get("art") == "streit" and x.get("wv") and x["wv"] <= t and e.get("id") not in fest:
+                out.append({"titel": titel, "faellig": e["faellig"], "betrag": None, "tage": tage(e["faellig"], t), "wv": x["wv"]})
+            continue
+        if b <= 0 or e.get("id") in fest:
             continue
         n = tage(e["faellig"], t)
         stand = bis.get("geschaeft" if e.get("bereich") == "Geschaeftlich" else "privat")
@@ -524,10 +530,22 @@ def offene_posten(dok, fin, zu, t):
         a, z = plus_t(e.get("datum") or e["faellig"], -14), plus_t(e["faellig"], 45)
         if any(abs(abs(float(x.get("b") or 0)) - b) <= 0.011 and a <= x["d"] <= z for x in tx):
             continue
+        # Rechnungsnummer im Verwendungszweck: Betrag darf um 2 % (mind. 1 EUR) abweichen, Datum egal
+        nrs = [alnum((r or {}).get("wert")) for r in e.get("refs") or [] if isinstance(r, dict) and r.get("art") in ("rechnung", "beleg")]
+        nrs = [n for n in nrs if len(n) >= 5]
+        if nrs and any(abs(abs(float(x.get("b") or 0)) - b) <= max(1.0, 0.02 * abs(float(x.get("b") or 0))) and any(n in alnum(x.get("z")) for n in nrs) for x in tx):
+            continue
         # nur der Absender (kurz) - der Betreff kann Persoenliches enthalten (z. B. Behandlungen)
-        titel = " ".join((str(e.get("absender") or "").replace("_", " ") or str(e.get("betreff") or "Rechnung").replace("_", " ")).split()[:2])
         out.append({"titel": titel, "faellig": e["faellig"], "betrag": b, "tage": n})
-    return sorted(out, key=lambda o: -o["tage"])
+    # Wiedervorlage strittiger Vorgaenge nur einmal je Absender
+    gesehen, rest = set(), []
+    for o in sorted(out, key=lambda o: -o["tage"]):
+        if o.get("wv"):
+            if o["titel"] in gesehen:
+                continue
+            gesehen.add(o["titel"])
+        rest.append(o)
+    return rest
 
 
 def buchungen(fw):
@@ -603,7 +621,10 @@ def woche(ordner, t):
             if alter is None or alter > grenze:
                 sonst.append("💾 Sicherung der Ablage " + (f"seit {alter} Tagen nicht gelaufen" if alter is not None else "noch nie gelaufen")
                              + (f" – {hm['sFehler']}" if hm.get("sFehler") else ""))
-    op = offene_posten(dok, fin, zu, t)
+    alle_op = offene_posten(dok, fin, zu, t)
+    for o in (o for o in alle_op if o.get("wv")):
+        sonst.append(f"⚖️ Widerspruch {o['titel']}: Stand prüfen (Wiedervorlage {de(o['wv'])})")
+    op = [o for o in alle_op if not o.get("wv")]
     for o in op[:5]:
         sonst.append(f"⏰ Rechnung offen? {o['titel']} – {eur(o['betrag'], 2)}, fällig seit {de(o['faellig'])}")
     if len(op) > 5:
