@@ -856,6 +856,15 @@ def lies_nach(client, pdf: Path) -> dict:
     return normalisiere(A.extract_json(antwort.content[0].text))
 
 
+def braucht_nachlesen(e: dict) -> bool:
+    """Altbestand (nur Dateiname) und frueher abgelegte Dokumente ohne Zuordnungs-Angaben (Rechnungsnummer, Faelligkeit)."""
+    if e.get("nachgelesen") or e.get("kategorie") == EINKAUF_KAT:
+        return False
+    if e.get("quelle") == "bestand":
+        return True
+    return e.get("quelle") == "cockpit" and not any(k in e for k in ("art", "refs", "faellig"))
+
+
 def cmd_nachlesen(id_):
     """Altbestand (nur ueber den Dateinamen ins Verzeichnis aufgenommen) einmal inhaltlich auslesen.
     Titel, Kategorie und Ablageort bleiben unveraendert; nach jedem Dokument wird gespeichert,
@@ -863,7 +872,7 @@ def cmd_nachlesen(id_):
     if not os.environ.get("ANTHROPIC_API_KEY"):
         raise Fehler("Umgebungsvariable ANTHROPIC_API_KEY ist nicht gesetzt (siehe Einrichtung).")
     idx = lade_index()
-    offen = [e for e in idx.values() if e.get("quelle") == "bestand" and not e.get("nachgelesen") and e.get("kategorie") != EINKAUF_KAT]
+    offen = [e for e in idx.values() if braucht_nachlesen(e)]
     offen.sort(key=lambda e: e.get("datum") or "", reverse=True)  # neueste zuerst - die sind fuer die Zuordnung am wichtigsten
     if not offen:
         return {"meldung": "Alle Dokumente sind bereits ausgelesen.", "neu": 0, "fehler": 0}

@@ -124,35 +124,69 @@ function absenderWorte(e){var a=e.absender||e.ki_absender||"",w=norm(a).split(" 
   if(!a)w=norm(e.betreff).split(" ").slice(0,3); /* Altbestand: Absender steht vorn im Betreff */
   return w.filter(function(x){return x.length>3&&ZU_STOP.indexOf(" "+x+" ")<0;});}
 function kmp(s){return String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");}
-function paarWert(t,e){var b=Math.abs(+t.b||0);
+/* Monat im Titel („Mobilfunkrechnung September 2026“) als Monatsindex, sonst null */
+var MONATE=["januar","februar","maerz","april","mai","juni","juli","august","september","oktober","november","dezember"];
+function titelMonat(e){var w=norm([e.betreff,e.datei].join(" ")).split(" ");for(var i=0;i<w.length-1;i++){var m=MONATE.indexOf(w[i]);if(m>-1&&/^20\d\d$/.test(w[i+1]))return (+w[i+1])*12+m;}return null;}
+function monIdx(d){d=String(d||"");return (+d.slice(0,4))*12+(+d.slice(5,7))-1;}
+function absKey(e){return absenderWorte(e)[0]||"";}
+/* Rechnungs-/Belegnummern unterscheiden einzelne Rechnungen; Kunden- und Vertragsnummern nur den Absender */
+function refTreffer(e,hz,arten){return (e.refs||[]).some(function(r){if(arten.indexOf(r.art||"sonst")<0)return false;var k=kmp(r.wert);return k.length>=5&&hz.indexOf(k)>-1;});}
+var REF_EINZELN=["rechnung","beleg","sonst","mandat"],REF_STAMM=["kunde","vertrag"];
+function paarWert(t,e,off){var b=Math.abs(+t.b||0);
   var ok=[e.zahlbetrag,e.betrag].some(function(v){return v!=null&&+v&&Math.abs(Math.abs(+v)-b)<=0.011;});if(!ok)return null;
   var ref=e.faellig||e.datum;if(!ref)return null;var dd=(d0(t.d)-d0(e.datum||ref))/DAY,df=e.faellig?Math.abs((d0(t.d)-d0(e.faellig))/DAY):null;
   if(dd<-14||dd>90)return null;
   var sc=40,h=" "+norm((t.p||"")+" "+(t.z||""))+" ",hz=kmp(t.z),abs=absenderWorte(e).some(function(w){return h.indexOf(w)>-1;}),
-    nr=(e.refs||[]).some(function(r){var k=kmp(r.wert);return k.length>=5&&hz.indexOf(k)>-1;});
-  if(abs)sc+=40;if(nr)sc+=60;
-  sc+=df!=null&&df<=5?30:Math.max(0,20-Math.abs(dd)/4);
+    nr=refTreffer(e,hz,REF_EINZELN),stamm=refTreffer(e,hz,REF_STAMM);
+  if(abs||stamm)sc+=40;if(nr)sc+=60;
+  /* Zeit: Fälligkeit, sonst Abstand zum Rechnungsdatum – Zahlungen kommen nach der Rechnung, typischerweise nach 1–4 Wochen */
+  if(df!=null&&df<=5)sc+=30;else if(dd<-3)sc-=25;else sc+=Math.max(0,20-Math.abs(dd-14)/2);
+  /* gelernter Monatsversatz des Absenders (z. B. Rechnung „September“ wird im Oktober abgebucht) */
+  var tm=titelMonat(e),o=(abs||stamm)&&off?off[absKey(e)]:null,mOk=null;if(tm!=null&&o!=null&&!nr){mOk=monIdx(t.d)-tm===o;sc+=mOk?30:-30;}
   /* Erstattung/Guthaben gehört zu einem Geldeingang, Rechnung zu einer Abbuchung */
   var zb=e.zahlbetrag!=null?+e.zahlbetrag:null,richtung=!(zb!=null&&((zb<0&&t.b<0)||(zb>0&&t.b>0&&e.kategorie!=="Arbeit_Einkommen")));
   if(!richtung)sc-=zb<0?30:15;
-  var zeit=df!=null?df<=7:(dd>=-7&&dd<=45);
-  return {sc:sc,sicher:(abs||nr)&&richtung&&zeit};}
+  var zeit=mOk===true||(df!=null?df<=7:(dd>=-3&&dd<=45));
+  return {sc:sc,nr:nr,sicher:(abs||nr||stamm)&&richtung&&zeit&&mOk!==false};}
+/* Monatsversatz je Absender lernen: aus bestätigten Paaren und Treffern über die Rechnungsnummer */
+function versatz(paare,txById,docById,tx,by){var cnt={};
+  function zaehle(t,e){var tm=titelMonat(e),k=absKey(e);if(tm==null||!k)return;var v=monIdx(t.d)-tm;if(v<-1||v>3)return;(cnt[k]=cnt[k]||{})[v]=(cnt[k][v]||0)+1;}
+  Object.keys(paare).forEach(function(k){var p=paare[k];if(!p||!p.ok||p.del)return;var q=k.split("|"),t=txById[q[0]],e=docById[q[1]];if(t&&e)zaehle(t,e);});
+  (tx||[]).forEach(function(t){var l=by[Math.round(Math.abs(+t.b||0)*100)];if(!l)return;l.forEach(function(e){if(!e.refs||!e.refs.length)return;
+    var w=paarWert(t,e,null);if(w&&w.nr)zaehle(t,e);});});
+  var out={};Object.keys(cnt).forEach(function(k){var c=cnt[k],best=null;Object.keys(c).forEach(function(v){if(best==null||c[v]>c[best])best=v;});out[k]=+best;});return out;}
 function zuordnung(idx,tx,zu){var paare=(zu&&zu.paare)||{},byT={},byD={},liste=[];
   var docs=(idx||[]).filter(function(e){return e&&(e.betrag!=null||e.zahlbetrag!=null)&&e.zahlart!=="bar";}),by={};
-  docs.forEach(function(e){[e.zahlbetrag,e.betrag].forEach(function(v){if(v==null||!+v)return;var c=Math.round(Math.abs(+v)*100);[c-1,c,c+1].forEach(function(k){(by[k]=by[k]||[]).push(e);});});});
+  docs.forEach(function(e){[e.zahlbetrag,e.betrag].forEach(function(v){if(v==null||!+v)return;var c=Math.round(Math.abs(+v)*100);[c-1,c,c+1].forEach(function(k){if((by[k]=by[k]||[]).indexOf(e)<0)by[k].push(e);});});});
   var txById={},docById={};(tx||[]).forEach(function(t){txById[t.id]=t;});docs.concat(idx||[]).forEach(function(e){if(e)docById[e.id]=e;});
+  var off=versatz(paare,txById,docById,tx,by);
   /* 1. bestätigte Paare stehen fest */
   Object.keys(paares(paare)).forEach(function(k){var p=paare[k];if(!p||!p.ok||p.del)return;var q=k.split("|"),t=txById[q[0]],e=docById[q[1]];if(!t||!e||byT[t.id]||byD[e.id])return;
     var z={t:t,e:e,sc:999,art:"ok"};byT[t.id]=z;byD[e.id]=z;});
   /* 2. Kandidaten bewerten, verworfene Paare auslassen, beste zuerst vergeben */
   (tx||[]).forEach(function(t){if(byT[t.id])return;var l=by[Math.round(Math.abs(+t.b||0)*100)];if(!l)return;
     var seen={};l.forEach(function(e){if(seen[e.id]||byD[e.id])return;seen[e.id]=1;var k=t.id+"|"+e.id;if(paare[k]&&paare[k].ok===false&&!paare[k].del)return;
-      var w=paarWert(t,e);if(w)liste.push({t:t,e:e,sc:w.sc+(w.sicher?100:0),sicher:w.sicher});});});
+      var w=paarWert(t,e,off);if(w)liste.push({t:t,e:e,sc:w.sc+(w.sicher?100:0),sicher:w.sicher});});});
   liste.sort(function(a,b){return b.sc-a.sc;});
   liste.forEach(function(z){if(byT[z.t.id]||byD[z.e.id])return;z.art=z.sicher?"sicher":"vorschlag";byT[z.t.id]=z;byD[z.e.id]=z;});
   /* bloße Betragsgleichheit ohne Absender und weit auseinander ist eher Zufall */
   Object.keys(byT).forEach(function(k){var z=byT[k];if(z.art==="vorschlag"&&z.sc<55){delete byT[k];delete byD[z.e.id];}});
-  return {tx:byT,doc:byD,vorschlaege:Object.keys(byT).map(function(k){return byT[k];}).filter(function(z){return z.art==="vorschlag";}).sort(function(a,b){return String(b.t.d).localeCompare(String(a.t.d));})};}
+  return {tx:byT,doc:byD,versatz:off,vorschlaege:Object.keys(byT).map(function(k){return byT[k];}).filter(function(z){return z.art==="vorschlag";}).sort(function(a,b){return String(b.t.d).localeCompare(String(a.t.d));})};}
+/* Kandidaten für die Handzuordnung: Buchungen zum Dokument bzw. Dokumente zur Buchung (Betrag ±1 ct, zeitlich plausibel) */
+function txKandidaten(e,tx){var vs=[e.zahlbetrag,e.betrag].filter(function(v){return v!=null&&+v;}).map(function(v){return Math.abs(+v);});if(!vs.length||!e.datum)return [];
+  var a=d0(e.datum)-45*DAY,z=d0(e.datum)+120*DAY;
+  return (tx||[]).filter(function(t){var b=Math.abs(+t.b||0),d=d0(t.d);return d>=a&&d<=z&&vs.some(function(v){return Math.abs(v-b)<=0.011;});}).sort(function(p,q){return String(p.d).localeCompare(String(q.d));});}
+function docKandidaten(t,idx){var b=Math.abs(+t.b||0),d=d0(t.d);
+  return (idx||[]).filter(function(e){if(!e||!e.datum||e.zahlart==="bar")return false;var x=d0(e.datum);if(x<d-120*DAY||x>d+45*DAY)return false;
+    return [e.zahlbetrag,e.betrag].some(function(v){return v!=null&&+v&&Math.abs(Math.abs(+v)-b)<=0.011;});}).sort(function(p,q){return String(q.datum).localeCompare(String(p.datum));});}
+/* Rechnungsnummer o. Ä. des Dokuments steht im Verwendungszweck der Buchung */
+function refPasst(t,e){return refTreffer(e,kmp(t&&t.z),REF_EINZELN);}
+/* abgelehnte Paare (✕) von Dokumenten desselben Absenders – zum gesammelten Zurücksetzen */
+function abgelehnt(zu,idx,e){var k=absKey(e),by={},out=[];if(!k)return out;(idx||[]).forEach(function(x){if(x)by[x.id]=x;});
+  Object.keys(((zu||{}).paare)||{}).forEach(function(key){var p=zu.paare[key];if(!p||p.ok!==false||p.del)return;var d=by[key.split("|")[1]];if(d&&absKey(d)===k)out.push(key);});return out;}
+function zuZurueck(zu,keys){zu=zuNorm(zu);(keys||[]).forEach(function(k){zu.paare[k]={ok:false,del:true,t:Date.now()};});return zu;}
+/* Hand-Zuordnung: neues Paar bestätigen, bisherige Paare des Dokuments bzw. der Buchung lösen */
+function zuSetzen(zu,tid,did,alt){zu=zuNorm(zu);(alt||[]).forEach(function(k){if(k&&k!==tid+"|"+did)zu.paare[k]={ok:false,t:Date.now()};});zu.paare[tid+"|"+did]={ok:true,t:Date.now()};return zu;}
 function paares(p){return p||{};}
 function zuBlank(){return {paare:{}};}
 function zuNorm(x){x=x&&typeof x==="object"?x:zuBlank();if(!x.paare||typeof x.paare!=="object")x.paare={};return x;}
@@ -172,7 +206,7 @@ function oeffnen(e){return root(true).then(function(r){if(!r)throw new Error("De
   return blobUrl(r,e.archiv);}).then(function(u){var w=window.open(u,"_blank");if(!w)location.href=u;setTimeout(function(){URL.revokeObjectURL(u);},60000);});}
 
 return {listCSVs:listCSVs,verschiebe:verschiebe,kontoImport:kontoImport,supported:supported,mobil:mobil,state:state,root:root,pick:pick,forget:forget,dir:dir,file:file,exists:exists,readJSON:readJSON,writeJSON:writeJSON,listPDFs:listPDFs,blobUrl:blobUrl,
-  newId:newId,start:start,poll:poll,clean:clean,fname:fname,valid:valid,isoDatum:isoDatum,stbJahr:stbJahr,index:index,zuordnung:zuordnung,paarWert:paarWert,zuBlank:zuBlank,zuNorm:zuNorm,zuMerge:zuMerge,norm:norm,titel:titel,de:de,steuerJahr:steuerJahr,stbDocs:stbDocs,
+  newId:newId,start:start,poll:poll,clean:clean,fname:fname,valid:valid,isoDatum:isoDatum,stbJahr:stbJahr,index:index,zuordnung:zuordnung,txKandidaten:txKandidaten,docKandidaten:docKandidaten,zuSetzen:zuSetzen,refPasst:refPasst,abgelehnt:abgelehnt,zuZurueck:zuZurueck,absKey:absKey,titelMonat:titelMonat,paarWert:paarWert,zuBlank:zuBlank,zuNorm:zuNorm,zuMerge:zuMerge,norm:norm,titel:titel,de:de,steuerJahr:steuerJahr,stbDocs:stbDocs,
   txMatcher:txMatcher,HAUS_KW:HAUS_KW,hausDocs:hausDocs,hausVorschlag:hausVorschlag,oeffnen:oeffnen};
 })();
 if(typeof window!=="undefined")window.DOKS=DOKS;

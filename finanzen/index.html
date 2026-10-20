@@ -386,11 +386,23 @@ function vTx(){
   var sum=list.reduce(function(s,t){return s+t.b;},0);
   h+='<div class="small muted" style="margin-bottom:8px">'+list.length+" Buchungen · Summe "+sEur(sum)+"</div>";
   st.zu=window.DOKS&&DOKS.index().length?DOKS.zuordnung(DOKS.index(),data.tx,C.getLocal("zuordnung",null)):null;
+  /* Buchungen ohne Beleg, zu denen es Dokumente mit gleichem Betrag gibt (für „📎＋“) */
+  if(st.zu){var bet={};DOKS.index().forEach(function(e){if(!e||e.zahlart==="bar")return;[e.zahlbetrag,e.betrag].forEach(function(v){if(v!=null&&+v)bet[Math.round(Math.abs(+v)*100)]=1;});});
+    st.zuKand=function(t){var c=Math.round(Math.abs(+t.b||0)*100);return t.b<0&&(bet[c]||bet[c-1]||bet[c+1])&&DOKS.docKandidaten(t,DOKS.index()).length>0;};}
   if(st.zu&&st.zu.vorschlaege.length)h+=zuPanel(st.zu.vorschlaege);
   h+='<div class="panel" id="txlist" style="padding:4px 14px">'+(list.length?list.slice(0,st.limit).map(txRow).join(""):'<div class="note" style="padding:12px 0">Nichts gefunden.</div>')+"</div>";
   if(list.length>st.limit)h+='<button class="btn ghost full" onclick="F2.more()">Weitere '+Math.min(80,list.length-st.limit)+" anzeigen</button>";
   return h;
 }
+/* Hand-Zuordnung: Belege mit passendem Betrag zur Buchung, der richtige wird mit „✓ dieser“ fest zugeordnet */
+function belegWahl(t){var idx=DOKS.index(),zu=st.zu,cur=zu&&zu.tx[t.id],paare=(C.getLocal("zuordnung",null)||{}).paare||{},l=DOKS.docKandidaten(t,idx);
+  var h='<div class="note" style="margin-top:8px;border-top:1px solid #152038;padding-top:8px"><b>Beleg zu dieser Buchung wählen</b> – Dokumente mit gleichem Betrag:</div>';
+  if(!l.length)h+='<div class="note">Kein Dokument mit diesem Betrag im Archiv.</div>';
+  l.slice(0,10).forEach(function(e){var did=C.esc(e.id),an=zu&&zu.doc[e.id],ist=cur&&cur.e.id===e.id,ab=paare[t.id+"|"+e.id]&&paare[t.id+"|"+e.id].ok===false&&!paare[t.id+"|"+e.id].del;
+    var tags=[ist?'<span style="color:#69f0ae">aktuell</span>':"",DOKS.refPasst(t,e)?'<span style="color:#69f0ae">Rechnungsnr. passt ✓</span>':"",an&&!ist?"gehört jetzt zu Buchung vom "+new Date(an.t.d).toLocaleDateString("de-DE"):"",ab?'<span style="color:#ffb74d">von dir abgelehnt</span>':""].filter(Boolean).join(" · ");
+    h+='<div style="display:flex;gap:8px;align-items:center;padding:6px 0;border-top:1px dashed #1e2b45"><div style="flex:1;min-width:0" class="small">📄 '+C.esc(DOKS.titel(e))+'<div class="muted" style="font-size:11px">'+DOKS.de(e.datum)+(e.faellig?" · fällig "+DOKS.de(e.faellig):"")+(tags?" · "+tags:"")+"</div></div>"+
+      (ist?"":'<button class="pill on" style="padding:5px 10px" onclick="F2.zuSetz(\''+t.id+'\',\''+did+'\')">✓ dieser</button>')+'<button class="pill" style="padding:5px 10px" onclick="F2.doc(\''+did+'\')">Öffnen</button></div>';});
+  return h+'<div style="margin-top:6px"><button class="pill" onclick="F2.zuWahl(null)">Schließen</button></div>';}
 /* Zuordnung Buchung ↔ Dokument: Vorschläge bestätigen oder verwerfen */
 function zuFrage(z){var e=z.e,t=z.t,tid=t.id,did=C.esc(e.id);
   return '<div class="note" style="margin-top:6px">Passt <b>'+C.esc(DOKS.titel(e))+"</b> ("+DOKS.de(e.datum)+(e.zahlbetrag!=null||e.betrag!=null?" · "+C.eur(Math.abs(+(e.zahlbetrag!=null?e.zahlbetrag:e.betrag))):"")+') zu dieser Buchung?</div>'+
@@ -424,8 +436,10 @@ function txRow(t){
       '<button class="btn ghost" style="margin-top:6px;padding:7px 12px;font-size:12px" onclick="F2.edit(null)">Fertig</button></div>';
   }else{h+='<button class="cat'+(c===F.UNKAT?" u":"")+(t.cat?" m":"")+'" onclick="F2.edit(\''+t.id+'\')">'+C.esc(c)+"</button>";
     var z=st.zu&&st.zu.tx[t.id];
-    if(z&&z.art!=="vorschlag")h+='<button class="cat d" title="'+C.esc(z.e.datei)+'" onclick="F2.doc(\''+C.esc(z.e.id)+'\')">📎 '+C.esc(DOKS.titel(z.e).slice(0,40))+'</button><button class="cat" title="Gehört nicht zu dieser Buchung" onclick="F2.zu(\''+t.id+'\',\''+C.esc(z.e.id)+'\',false)">✕</button>';
-    else if(z)h+='<button class="cat d" style="border-style:dashed;opacity:.8" title="Vorschlag – bitte bestätigen" onclick="F2.zuOffen(\''+t.id+'\')">📎? '+C.esc(DOKS.titel(z.e).slice(0,36))+"</button>"+(st.zuOpen===t.id?zuFrage(z):"");}
+    if(z&&z.art!=="vorschlag")h+='<button class="cat d" title="'+C.esc(z.e.datei)+'" onclick="F2.doc(\''+C.esc(z.e.id)+'\')">📎 '+C.esc(DOKS.titel(z.e).slice(0,40))+'</button><button class="cat" title="Anderen Beleg wählen" onclick="F2.zuWahl(\''+t.id+'\')">↔</button><button class="cat" title="Gehört nicht zu dieser Buchung" onclick="F2.zu(\''+t.id+'\',\''+C.esc(z.e.id)+'\',false)">✕</button>';
+    else if(z)h+='<button class="cat d" style="border-style:dashed;opacity:.8" title="Vorschlag – bitte bestätigen" onclick="F2.zuOffen(\''+t.id+'\')">📎? '+C.esc(DOKS.titel(z.e).slice(0,36))+'</button><button class="cat" title="Anderen Beleg wählen" onclick="F2.zuWahl(\''+t.id+'\')">↔</button>'+(st.zuOpen===t.id?zuFrage(z):"");
+    else if(st.zu&&st.zuKand&&st.zuKand(t))h+='<button class="cat" style="border-style:dashed;opacity:.75" title="Beleg aus dem Archiv zuordnen" onclick="F2.zuWahl(\''+t.id+'\')">📎＋</button>';
+    if(st.zuWahl===t.id)h+=belegWahl(t);}
   return h+'</div><div class="a '+(t.b<0?"neg":"pos")+'">'+(t.b<0?"−":"+")+C.eur(Math.abs(t.b))+"</div></div>";
 }
 
@@ -836,6 +850,9 @@ window.F2={
   zu:function(tid,did,ok){var z=DOKS.zuNorm(C.getLocal("zuordnung",null));z.paare[tid+"|"+did]={ok:!!ok,t:Date.now()};C.save("zuordnung",z);st.zuOpen=null;
     flash(ok?"✓ Zugeordnet":"✓ Verworfen – wird nicht mehr vorgeschlagen");},
   zuOffen:function(tid){st.zuOpen=st.zuOpen===tid?null:tid;render();},
+  zuWahl:function(tid){st.zuWahl=st.zuWahl===tid?null:tid;st.zuOpen=null;render();},
+  zuSetz:function(tid,did){var cur=st.zu,alt=[];if(cur&&cur.tx[tid])alt.push(tid+"|"+cur.tx[tid].e.id);if(cur&&cur.doc[did])alt.push(cur.doc[did].t.id+"|"+did);
+    C.save("zuordnung",DOKS.zuSetzen(C.getLocal("zuordnung",null),tid,did,alt));st.zuWahl=null;flash("✓ Fest zugeordnet");},
   zuAuf:function(o){st.zuAuf=o;},
   doc:function(id){var e=DOKS.index().filter(function(x){return x.id===id;})[0];if(!e)return;DOKS.oeffnen(e).catch(function(err){flash("⚠ "+(err.message||err)+" – Beleg: "+e.datei,true);});},
   tab:function(t){st.tab=t;st.edit=null;render();window.scrollTo(0,0);},

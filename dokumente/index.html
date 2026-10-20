@@ -106,7 +106,7 @@ function summaryFor(d){var n=(d.index||[]).length,e=d.eingang;
 function loadEdits(){try{return JSON.parse(localStorage.getItem(EDIT_KEY)||"{}")||{};}catch(e){return {};}}
 function saveEdits(){try{localStorage.setItem(EDIT_KEY,JSON.stringify(st.edit));}catch(e){}}
 
-var st={tab:"eingang",perm:"…",root:null,rootName:"",pdfs:null,vor:null,edit:loadEdits(),open:{},run:null,flash:null,q:"",fy:"",fb:"alle",fst:false,fohne:false,bz:null,limit:60,test:null,prevName:null,prevUrl:null};
+var st={tab:"eingang",perm:"…",root:null,rootName:"",pdfs:null,vor:null,edit:loadEdits(),open:{},run:null,flash:null,q:"",fy:"",fb:"alle",fst:false,fohne:false,bz:null,tx:[],txVon:"",zuErg:null,zuWahl:null,limit:60,test:null,prevName:null,prevUrl:null};
 function flash(t,warn){st.flash={t:t,warn:!!warn};render();clearTimeout(flash.tm);flash.tm=setTimeout(function(){st.flash=null;render();},warn?6000:3000);}
 function esc(s){return C.esc(s);}
 function konfig(){return (st.vor&&st.vor.konfig)||data.konfig||{empfaenger:{},archiv:{Privat:[],Geschaeftlich:[]},stb:{Privat:[],Geschaeftlich:[]}};}
@@ -224,29 +224,42 @@ function archivKurz(){var n=data.index.length;return n?'<div class="note">Im Arc
 
 /* ---------- Archiv ---------- */
 /* Altbestand: nur über den Dateinamen erfasst, noch nicht inhaltlich ausgelesen */
-function nNach(){return data.index.filter(function(e){return e.quelle==="bestand"&&!e.nachgelesen&&e.kategorie!=="Einkaeufe";}).length;}
+/* wie braucht_nachlesen() im Skript: Altbestand und früher abgelegte Dokumente ohne Rechnungsnummer/Fälligkeit */
+function nNach(){return data.index.filter(function(e){if(e.nachgelesen||e.kategorie==="Einkaeufe")return false;return e.quelle==="bestand"||(e.quelle==="cockpit"&&!("art" in e)&&!("refs" in e)&&!("faellig" in e));}).length;}
 function nachPanel(){var n=nNach();if(!n||st.perm==="unsupported"||st.run)return "";
-  return '<div class="panel" style="border-color:#38bdf866"><b style="color:#7dd3fc">📚 '+n+' ältere Dokumente sind noch nicht ausgelesen</b><div class="note" style="margin:6px 0 10px">Sie stehen nur mit dem Dateinamen im Verzeichnis – ohne Betrag und Nummern. Einmal auslesen, dann lassen sie sich Buchungen, Verträgen und Fahrzeugen zuordnen. Läuft am PC im Konsolenfenster (etwa '+Math.max(1,Math.round(n*8/60))+' Min., verbraucht etwas API-Guthaben); Abbrechen ist jederzeit möglich, der nächste Lauf macht weiter.</div>'+
+  return '<div class="panel" style="border-color:#38bdf866"><b style="color:#7dd3fc">📚 '+n+' ältere Dokumente sind noch nicht vollständig ausgelesen</b><div class="note" style="margin:6px 0 10px">Sie stehen nur mit dem Dateinamen oder ohne Rechnungs- und Kundennummern im Verzeichnis. Einmal auslesen, dann lassen sie sich Buchungen, Verträgen und Fahrzeugen zuordnen. Läuft am PC im Konsolenfenster (etwa '+Math.max(1,Math.round(n*8/60))+' Min., verbraucht etwas API-Guthaben); Abbrechen ist jederzeit möglich, der nächste Lauf macht weiter.</div>'+
     '<button class="btn" style="background:#0ea5e9" onclick="D2.nachlesen()"'+(st.perm!=="granted"?" disabled":"")+'>📚 Altbestand auslesen</button></div>';}
 /* Bezüge je Dokument: Buchung (Finanzen), Vertrag, Fahrzeug, Haus-Nebenkosten – einmal berechnet, nach Änderungen neu */
-function hatBetrag(e){return (e.betrag!=null||e.zahlbetrag!=null)&&e.zahlart!=="bar"&&e.kategorie!=="Einkaeufe";}
+/* Beleg mit Betrag, der in den Zeitraum der importierten Kontoauszüge fällt (ältere können keine Buchung haben) */
+function hatBetrag(e){return (e.betrag!=null||e.zahlbetrag!=null)&&e.zahlart!=="bar"&&e.kategorie!=="Einkaeufe"&&!!st.txVon&&String(e.datum||"")>=st.txVon;}
 function bezuege(){var key=data.index.length+"|"+(data.aktualisiert||"")+"|"+(data.upd||0);if(st.bz&&st.bzKey===key)return st.bz;st.bzKey=key;var idx=data.index,o={};function add(id,c){(o[id]=o[id]||[]).push(c);}
-  try{var fin=C.getLocal("finanzen",null);if(fin&&Array.isArray(fin.tx)){var z=D.zuordnung(idx,fin.tx,C.getLocal("zuordnung",null));
+  st.tx=[];st.zuErg=null;
+  try{var fin=C.getLocal("finanzen",null);if(fin&&Array.isArray(fin.tx)){st.tx=fin.tx;st.txVon=fin.tx.reduce(function(m,t){return !m||t.d<m?t.d:m;},"");var z=D.zuordnung(idx,fin.tx,C.getLocal("zuordnung",null));st.zuErg=z;
     Object.keys(z.doc).forEach(function(id){var p=z.doc[id];add(id,{k:"tx",art:p.art,t:p.t});});}}catch(x){}
   try{var vt=window.VERTR&&C.getLocal("vertraege",null);if(vt){vt=VERTR.norm(vt);VERTR.aktiv(vt.vertraege).forEach(function(v){VERTR.docMatch(v,idx).forEach(function(e){add(e.id,{k:"vt",v:v});});});}}catch(x){}
   try{var au=window.AUTO&&C.getLocal("auto",null);if(au)idx.forEach(function(e){var fz=AUTO.fahrzeugVon(au,e);if(fz)add(e.id,{k:"fz",fz:fz});});}catch(x){}
   /* Nebenkosten: nur echte Verknüpfungen aus Haus → Kosten */
   try{var hs=window.HAUS&&C.getLocal("haus",null);if(hs){var bi=HAUS.belegIndex(hs);Object.keys(bi).forEach(function(id){bi[id].forEach(function(x){add(id,{k:"haus",n:"NK "+x.y+": "+x.n});});});}}catch(x){}
   st.bz=o;return o;}
-function bezugChips(e,bz){var l=bz[e.id]||[],did=esc(e.id);if(!l.length)return "";
-  return '<div class="bz">'+l.map(function(c){
+function bezugChips(e,bz){var l=bz[e.id]||[],did=esc(e.id),ohne=hatBetrag(e)&&st.tx.length&&!l.some(function(c){return c.k==="tx";});
+  if(!l.length&&!ohne)return st.zuWahl===e.id?buchWahl(e):"";
+  return '<div class="bz">'+(ohne?'<a class="bzc" style="cursor:pointer;border:1px dashed #334155;background:transparent" onclick="D2.zuWahl(\''+did+'\')">💶 Buchung zuordnen</a>':"")+l.map(function(c){
     if(c.k==="tx"){var tid=esc(c.t.id),txt=esc((c.t.n||c.t.p||"")+(c.t.z?" · "+String(c.t.z).slice(0,60):""));
-      return c.art==="vorschlag"?'<span class="bzc warn" title="'+txt+'">💶? Buchung '+D.de(c.t.d)+" · "+C.eur(+c.t.b)+'<button title="Passt" onclick="D2.zu(\''+tid+'\',\''+did+'\',1)">✓</button><button title="Passt nicht" onclick="D2.zu(\''+tid+'\',\''+did+'\',0)">✕</button></span>'
-        :'<span class="bzc gr" title="'+txt+'">💶 bezahlt '+D.de(c.t.d)+" · "+C.eur(+c.t.b)+'<button title="Falsche Buchung – lösen" onclick="D2.zu(\''+tid+'\',\''+did+'\',0)">✕</button></span>';}
+      return c.art==="vorschlag"?'<span class="bzc warn" title="'+txt+'">💶? Buchung '+D.de(c.t.d)+" · "+C.eur(+c.t.b)+'<button title="Passt" onclick="D2.zu(\''+tid+'\',\''+did+'\',1)">✓</button><button title="Andere Buchung wählen" onclick="D2.zuWahl(\''+did+'\')">↔</button><button title="Passt nicht" onclick="D2.zu(\''+tid+'\',\''+did+'\',0)">✕</button></span>'
+        :'<span class="bzc gr" title="'+txt+'">💶 bezahlt '+D.de(c.t.d)+" · "+C.eur(+c.t.b)+'<button title="Andere Buchung wählen" onclick="D2.zuWahl(\''+did+'\')">↔</button><button title="Falsche Buchung – lösen" onclick="D2.zu(\''+tid+'\',\''+did+'\',0)">✕</button></span>';}
     if(c.k==="vt")return '<a class="bzc" href="../vertraege/index.html#v-'+esc(c.v.id)+'">📑 '+esc(c.v.name||"Vertrag")+"</a>";
     if(c.k==="fz")return '<a class="bzc" href="../auto/index.html#fz-'+esc(c.fz)+'">🚗 '+esc((AUTO.FZ[c.fz]||{}).kurz||c.fz)+"</a>";
     if(c.k==="haus")return '<a class="bzc" href="../haus/index.html">🏘️ '+esc(c.n)+"</a>";
-    return "";}).join("")+"</div>";}
+    return "";}).join("")+"</div>"+(st.zuWahl===e.id?buchWahl(e):"");}
+/* Hand-Zuordnung: Buchungen mit gleichem Betrag zum Dokument; „✓ diese“ ordnet fest zu */
+function buchWahl(e){var did=esc(e.id),z=st.zuErg,cur=z&&z.doc[e.id],zu=C.getLocal("zuordnung",null),paare=(zu||{}).paare||{},l=D.txKandidaten(e,st.tx),ab=D.abgelehnt(zu,data.index,e);
+  var h='<div class="box" style="margin-top:8px"><div class="small" style="color:#e2e8f0;margin-bottom:4px"><b>Buchung zu diesem Beleg wählen</b></div><div class="note" style="margin-bottom:6px">Abbuchungen mit gleichem Betrag'+(e.faellig?" · fällig am "+D.de(e.faellig):"")+". Rechnungen werden meist 1–4 Wochen nach dem Rechnungsdatum abgebucht.</div>";
+  if(!l.length)h+='<div class="note">Keine Buchung mit diesem Betrag gefunden – bar bezahlt, noch offen oder über ein Konto, das nicht im Cockpit ist.</div>';
+  l.forEach(function(t){var tid=esc(t.id),an=z&&z.tx[t.id],ist=cur&&cur.t.id===t.id,k=t.id+"|"+e.id,abg=paare[k]&&paare[k].ok===false&&!paare[k].del;
+    var tags=[ist?'<span style="color:#86efac">aktuell</span>':"",D.refPasst(t,e)?'<span style="color:#86efac">Rechnungsnr. passt ✓</span>':"",an&&!ist?"gehört jetzt zu: "+esc(D.titel(an.e).slice(0,40)):"",abg?'<span style="color:#fcd34d">von dir abgelehnt</span>':""].filter(Boolean).join(" · ");
+    h+='<div class="row" style="padding:6px 0"><div class="l"><b style="font-size:12px">'+D.de(t.d)+" · "+C.eur(+t.b)+" · "+esc((t.p||"").slice(0,28))+'</b><div>'+esc(String(t.z||"").slice(0,70))+(tags?"<br>"+tags:"")+'</div></div><div class="r">'+(ist?"":'<button class="mini on" onclick="D2.zuSetz(\''+esc(t.id)+'\',\''+did+'\')">✓ diese</button>')+"</div></div>";});
+  if(ab.length)h+='<div class="note" style="margin-top:6px"><a href="#" style="color:#fcd34d" onclick="D2.zuReset(\''+did+'\');return false">↺ '+ab.length+" abgelehnte Zuordnungen dieses Absenders zurücksetzen</a> – danach ordnet das Cockpit neu zu.</div>";
+  return h+'<div style="margin-top:8px"><button class="mini" onclick="D2.zuWahl(null)">Schließen</button></div></div>';}
 function vArchiv(){
   var idx=data.index,q=D.norm(st.q),ys={};idx.forEach(function(e){var y=e.jahr||(e.datum?e.datum.slice(0,4):"");if(y)ys[y]=1;});
   var nBon=0,zeigBons=st.fbon||!!q,bz=bezuege(),ohneTx=function(e){return hatBetrag(e)&&!(bz[e.id]||[]).some(function(c){return c.k==="tx";});},nOhne=idx.filter(ohneTx).length;
@@ -360,6 +373,11 @@ window.D2={
     .catch(function(e){flash("⚠ Auftrag konnte nicht geschrieben werden: "+(e.message||e),true);});},
   q:function(v){st.q=v;var el=document.activeElement,pos=el&&el.selectionStart;render();var i=document.querySelector('#main input.inp');if(i){i.focus();try{i.setSelectionRange(pos,pos);}catch(e){}}},
   fy:function(v){st.fy=v;render();},fb:function(v){st.fb=v;render();},fst:function(){st.fst=!st.fst;render();},fohne:function(){st.fohne=!st.fohne;render();},
+  zuWahl:function(did){st.zuWahl=st.zuWahl===did?null:did;render();},
+  zuSetz:function(tid,did){var z=st.zuErg,alt=[];if(z&&z.doc[did])alt.push(z.doc[did].t.id+"|"+did);if(z&&z.tx[tid])alt.push(tid+"|"+z.tx[tid].e.id);
+    C.save("zuordnung",D.zuSetzen(C.getLocal("zuordnung",null),tid,did,alt));st.bz=null;st.zuWahl=null;flash("✓ Fest zugeordnet");},
+  zuReset:function(did){var e=data.index.filter(function(x){return x.id===did;})[0];if(!e)return;var zu=C.getLocal("zuordnung",null),ab=D.abgelehnt(zu,data.index,e);
+    C.save("zuordnung",D.zuZurueck(zu,ab));st.bz=null;flash("✓ "+ab.length+" Ablehnungen zurückgesetzt – neu zugeordnet");},
   zu:function(tid,did,ok){var z=D.zuNorm(C.getLocal("zuordnung",null));z.paare[tid+"|"+did]={ok:!!ok,t:Date.now()};C.save("zuordnung",z);st.bz=null;flash(ok?"Zuordnung bestätigt ✓":"Zuordnung gelöst – kommt nicht wieder");},fbon:function(){st.fbon=!st.fbon;render();},more:function(){st.limit+=60;render();},
   open:function(id){var e=data.index.filter(function(x){return x.id===id;})[0];if(!e)return;D.oeffnen(e).then(function(){if(st.perm==="prompt")init();},function(err){flash("⚠ "+(err.message||err),true);});}
 };
