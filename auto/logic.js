@@ -3,7 +3,8 @@
 var AUTO=(function(){
 "use strict";
 var DAY=864e5;
-var FZ={corsa:{id:"corsa",kurz:"Corsa-e",elektrisch:true,such:["corsa"],marke:"opel"},volvo:{id:"volvo",kurz:"Volvo V40",elektrisch:false,such:["volvo","v40"],marke:"volvo"}};
+var FZ={corsa:{id:"corsa",kurz:"Corsa-e",elektrisch:true,such:["corsa"],marke:"opel"},volvo:{id:"volvo",kurz:"Volvo V40",elektrisch:false,such:["volvo","v40"],marke:"volvo"},
+  megane:{id:"megane",kurz:"Megane",elektrisch:false,such:["megane"],marke:"renault"}};
 /* Marken/Modelle: nennt ein Dokument ein anderes Auto, wird es keinem der beiden als „frei“ angeboten */
 var MODELLE=" renault megane clio captur kangoo vw volkswagen golf polo passat tiguan touran caddy bmw audi mercedes benz opel astra corsa insignia mokka zafira ford fiesta focus kuga skoda octavia fabia superb seat leon ibiza cupra toyota yaris corolla hyundai kia peugeot citroen fiat mazda nissan tesla volvo dacia mini smart porsche ";
 var IDS=Object.keys(FZ);
@@ -113,11 +114,11 @@ function docMatch(x,fz,idx,alle){var ign=(((x||{}).stamm||{})[fz]||{}).ign||{};
 function fahrzeugVon(x,e){if(!x||!e)return null;var r=null;IDS.some(function(fz){var ign=(((x.stamm||{})[fz]||{}).ign)||{};if(!ign["doc:"+e.id]&&passt(x,fz,e)){r=fz;return true;}return false;});return r;}
 /* Kennzeichen-Kandidaten aus Dokumenten, die per Modellname zum Fahrzeug passen (deutsches Format, z. B. „AB-CD 123“, „AB CD123E“) */
 var KZ_RE=/\b([A-ZÄÖÜ]{1,3})[- ]([A-Z]{1,2})[- ]?(\d{1,4})([EH]?)\b/g;
-function kennzeichenVorschlag(x,fz,idx){var cnt={};
+function kennzeichenVorschlag(x,fz,idx){var cnt={},fremd={};IDS.forEach(function(o){var k=alnum((((x||{}).stamm||{})[o]||{}).kennzeichen);if(o!==fz&&k)fremd[k]=1;});
   (idx||[]).forEach(function(e){if(!e||e.kategorie!=="Mobilitaet")return;var h=" "+dnorm(docText(e))+" ";if(!suchWorte(x,fz).some(function(w){return h.indexOf(" "+w+" ")>-1;}))return;
     var s=docText(e),m;KZ_RE.lastIndex=0;var k=(e.kfz||{}).kennzeichen;var lst=k?[k]:[];
     while((m=KZ_RE.exec(s)))lst.push(m[1]+"-"+m[2]+" "+m[3]+m[4]);
-    lst.forEach(function(z){z=String(z).toUpperCase().replace(/\s+/g," ").trim();var a=alnum(z);if(a.length<4)return;var c=cnt[a]||(cnt[a]={kz:z,n:0,d:""});c.n++;if(String(e.datum||"")>c.d)c.d=String(e.datum||"");});});
+    lst.forEach(function(z){z=String(z).toUpperCase().replace(/\s+/g," ").trim();var a=alnum(z);if(a.length<4||fremd[a])return;var c=cnt[a]||(cnt[a]={kz:z,n:0,d:"",was:""});c.n++;if(String(e.datum||"")>=c.d){c.d=String(e.datum||"");c.was=String(e.betreff||"").replace(/_/g," ");}});});
   return Object.keys(cnt).map(function(k){return cnt[k];}).sort(function(a,b){return b.d.localeCompare(a.d)||b.n-a.n;});}
 function kennzeichenIn(e){var s=docText(e),m,o=[];KZ_RE.lastIndex=0;if((e.kfz||{}).kennzeichen)o.push(e.kfz.kennzeichen);while((m=KZ_RE.exec(s)))o.push(m[1]+"-"+m[2]+" "+m[3]+m[4]);return o;}
 /* Kennzeichen aus Mobilitäts-Dokumenten, die noch keinem Fahrzeug gehören (z. B. aus einem Kfz-Steuerbescheid) */

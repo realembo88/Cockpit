@@ -77,7 +77,7 @@ function summary(area){
 }
 function autoSummary(d){
   var totKm=0,totCost=0,nx=null;try{nx=window.AUTO?AUTO.naechster(d,V.heute()):null;}catch(x){}
-  ["corsa","volvo"].forEach(function(k){var c=d[k];if(!c||!c.entries||!c.entries.length)return;
+  (window.AUTO?AUTO.IDS:["corsa","volvo"]).forEach(function(k){var c=d[k];if(!c||!c.entries||!c.entries.length)return;
     var e=c.entries,start=c.startOdo!=null?c.startOdo:e[0].odo;totKm+=e[e.length-1].odo-start;
     e.forEach(function(x){if(x.price!=null)totCost+=x.fill*x.price;});});
   var tx=nx?"🔧 "+nx.titel.replace(/^([^:]+): /,"$1 ")+" "+V.wann(nx.tage):null;

@@ -192,7 +192,7 @@ def termine(vt, haus, t, kfz=None):
 
 
 # ----------------------------------------------------------------------------- Fahrzeug-Termine (wie auto/logic.js)
-KFZ_NAMEN = {"corsa": "Corsa-e", "volvo": "Volvo V40"}
+KFZ_NAMEN = {"corsa": "Corsa-e", "volvo": "Volvo V40", "megane": "Megane"}
 KFZ_ARTEN = {"hu": ("HU / TÜV", 30), "reifen_w": ("Reifenwechsel auf Winterreifen", 14), "reifen_s": ("Reifenwechsel auf Sommerreifen", 14),
              "insp": ("Inspektion", 21), "oel": ("Ölwechsel", 21), "frei": ("Eigener Termin", 14)}
 KM_VORLAUF = 1000
