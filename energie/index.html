@@ -56,6 +56,13 @@ input[type=number]:focus{outline:none;border-color:var(--accent);box-shadow:0 0 
 .evm{color:#34466b!important;}
 .ecard td.est{color:#ffcc80!important;font-style:italic;}
 .ecard td.est::before{content:"≈ ";}
+.zf{background:var(--panel);border:1px solid #38bdf866;border-radius:14px;padding:14px;margin-bottom:16px;}
+.zf-r{border-top:1px solid var(--border);padding:10px 0;display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;justify-content:space-between;}
+.zf-r:first-of-type{border-top:none;}
+.zf-r .l{min-width:0;flex:1 1 220px;font-size:12px;color:var(--muted);line-height:1.5;}
+.zf-r .l b{color:#fff;font-size:14px;}
+.zf-r select{background:var(--field);border:1px solid var(--border);color:#fff;padding:6px 8px;border-radius:8px;font-size:12px;}
+.zf-w{color:#ffcc80;}
 .estnote{font-size:11px;color:#ffcc80;margin:-4px 0 12px;font-style:italic;}
 .einits{display:flex;flex-wrap:wrap;gap:12px;background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:14px;align-items:center;}
 .eil{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;}
@@ -98,6 +105,7 @@ input[type=file]{display:none;}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="../assets/cockpit.js"></script>
 <script src="../assets/wallbox.js"></script>
+<script src="../dokumente/logic.js"></script>
 <script>
 document.getElementById("top").innerHTML=Cockpit.topbar({title:"Energie",icon:"🏠",sub:"Gas · Wasser · Strom · PV",accent:"#00c853",accent2:"#22b8cf"});
 Cockpit.paintStatus();
@@ -1049,13 +1057,69 @@ function rData(){
 function yearBar(){
   return `<div class="yrbar"><div class="eyrw"><button class="eyrb" onclick="chYr(-1)" aria-label="Vorjahr">&#8249;</button><span class="eyrv">${S.year}</span><button class="eyrb" onclick="chYr(1)" aria-label="Folgejahr">&#8250;</button></div><span class="esmsg" id="esmsg"></span></div>`;
 }
+/* ===== Zählerstände aus Fotos =====
+   Der Hausmeister am PC liest Zählerfotos aus 00_Eingang; die Werte kommen über Dokumente (synchronisiert) oder – am PC –
+   direkt aus _cockpit/zaehlerstaende.json. Übernommen wird nur nach Bestätigung; Eintippen geht weiterhin.
+   fixed.zmap: Zählernummer|OBIS → Feld (gelernt), fixed.zfoto: id → "ok" | "weg" (erledigt). */
+const ZF={g:{n:'Gas',m:'g',s:'gas_s',e:'m³'},w:{n:'Wasser',m:'w',s:'w_s',e:'m³'},sb:{n:'Strom Bezug (1.8.0)',m:'sb',s:'stb_s',e:'kWh'},se:{n:'Strom Einspeisung (2.8.0)',m:'se',s:'ste_s',e:'kWh'},
+  sdg:{n:'Unterzähler DG',m:'sdg',s:'stdg_s',e:'kWh'},sug:{n:'Unterzähler UG',m:'sug',s:'stug_s',e:'kWh'}};
+const ZF_ART={gas:'🔥 Gas',wasser:'💧 Wasser',strom:'⚡ Strom',waerme:'🌡 Wärme',sonst:'Zähler'};
+let ZFD={datei:null,h:null,wahl:{}};
+function zfKey(x){const o=String(x.obis||'');return (String(x.nummer||'').replace(/[^0-9A-Za-z]/g,'')||x.art)+'|'+(/2\.8/.test(o)?'2.8':/1\.8/.test(o)?'1.8':'');}
+function zfFeld(x){const w=ZFD.wahl[x.id];if(w&&w.f)return {f:w.f,sicher:true};const m=(S.fixed.zmap||{})[zfKey(x)];if(m)return {f:m,sicher:true};
+  if(x.art==='gas')return {f:'g',sicher:true};if(x.art==='wasser')return {f:'w',sicher:true};
+  if(x.art==='strom')return {f:/2\.8/.test(x.obis||'')?'se':'sb',sicher:false};return {f:'',sicher:false};}
+/* Ziel: nächstes Monatsende (±), zwischen 27.12. und 5.1. der Jahresanfang */
+function zfZiel(x){const w=ZFD.wahl[x.id];if(w&&w.y!=null)return {y:w.y,i:w.i,ab:null};
+  const d=new Date(String(x.datum)+'T12:00:00'),y=d.getFullYear(),mo=d.getMonth(),t=d.getDate();
+  if((mo===11&&t>=27)||(mo===0&&t<=5)){const yy=mo===11?y+1:y;return {y:yy,i:-1,ab:Math.round(Math.abs(d-new Date(yy,0,1,12))/864e5)};}
+  const e1=new Date(y,mo+1,0,12),e0=new Date(y,mo,0,12),a1=Math.abs(e1-d)/864e5,a0=Math.abs(d-e0)/864e5;
+  return a0<a1?{y:e0.getFullYear(),i:e0.getMonth(),ab:Math.round(a0)}:{y:y,i:mo,ab:Math.round(a1)};}
+function zfGet(y,i,f){const d=S.data[y];if(!d||!ZF[f])return '';return i<0?(d[ZF[f].s]||''):(((d.m||[])[i]||{})[ZF[f].m]||'');}
+/* nächster eingetragener Stand davor bzw. danach (für die Plausibilität) */
+function zfNachbar(y,i,f,dir){let yy=y,ii=i;for(let n=0;n<26;n++){ii+=dir;if(ii<-1){yy--;ii=11;}if(ii>11){yy++;ii=-1;}const v=zfGet(yy,ii,f);if(v!==''&&v!=null)return {v:+v,y:yy,i:ii};}return null;}
+function zfLabel(y,i){return i<0?'1.1.'+y:'Ende '+MO[i]+' '+y;}
+function zfListe(){const dok=Cockpit.getLocal('dokumente',null),seen={},out=[];
+  [].concat((dok&&dok.zst)||[],ZFD.datei||[]).forEach(x=>{if(!x||!x.id||seen[x.id]||x.stand==null)return;seen[x.id]=1;if((S.fixed.zfoto||{})[x.id])return;out.push(x);});
+  return out.sort((a,b)=>String(a.datum).localeCompare(String(b.datum)));}
+function zfLaden(){if(typeof DOKS==='undefined')return;DOKS.state().then(st=>{if(st.s!=='granted')return null;ZFD.h=st.h;return DOKS.readJSON(st.h,'_cockpit/zaehlerstaende.json');})
+  .then(f=>{if(f&&Array.isArray(f.staende)){ZFD.datei=f.staende.filter(x=>x&&x.status!=='weg');if(zfListe().length)rApp();}}).catch(()=>{});}
+function rFotos(){const l=zfListe();if(!l.length)return '';
+  return `<div class="zf" id="fotos"><div class="ecw-t" style="margin-bottom:4px"><span>📷 Zählerstände aus Fotos (${l.length})</span></div>
+  <div style="font-size:11px;color:var(--muted);line-height:1.5;margin-bottom:6px">Vom Hausmeister am PC aus Fotos gelesen – bitte prüfen und übernehmen. Zähler und Monat lassen sich ändern; der Zähler wird für das nächste Foto gemerkt.</div>`+
+  l.map(x=>{const fz=zfFeld(x),z=zfZiel(x),f=fz.f,cur=f?zfGet(z.y,z.i,f):'',st=+x.stand,warn=[];
+    const vor=f?zfNachbar(z.y,z.i,f,-1):null,nach=f?zfNachbar(z.y,z.i,f,1):null,gleich=cur!==''&&Math.abs(+cur-st)<0.005;
+    if(!f)warn.push('Zähler wählen');else if(!fz.sicher)warn.push('Zähler prüfen');
+    if(x.unsicher)warn.push('Ziffern unsicher gelesen');if(z.ab!=null&&z.ab>5)warn.push(z.ab+' Tage vom Monatsende');
+    if(vor&&st<vor.v-0.001)warn.push('kleiner als '+zfLabel(vor.y,vor.i)+' ('+vor.v+')');if(nach&&st>nach.v+0.001)warn.push('größer als '+zfLabel(nach.y,nach.i)+' ('+nach.v+')');
+    const id=x.id.replace(/[^A-Za-z0-9_-]/g,'');
+    const selF=`<select onchange="zfWahl('${id}','f',this.value)">${f?'':'<option value="">Zähler …</option>'}${Object.keys(ZF).map(k=>`<option value="${k}"${k===f?' selected':''}>${ZF[k].n}</option>`).join('')}</select>`;
+    const selZ=`<select onchange="zfWahl('${id}','z',this.value)">${[-1].concat(MO.map((_,i)=>i)).map(i=>`<option value="${i}"${i===z.i?' selected':''}>${zfLabel(z.y,i)}</option>`).join('')}</select>`;
+    return `<div class="zf-r"><div class="l"><b>${fN(st,st%1?2:0)} ${Cockpit.esc(x.einheit||(ZF[f]||{}).e||'')}</b> · ${ZF_ART[x.art]||ZF_ART.sonst}${x.nummer?' Nr. '+Cockpit.esc(x.nummer):''}${x.obis?' · '+Cockpit.esc(x.obis):''}<br>
+      Foto vom ${String(x.datum).split('-').reverse().join('.')}${x.zeit?' '+Cockpit.esc(x.zeit):''}${cur!==''?' · bisher eingetragen: '+Cockpit.esc(cur):''}${x.hinweis?'<br>'+Cockpit.esc(x.hinweis):''}
+      ${warn.length?'<br><span class="zf-w">⚠ '+warn.map(Cockpit.esc).join(' · ')+'</span>':''}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">${selF}${selZ}
+      ${ZFD.h&&x.foto?`<button class="btn btn-sm" onclick="zfFoto('${id}')">📷</button>`:''}
+      <button class="btn btn-sm btn-pri" onclick="zfOk('${id}')"${f?'':' disabled'}>${gleich?'✓ passt schon':cur!==''?'Übernehmen (ersetzt)':'✓ Übernehmen'}</button>
+      <button class="btn btn-sm" onclick="zfWeg('${id}')" title="Nicht übernehmen">✕</button></div></div>`;}).join('')+'</div>';}
+function zfFind(id){return zfListe().filter(x=>x.id.replace(/[^A-Za-z0-9_-]/g,'')===id)[0];}
+function zfWahl(id,k,v){const x=zfFind(id);if(!x)return;const w=ZFD.wahl[x.id]=ZFD.wahl[x.id]||{};
+  if(k==='f')w.f=v;else{const z=zfZiel(x);w.y=z.y;w.i=+v;}rApp();}
+function zfMark(x,v){S.fixed.zfoto=Object.assign({},S.fixed.zfoto||{});S.fixed.zfoto[x.id]=v;}
+function zfOk(id){const x=zfFind(id);if(!x)return;const f=zfFeld(x).f,z=zfZiel(x);if(!f||!ZF[f])return;
+  const d=yd(z.y),val=String(Math.round(+x.stand*1000)/1000);if(z.i<0)d[ZF[f].s]=val;else d.m[z.i][ZF[f].m]=val;
+  S.fixed.zmap=Object.assign({},S.fixed.zmap||{});S.fixed.zmap[zfKey(x)]=f;zfMark(x,'ok');delete ZFD.wahl[x.id];
+  clearTimeout(autoTimer);saveState(false);rApp();showFeedback('✓ '+ZF[f].n+' '+zfLabel(z.y,z.i)+': '+val);}
+function zfWeg(id){const x=zfFind(id);if(!x)return;zfMark(x,'weg');clearTimeout(autoTimer);saveState(false);rApp();}
+function zfFoto(id){const x=zfFind(id);if(!x||!ZFD.h||!x.foto)return;DOKS.blobUrl(ZFD.h,x.foto).then(u=>{const w=window.open(u,'_blank');if(!w)location.href=u;setTimeout(()=>URL.revokeObjectURL(u),60000);}).catch(e=>alert('Foto nicht gefunden: '+(e.message||e)));}
+
 function rApp(){
   const tabs=[{id:'uebersicht',lbl:'📊 Übersicht'},{id:'gas',lbl:'Gas',c:'gas'},{id:'wasser',lbl:'Wasser',c:'wat'},{id:'strom',lbl:'Strom',c:'stb'},{id:'preise',lbl:'⚙️ Tarife'},{id:'daten',lbl:'💾 Daten'}];
   let cnt='';
-  if(S.tab==='uebersicht')cnt=yearBar()+estHint()+`<div id="dashContainer">${rDashboard()}</div>`;
-  else if(S.tab==='gas')cnt=yearBar()+estHint()+rGas();
-  else if(S.tab==='wasser')cnt=yearBar()+estHint()+rWas();
-  else if(S.tab==='strom')cnt=yearBar()+estHint()+rStrom();
+  if(S.tab==='uebersicht')cnt=rFotos()+yearBar()+estHint()+`<div id="dashContainer">${rDashboard()}</div>`;
+  else if(S.tab==='gas')cnt=rFotos()+yearBar()+estHint()+rGas();
+  else if(S.tab==='wasser')cnt=rFotos()+yearBar()+estHint()+rWas();
+  else if(S.tab==='strom')cnt=rFotos()+yearBar()+estHint()+rStrom();
   else if(S.tab==='preise')cnt=`<span class="esmsg" id="esmsg"></span>`+rPreise();
   else cnt=`<span class="esmsg" id="esmsg"></span>`+rData();
   document.getElementById('tabs').innerHTML=tabs.map(t=>`<button class="tab${S.tab===t.id?' on':''}" onclick="stab('${t.id}')">${t.c?dot(C[t.c])+' ':''}${t.lbl}</button>`).join('');
@@ -1074,6 +1138,8 @@ function mergeEnergie(l,r,lU,rU){
   const pick=(a,b)=>(a===b?a:(a===''||a==null)?b:(b===''||b==null)?a:a);
   const out={tariffs:JSON.parse(JSON.stringify(newer.tariffs||{gas:[],wasser:[],strom:[]})),
     fixed:Object.assign({},older.fixed||{},newer.fixed||{}),data:{}};
+  /* gelernte Zähler und erledigte Fotos von beiden Geräten behalten */
+  ['zfoto','zmap'].forEach(k=>{const a=(older.fixed||{})[k],b=(newer.fixed||{})[k];if(a||b)out.fixed[k]=Object.assign({},a||{},b||{});});
   const ys=new Set(Object.keys(newer.data||{}).concat(Object.keys(older.data||{})));
   ys.forEach(y=>{
     const n=(newer.data||{})[y],o=(older.data||{})[y];
@@ -1094,10 +1160,11 @@ Cockpit.registerMerge('energie',mergeEnergie);
 
 if(typeof Chart!=='undefined'){Chart.defaults.color='#5c7aaa';Chart.defaults.borderColor='rgba(255,255,255,.06)';Chart.defaults.font.family="'DM Sans','Segoe UI',system-ui,sans-serif";}
 S.tab='uebersicht';
-loadState();rApp();
+loadState();rApp();zfLaden();
+if(location.hash==='#fotos')setTimeout(()=>{const el=document.getElementById('fotos');if(el)el.scrollIntoView({behavior:'smooth',block:'start'});},300);
 try{const _p=Cockpit.getLocal('energie',null);if(_p&&_p._summary&&/•••/.test(JSON.stringify(_p._summary)))saveState(false);}catch(e){}
 window.addEventListener('cockpit:priv',()=>rApp());
-Cockpit.autoPull(['energie'],function(a,d){if(d){applyData(d);rApp();}});
+Cockpit.autoPull(['energie','dokumente'],function(a,d){if(a==='energie'&&d)applyData(d);rApp();});
 
 </script>
 </body>

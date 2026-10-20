@@ -47,23 +47,25 @@
 <script src="steuer/logic.js"></script>
 <script src="zaehler/logic.js"></script>
 <script src="auto/logic.js"></script>
+<script src="dokumente/logic.js"></script>
 <script>
 (function(){
 "use strict";
 var C=window.Cockpit;
 
+/* Standard-Reihenfolge nach Nutzung; eigene Reihenfolge je Gerät unter Einstellungen → Kacheln (C.kacheln) */
 var AREAS=[
-  {id:"energie",name:"Energie",icon:"🏠",color:"var(--c-energie)",href:"energie/index.html"},
-  {id:"auto",name:"Auto",icon:"🚗",color:"var(--c-auto)",href:"auto/index.html"},
-  {id:"edelmetall",name:"Edelmetalle",icon:"🪙",color:"var(--c-edelmetall)",href:"edelmetall/index.html"},
+  {id:"dokumente",name:"Dokumente",icon:"📂",color:"#38bdf8",href:"dokumente/index.html"},
   {id:"finanzen",name:"Finanzen",icon:"💶",color:"var(--c-finanzen)",href:"finanzen/index.html"},
   {id:"ferienwohnung",name:"Ferienwohnung",icon:"🏡",color:"#2dd4bf",href:"ferienwohnung/index.html"},
-  {id:"haus",name:"Haus",icon:"🏘️",color:"#fb923c",href:"haus/index.html"},
-  {id:"steuer",name:"Steuer",icon:"🧾",color:"#a78bfa",href:"steuer/index.html"},
-  {id:"dokumente",name:"Dokumente",icon:"📂",color:"#38bdf8",href:"dokumente/index.html"},
   {id:"vertraege",name:"Verträge & Fristen",icon:"📑",color:"#f59e0b",href:"vertraege/index.html"},
-  {id:"zaehler",name:"ThingCounter",icon:"🎯",color:"#14b8a6",href:"zaehler/index.html"},
-  {id:"training",name:"Training",icon:"🏋️",color:"#f43f5e",href:"training/index.html"}
+  {id:"haus",name:"Haus",icon:"🏘️",color:"#fb923c",href:"haus/index.html"},
+  {id:"energie",name:"Energie",icon:"🏠",color:"var(--c-energie)",href:"energie/index.html"},
+  {id:"auto",name:"Auto",icon:"🚗",color:"var(--c-auto)",href:"auto/index.html"},
+  {id:"steuer",name:"Steuer",icon:"🧾",color:"#a78bfa",href:"steuer/index.html"},
+  {id:"edelmetall",name:"Edelmetalle",icon:"🪙",color:"var(--c-edelmetall)",href:"edelmetall/index.html"},
+  {id:"training",name:"Training",icon:"🏋️",color:"#f43f5e",href:"training/index.html"},
+  {id:"zaehler",name:"ThingCounter",icon:"🎯",color:"#14b8a6",href:"zaehler/index.html"}
 ];
 
 /* Kurz-Kennzahl je Bereich; Bereiche liefern ihre Zusammenfassung selbst mit (data._summary) */
@@ -88,6 +90,7 @@ function autoSummary(d){
 /* ---------- Heute & demnächst: was aus allen Bereichen ansteht ---------- */
 var V=window.VERTR,offenAlle=false;
 C.registerMerge("vertraege",V.merge);
+if(window.DOKS)C.registerMerge("dokumente",DOKS.dokMerge); /* PC-Abgleich: Eingang, Hausmeister, Zählerfotos */
 function heuteListe(){
   var t=V.heute(),out=[];
   function add(ic,txt,sub,prio,href,rot){out.push({ic:ic,txt:txt,sub:sub,prio:prio,href:href,rot:!!rot});}
@@ -117,7 +120,27 @@ function heuteListe(){
   if(ke&&ke.ts&&ke.ts>=((dok&&dok.upd)||0))kc=ke.n||0;
   else if(kc&&finE&&Array.isArray(finE.imports)&&dok.upd){var nach={};finE.imports.forEach(function(i){if(i&&i.auto&&i.ts>dok.upd)nach[i.file]=1;});kc=Math.max(0,kc-Object.keys(nach).length);}
   if(kc>0)add("🏦",kc+(kc===1?" Kontoauszug":" Kontoauszüge")+" im Eingang","am PC Finanzen öffnen – wird automatisch übernommen",5,"finanzen/index.html#import");
-  if(dok&&dok.eingang>0)add("📥",dok.eingang+(dok.eingang===1?" Dokument":" Dokumente")+" im Eingang","am PC unter Dokumente analysieren und ablegen",6,"dokumente/index.html");
+  if(dok&&dok.eingang>0)add("📥",dok.eingang+(dok.eingang===1?" Dokument":" Dokumente")+" im Eingang","am PC unter Dokumente prüfen und ablegen",6,"dokumente/index.html");
+  /* Heizung der Ferienwohnung nach Belegung (Heizperiode) */
+  try{V.heizHinweise(fw,C.getLocal("haus",null),t,-1,0).forEach(function(e){add("🌡️",e.titel,e.info,e.tage<0?0:1,e.href,e.tage<0);});}catch(x){}
+  if(window.DOKS&&dok){try{
+    /* Zählerstände aus Fotos (Hausmeister am PC) */
+    var zo=DOKS.zstOffen(dok,C.getLocal("energie",null)).length;
+    if(zo)add("📷",zo+(zo===1?" Zählerstand":" Zählerstände")+" aus Fotos übernehmen","in Energie kurz prüfen – ein Tipp genügt",6.5,"energie/index.html#fotos");
+    /* Zahlungsüberwachung: fällige Rechnungen ohne Abbuchung */
+    var op=DOKS.offenePosten(dok.index,fin,C.getLocal("zuordnung",null),t);
+    var kurz=function(e){return String(e.absender||e.betreff||"Rechnung").replace(/_/g," ").split(/\s+/).slice(0,2).join(" ");}; /* ohne Betreff – kann Persönliches enthalten */
+    if(op.length===1)add("⏰","Rechnung offen? "+kurz(op[0].e),C.eur(op[0].b)+" · fällig seit "+V.de(op[0].e.faellig)+" – keine Abbuchung gefunden",7,"dokumente/index.html#offen",true);
+    else if(op.length)add("⏰",op.length+" Rechnungen offen?",op.slice(0,3).map(function(x){return kurz(x.e);}).join(", ")+" – keine Abbuchung gefunden",7,"dokumente/index.html#offen",true);
+    /* Hausmeister und Sicherung (Stand des letzten Abgleichs am PC) */
+    var hm=dok.hm,ref=dok.upd?Math.min(Date.now(),dok.upd):Date.now();
+    if(hm){
+      if(hm.ziel){var alt=hm.sOk?Math.floor((ref-Date.parse(hm.sOk))/864e5):null,gr=Math.max(14,(+hm.tage||7)*2);
+        if(alt==null||alt>gr)add("💾",alt==null?"Sicherung der Ablage noch nie gelaufen":"Sicherung der Ablage seit "+alt+" Tagen nicht gelaufen",hm.sFehler||"Laufwerk anschließen – der Hausmeister holt es nach",8,"dokumente/index.html",true);}
+      if(hm.lauf&&dok.upd&&dok.upd-Date.parse(hm.lauf)>3*864e5)add("🤖","Hausmeister lief seit "+V.de(hm.lauf)+" nicht mehr","Aufgabe in Windows eingerichtet? Dokumente → Einrichtung",8.5,"dokumente/index.html");
+      if(hm.fotos)add("📷",hm.fotos+(hm.fotos===1?" Foto":" Fotos")+" ohne lesbaren Zählerstand","liegen im Eingang – neu fotografieren oder löschen",13,"dokumente/index.html");
+      if(hm.auto)add("🤖",hm.auto+(hm.auto===1?" Brief":" Briefe")+" automatisch abgelegt","bekannte Absender, letzte 7 Tage – kurz drüberschauen",14,"dokumente/index.html");}
+  }catch(x){}}
   /* Finanzen: veraltete Buchungen, fehlende Kategorien, Preiserhöhungen */
   if(fin&&Array.isArray(fin.tx)&&fin.tx.length&&window.FIN){try{
     var R=fin.rules||FIN.DEFAULT_RULES;FIN.setPartnerMap(fin.pmap,fin.tmap,fin.zmap);
@@ -148,8 +171,8 @@ function render(){
   var h=new Date().getHours();
   document.getElementById("greet").textContent=(h<11?"Guten Morgen":h<18?"Hallo":"Guten Abend")+", Markus";
   document.getElementById("sub").textContent=new Date().toLocaleDateString("de-DE",{weekday:"long",day:"numeric",month:"long",year:"numeric"});
-  document.getElementById("tiles").innerHTML=AREAS.map(function(a){var s=summary(a);
-    return '<a class="tile" href="'+a.href+'" style="--tc:'+a.color+'"><div class="ic">'+a.icon+'</div><div class="nm">'+a.name+'</div><div class="k">'+C.esc(C.maskText(s.k))+'</div><div class="s">'+C.esc(C.maskText(s.s))+'</div></a>';}).join("");
+  document.getElementById("tiles").innerHTML=C.kacheln(AREAS).map(function(a){var s=summary(a);
+    return '<a class="tile" href="'+a.href+'" data-k="'+a.id+'" style="--tc:'+a.color+'"><div class="ic">'+a.icon+'</div><div class="nm">'+a.name+'</div><div class="k">'+C.esc(C.maskText(s.k))+'</div><div class="s">'+C.esc(C.maskText(s.s))+'</div></a>';}).join("");
   document.getElementById("setupHint").innerHTML=C.configured()?"":
     '<div class="content" style="padding-bottom:0"><div class="panel" style="border-color:#00bcd455"><b style="color:#00bcd4">☁ Sync noch nicht eingerichtet</b><div class="small muted" style="margin:6px 0 12px">Deine Daten liegen bisher nur auf diesem Gerät. Einmal einrichten, dann sind sie überall gleich.</div><a class="btn" style="background:#00bcd4;text-decoration:none;display:inline-block" href="einstellungen.html">Jetzt einrichten</a></div></div>';
   C.paintStatus();
@@ -158,7 +181,12 @@ function render(){
 document.getElementById('hubRight').insertAdjacentHTML('afterbegin',C.eyeButton());
 window.addEventListener('cockpit:priv',render);
 render();
-C.autoPull(AREAS.map(function(a){return a.id;}),render);
+/* Kachel-Nutzung zählen (für „nach Nutzung sortieren“) */
+document.getElementById("tiles").addEventListener("click",function(e){var a=e.target.closest&&e.target.closest("a.tile");if(a&&a.dataset.k)C.kachelKlick(a.dataset.k);});
+C.autoPull(AREAS.map(function(a){return a.id;}).concat(["zuordnung"]),render);
+/* am PC mit verbundenem Ablage-Ordner: Eingang, Hausmeister und Zählerfotos frisch lesen */
+function pc(){if(window.DOKS&&DOKS.supported())DOKS.pcAbgleich(C).then(function(ch){if(ch)render();});}
+pc();document.addEventListener("visibilitychange",function(){if(!document.hidden)pc();});
 })();
 </script>
 </body>

@@ -89,7 +89,31 @@ function autoFristen(haus,t){t=t||heute();var out=[],jetzt=+t.slice(0,4);
     for(var y=jetzt-1;y<=jetzt;y++){var von=b.von||"0000",bis=b.bis||"9999";if(von>y+"-12-31"||bis<y+"-01-01")continue;
       if(y===jetzt&&bis>=t)continue; /* laufendes Jahr erst nach Auszug abrechenbar */
       out.push({id:"nka:"+y+":"+b.id,titel:"Nebenkostenabrechnung "+y+" an "+(b.name||"Mieter"),datum:(y+1)+"-12-31",vorlauf:60,quelle:"haus",href:"haus/index.html"});}});
+  /* Heizung: Sommer- und Winterbetrieb (mit Haus → Technik). Mehr als 3 Wochen vorbei → nicht mehr melden. */
+  if(hatHeizung(haus))[["sommer","05-15","Heizung auf Sommerbetrieb (nur Warmwasser) – Thermostate ganz auf"],["winter","09-25","Heizung auf Winterbetrieb – Thermostate wieder auf Normalstellung"]].forEach(function(a){
+    var D=jetzt+"-"+a[1];if(tage(D,t)>21)return;out.push({id:"heiz-"+a[0]+":"+jetzt,titel:a[2],datum:D,vorlauf:7,quelle:"haus",href:"haus/index.html#technik"});});
   return out;}
+function hatHeizung(haus){return !!(haus&&haus.technik&&Array.isArray(haus.technik.heizkreise)&&haus.technik.heizkreise.some(function(h){return h&&!h.del;}));}
+/* ---------- Heizung nach Belegung der Ferienwohnung ----------
+   In der Heizperiode (25.09.–14.05.): Steht die Wohnung mindestens 2 Nächte leer, am Abreisetag den Heizkreis der
+   Ferienwohnung absenken und am Tag vor der nächsten Anreise wieder aufs Zeitprogramm stellen. Ohne Gästenamen.
+   von/bis: Tage relativ zu heute, in denen der Hinweis liegt (Startseite: -1…1, Wochenvorschau: 0…6). */
+function heizSaison(d){var md=String(d).slice(5,10);return md>="09-25"||md<"05-15";}
+function heizKreis(haus){if(!hatHeizung(haus))return null;var l=haus.technik.heizkreise.filter(function(h){return h&&!h.del;}),
+  hk=l.filter(function(h){return /ferien|fewo/i.test((h.name||"")+" "+(h.hinweis||""));})[0];return hk?(hk.id||"HK1"):null;}
+function heizHinweise(fw,haus,t,von,bis){t=t||heute();von=von==null?-1:von;bis=bis==null?1:bis;var hk=heizKreis(haus);if(!hk||!fw||!fw.bookings)return [];
+  var bs=Object.keys(fw.bookings).map(function(k){return fw.bookings[k];}).filter(function(b){return b&&!b.cancelled&&!b.blocked&&b.arr&&b.dep&&b.dep>b.arr;}),out=[];
+  function belegt(d){return bs.some(function(b){return b.arr<=d&&b.dep>d;});} /* Nacht von d auf d+1 */
+  bs.forEach(function(b){
+    /* Abreise: danach mindestens 2 Nächte frei? */
+    var n=tage(t,b.dep);if(n>=von&&n<=bis&&heizSaison(b.dep)&&!belegt(b.dep)&&!belegt(plusT(b.dep,1))){
+      var nx=bs.filter(function(x){return x.arr>=b.dep;}).sort(function(p,q){return p.arr.localeCompare(q.arr);})[0];
+      out.push({typ:"heiz",id:"heiz-ab:"+b.dep,titel:hk+" absenken – Ferienwohnung leer",datum:b.dep,tage:n,faellig:true,
+        info:nx?"bis "+de(nx.arr)+" ("+tage(b.dep,nx.arr)+" Nächte) · Betriebsart Absenken":"keine weitere Buchung · Betriebsart Absenken",href:"haus/index.html#technik"});}
+    /* Anreise: davor mindestens 2 Nächte frei? Dann am Vortag wieder hochstellen */
+    var D=plusT(b.arr,-1),m=tage(t,D);if(m>=von&&m<=bis&&heizSaison(b.arr)&&!belegt(D)&&!belegt(plusT(b.arr,-2)))
+      out.push({typ:"heiz",id:"heiz-an:"+b.arr,titel:hk+" wieder aufs Zeitprogramm – Anreise "+(m<0?"heute":m===0?"morgen":de(b.arr)),datum:D,tage:m,faellig:true,info:"Wohnung vorheizen",href:"haus/index.html#technik"});});
+  return out.sort(function(a,b){return a.datum.localeCompare(b.datum);});}
 
 /* ---------- Preiserhöhung → Sonderkündigungsrecht prüfen ----------
    Erkennt Finanzen bei einem verknüpften Strom/Gas-, Telefon- oder Versicherungsvertrag eine höhere Abbuchung,
@@ -158,11 +182,18 @@ function alnum(s){return String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");}
 function suchBegriff(v){if(!v)return "";if(v.suchwort)return dnorm(v.suchwort);
   var ws=dnorm(v.name).split(" "),i=-1;ws.some(function(x,j){if(x.length>=3&&DOC_STOP.indexOf(" "+x+" ")<0){i=j;return true;}return false;});
   if(i<0)return "";return (ws[i].length<=3&&i>0?ws[i-1]+" ":"")+ws[i];}
+/* Vertrags-/Kundennummer im Dateinamen oder in den ausgelesenen Nummern des Dokuments (refs: Vertrag, Kunde, Versicherungsschein …) */
 function nrTreffer(v,e){var nrs=[v.vnr,v.kdnr].map(alnum).filter(function(n){return n.length>=5;});if(!nrs.length)return false;
-  var k=alnum((e.absender||"")+" "+(e.betreff||"")+" "+(e.datei||""));return nrs.some(function(n){return k.indexOf(n)>-1;});}
-function docMatch(v,idx,opt){opt=opt||{};if(!v)return [];var w=suchBegriff(v),aus=v.docAus||{},hatNr=[v.vnr,v.kdnr].some(function(n){return alnum(n).length>=5;});
+  var k=alnum((e.absender||"")+" "+(e.betreff||"")+" "+(e.datei||""));if(nrs.some(function(n){return k.indexOf(n)>-1;}))return true;
+  return (e.refs||[]).some(function(r){var w=alnum(r&&r.wert);return w.length>=5&&nrs.some(function(n){return w===n||(w.length>=7&&n.indexOf(w)>-1)||(n.length>=7&&w.indexOf(n)>-1);});});}
+/* Mehrere Verträge mit derselben Kunden-/Vertragsnummer (z. B. zwei Mobilfunkverträge): ein Dokument gehört dann zu dem,
+   dessen Betrag passt – opt.alle = alle aktiven Verträge */
+function betragPasst(v,e){var b=Math.abs(+v.betrag||0);if(!b)return false;return [e.betrag,e.zahlbetrag].some(function(x){return x!=null&&Math.abs(Math.abs(+x)-b)<=0.011;});}
+function geschwister(v,alle){var nrs=[v.vnr,v.kdnr].map(alnum).filter(function(n){return n.length>=5;});if(!nrs.length)return [];
+  return (alle||[]).filter(function(w){return w&&w.id!==v.id&&[w.vnr,w.kdnr].map(alnum).some(function(n){return n.length>=5&&nrs.indexOf(n)>-1;});});}
+function docMatch(v,idx,opt){opt=opt||{};if(!v)return [];var w=suchBegriff(v),aus=v.docAus||{},hatNr=[v.vnr,v.kdnr].some(function(n){return alnum(n).length>=5;}),gs=geschwister(v,opt.alle);
   if(!w&&!hatNr)return [];
-  return (idx||[]).filter(function(e){if(!e||aus[e.id])return false;if(nrTreffer(v,e))return true;
+  return (idx||[]).filter(function(e){if(!e||aus[e.id])return false;if(nrTreffer(v,e))return !(gs.length&&!betragPasst(v,e)&&gs.some(function(g){return betragPasst(g,e);}));
     if(!w||(!v.suchwort&&!opt.alleKat&&DOC_KATS.indexOf(e.kategorie)<0))return false;
     return (" "+dnorm((e.absender||"")+" "+(e.betreff||""))+" ").indexOf(" "+w+" ")>-1;});}
 
@@ -219,7 +250,7 @@ function nummernAus(zs){zs=(zs||[]).filter(Boolean).map(String);var cnt={},info=
   return gut.map(function(k){return info[k];}).sort(function(a,b){return (b.art?1:0)-(a.art?1:0);}).slice(0,4);}
 
 return {GRUPPEN:GRUPPEN,VORLAGEN:VORLAGEN,RHYTHMUS:RHYTHMUS,FRIST_VORLAGEN:FRIST_VORLAGEN,heute:heute,plusM:plusM,plusT:plusT,tage:tage,de:de,deKurz:deKurz,parse:parse,wann:wann,
-  blank:blank,norm:norm,merge:merge,aktiv:aktiv,neueId:neueId,termin:termin,fristText:fristText,rhText:rhText,monatlich:monatlich,naechste:naechste,autoFristen:autoFristen,
+  blank:blank,norm:norm,merge:merge,aktiv:aktiv,neueId:neueId,termin:termin,fristText:fristText,rhText:rhText,monatlich:monatlich,naechste:naechste,autoFristen:autoFristen,heizHinweise:heizHinweise,heizSaison:heizSaison,
   termine:termine,ohneDatum:ohneDatum,summary:summary,gruppeAus:gruppeAus,vorlageFuer:vorlageFuer,vorschlaege:vorschlaege,nummernAus:nummernAus,
   preisSync:preisSync,preisRelevant:preisRelevant,PREIS_TAGE:PREIS_TAGE,
   suchBegriff:suchBegriff,docMatch:docMatch,nrTreffer:nrTreffer,dnorm:dnorm,

@@ -21,7 +21,8 @@
 .mini.on{border-color:#22c55e;color:#4ade80;}
 .mini:disabled{opacity:.4;cursor:default;}
 .doc{border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px;background:var(--panel2);border-left:4px solid #475569;}
-.doc.frei{border-left-color:#22c55e;} .doc.vor{border-left-color:#0ea5e9;} .doc.err{border-left-color:#ef4444;}
+.doc.frei{border-left-color:#22c55e;} .doc.vor{border-left-color:#0ea5e9;} .doc.err{border-left-color:#ef4444;} .doc.verw{border-left-color:#f59e0b;opacity:.65;}
+.dub{margin-top:7px;font-size:12px;color:#fcd34d;background:#f59e0b14;border:1px solid #f59e0b44;border-radius:8px;padding:7px 9px;line-height:1.45;}
 .doc .h{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;}
 .doc .h b{color:#fff;font-size:13px;word-break:break-all;}
 .doc .s{font-size:11px;color:var(--muted);margin-top:3px;line-height:1.5;}
@@ -79,6 +80,7 @@ body.prev-on #prev{display:grid;position:fixed;inset:0;z-index:50;background:#06
 <script src="../assets/cockpit.js"></script>
 <script src="logic.js"></script>
 <script src="../finanzen/einkauf.js"></script>
+<script src="../finanzen/logic.js"></script>
 <script src="../vertraege/logic.js"></script>
 <script src="../auto/logic.js"></script>
 <script src="../haus/logic.js"></script>
@@ -89,18 +91,15 @@ var C=window.Cockpit,D=window.DOKS,AREA="dokumente",EDIT_KEY="cockpit:dok:edit";
 
 /* Synchronisiert (privates Daten-Repo): nur das Verzeichnis der abgelegten Dokumente (Metadaten) und die Listen aus ablage.py.
    Die PDFs bleiben im Ablage-Ordner auf dem PC. */
-function blank(){return {index:[],konfig:null,aktualisiert:"",eingang:null,upd:0};}
-function norm(d){d=d&&typeof d==="object"?d:blank();if(!Array.isArray(d.index))d.index=[];return d;}
-function merge(l,r){l=norm(l);r=norm(r);var n=String(l.aktualisiert||"")>=String(r.aktualisiert||"")?l:r;var o=JSON.parse(JSON.stringify(n));
-  o.eingang=(l.upd||0)>=(r.upd||0)?l.eingang:r.eingang;o.upd=Math.max(l.upd||0,r.upd||0);o._summary=summaryFor(o);return o;}
+function blank(){return D.dokBlank();}
+function norm(d){return D.dokNorm(d);}
+function merge(l,r){return D.dokMerge(l,r);}
 C.registerMerge(AREA,merge);
 C.registerMerge("einkaeufe",EINK.merge);
 C.registerMerge("zuordnung",D.zuMerge);
 var data=norm(C.getLocal(AREA,blank));
 function persist(){data.upd=Date.now();data._summary=summaryFor(data);C.save(AREA,data);}
-function summaryFor(d){var n=(d.index||[]).length,e=d.eingang;
-  if(!n&&e==null)return {k:"—",s:"Noch nicht eingerichtet"};
-  return {k:n+" Dok.",s:(e?e+" im Eingang · ":"Eingang leer · ")+(d.aktualisiert?"Stand "+D.de(d.aktualisiert):"")};}
+function summaryFor(d){return D.dokSummary(d);}
 
 /* lokale Bearbeitungen der Vorschläge (nicht synchronisiert) */
 function loadEdits(){try{return JSON.parse(localStorage.getItem(EDIT_KEY)||"{}")||{};}catch(e){return {};}}
@@ -120,7 +119,13 @@ function laufFortsetzen(){if(!st.root||st.run)return;D.readJSON(st.root,"_cockpi
   warte("nachlesen","Altbestand auslesen",s.id,8*3600000);}).catch(function(){});}
 function reload(){if(!st.root)return Promise.resolve();
   return Promise.all([D.readJSON(st.root,"_cockpit/vorschlaege.json"),D.readJSON(st.root,"_cockpit/index.json"),D.listPDFs(st.root).catch(function(){return null;}),
-      D.readJSON(st.root,"_cockpit/einkaeufe.json").catch(function(){return null;}),D.listCSVs(st.root).catch(function(){return [];}),D.readJSON(st.root,"_cockpit/laeden.json").catch(function(){return null;})]).then(function(a){
+      D.readJSON(st.root,"_cockpit/einkaeufe.json").catch(function(){return null;}),D.listCSVs(st.root).catch(function(){return [];}),D.readJSON(st.root,"_cockpit/laeden.json").catch(function(){return null;}),
+      D.readJSON(st.root,"_cockpit/hausmeister.json").catch(function(){return null;}),D.readJSON(st.root,"_cockpit/hausmeister_einst.json").catch(function(){return null;}),D.readJSON(st.root,"_cockpit/zaehlerstaende.json").catch(function(){return null;})]).then(function(a){
+    /* Zählerstände aus Fotos fürs Handy und Energie mitsynchronisieren (nur die Werte, die Fotos bleiben am PC) */
+    var zs=zstListe(a[8]);if(zs&&JSON.stringify(zs)!==JSON.stringify(data.zst||null)){data.zst=zs;var ch4=true;}
+    /* Hausmeister (automatischer Lauf am PC): Stand fürs Handy und die Startseite mitsynchronisieren – ohne Pfade */
+    st.hm=a[6];st.hmE=a[7]||{};var hs=hmSumme(a[6],a[7]);if(JSON.stringify(hs)!==JSON.stringify(data.hm||null)){data.hm=hs;var ch3=true;}
+    datenExport();
     /* eigene Ladennamen fürs Python-Skript bereitstellen (gelten dann auch für neue Bons und Dateinamen) */
     var al=EINK.aliase(C.getLocal("einkaeufe",null));if(JSON.stringify(al)!==JSON.stringify((a[5]&&a[5].aliase)||{}))D.writeJSON(st.root,"_cockpit/laeden.json",{version:1,aliase:al}).catch(function(){});
     st.csv=a[4]||[];if((data.kontoCsv||0)!==st.csv.length){data.kontoCsv=st.csv.length;var ch2=true;}
@@ -133,7 +138,16 @@ function reload(){if(!st.root)return Promise.resolve();
     var n=st.pdfs?st.pdfs.length:null;if(n!==data.eingang){data.eingang=n;changed=true;}
     /* Bearbeitungen für Dateien, die nicht mehr im Eingang liegen, aufräumen */
     if(st.pdfs){var names={};st.pdfs.forEach(function(p){names[p.name]=1;});Object.keys(st.edit).forEach(function(k2){if(!names[k2])delete st.edit[k2];});saveEdits();}
-    if(changed||ch2)persist();render();}).catch(function(e){flash("⚠ Ordner konnte nicht gelesen werden: "+(e.message||e),true);});}
+    if(changed||ch2||ch3||ch4)persist();render();}).catch(function(e){flash("⚠ Ordner konnte nicht gelesen werden: "+(e.message||e),true);});}
+
+function hmSumme(hm,e){return D.hmSumme(hm,e);}
+/* Cockpit-Daten einmal täglich in die Ablage legen – so stecken sie auch in der ZIP-Sicherung des Hausmeisters.
+   Ohne Zugangsdaten (Token, Schlüssel) und ohne ThingCounter. Nur, wenn eine Sicherung eingerichtet ist. */
+/* Cockpit-Daten täglich in die Ablage (für die ZIP-Sicherung), siehe DOKS.datenExport */
+function datenExport(){D.datenExport(C,st.root,st.hmE);}
+function zstListe(f){return D.zstListe(f);}
+function zeitDe(iso){if(!iso)return "—";var d=new Date(iso);return isNaN(d)?String(iso):d.toLocaleString("de-DE",{day:"2-digit",month:"2-digit",year:"numeric",hour:"2-digit",minute:"2-digit"});}
+function idxById(id){return data.index.filter(function(e){return e.id===id;})[0]||null;}
 
 /* ---------- Python-Lauf ---------- */
 function run(cmd,label,ms){if(!st.root){flash("⚠ Zuerst den Ablage-Ordner verbinden",true);return Promise.resolve(null);}
@@ -182,22 +196,41 @@ function vEingang(){
   if(st.pdfs==null)return h+'<div class="empty">Lese den Eingang …</div>';
   var neu=st.pdfs.filter(function(p){var e=st.vor.dateien[p.name];return !e||!e.meta||e.fehler||e.groesse!==p.size;}).length;
   h+='<div class="filt"><button class="btn" style="background:#0ea5e9;flex:1" onclick="D2.analyse()"'+(st.run?" disabled":"")+'>🔍 Analysieren'+(neu?" ("+neu+" neu)":"")+'</button><button class="mini" onclick="D2.reload()" aria-label="Neu einlesen">↻</button></div>';
+  h+=hmEingang();
   if(st.csv&&st.csv.length)h+='<div class="panel" style="border-color:#e040fb66"><b style="color:#f0a6ff">🏦 '+st.csv.length+(st.csv.length===1?" Kontoauszug":" Kontoauszüge")+' (CSV) im Eingang</b><div class="note" style="margin:6px 0 10px">Werden beim Öffnen von Finanzen automatisch übernommen und archiviert.</div><a class="mini" style="text-decoration:none;display:inline-block" href="../finanzen/index.html#import">💶 Finanzen öffnen</a></div>';
   if(!st.pdfs.length)return h+'<div class="empty"><div class="big">📭</div>Der Eingang ist leer.<br><span class="small">Scans landen in 00_Eingang – danach hier „Analysieren“.</span></div>';
-  var k=konfig(),frei=0,sicher=0;
+  var k=konfig(),frei=0,sicher=0,verw=0;
   st.pdfs.forEach(function(p){var e=st.vor.dateien[p.name]||{},m=meta(p.name),ed=st.edit[p.name]||{},err=m?D.valid(m,k):"",o=st.open[p.name];
-    if(ed.frei&&m&&!err)frei++;if(m&&!err&&!ed.frei&&!m.doppelt&&(m.konfidenz==="hoch"||m.konfidenz==="mittel"))sicher++;
-    h+='<div class="doc'+(ed.frei&&!err?" frei":e.fehler?" err":m?" vor":"")+'"><div class="h"><div style="min-width:0"><b>'+esc(p.name)+"</b>"+
-      (m&&m.konfidenz?'<span class="badge k-'+esc(m.konfidenz)+'">'+esc(m.konfidenz)+"</span>":"")+(m&&m.steuerrelevant?'<span class="badge k-st">ST</span>':"")+(m&&m.doppelt?'<span class="badge k-niedrig">doppelt</span>':"")+
+    if(ed.verwerfen)verw++;if(ed.frei&&m&&!err)frei++;if(m&&!err&&!ed.frei&&!m.doppelt&&(m.konfidenz==="hoch"||m.konfidenz==="mittel"))sicher++;
+    h+='<div class="doc'+(ed.verwerfen?" verw":ed.frei&&!err?" frei":e.fehler?" err":m?" vor":"")+'"><div class="h"><div style="min-width:0"><b>'+esc(p.name)+"</b>"+
+      (m&&m.konfidenz?'<span class="badge k-'+esc(m.konfidenz)+'">'+esc(m.konfidenz)+"</span>":"")+(m&&m.steuerrelevant?'<span class="badge k-st">ST</span>':"")+(m&&m.doppelt?'<span class="badge k-niedrig">'+(m.doppelt_art==="aehnlich"?"doppelt?":"Dublette")+"</span>":"")+
       '<div class="s">'+Math.max(1,Math.round(p.size/1024))+" KB"+(m?" · "+esc(m.archiv_bereich+" / "+m.archiv_kategorie)+(m.steuerrelevant&&m.stb_belegart?" · Steuer "+esc(D.stbJahr(m))+": "+esc(m.stb_belegart):"")+(m.betrag!=null?" · "+C.eur(+m.betrag):""):e.fehler?' · <span style="color:#f87171">'+esc(e.fehler)+"</span>":" · noch nicht analysiert")+"</div>"+
-      (m&&m.kassenbon?bonZeile(m.kassenbon):"")+(m?'<div class="fn">'+esc(D.fname(m))+"</div>":"")+(err?'<div class="s" style="color:#fbbf24">⚠ '+esc(err)+"</div>":"")+(m&&m.hinweise?'<div class="s">💡 '+esc(m.hinweise)+"</div>":"")+"</div></div>"+
+      (m&&m.kassenbon?bonZeile(m.kassenbon):"")+(m?'<div class="fn">'+esc(D.fname(m))+"</div>":"")+(err?'<div class="s" style="color:#fbbf24">⚠ '+esc(err)+"</div>":"")+(m&&m.hinweise&&!m.doppelt?'<div class="s">💡 '+esc(m.hinweise)+"</div>":"")+(m&&m.doppelt?dubZeile(p.name,m,ed):"")+"</div></div>"+
       '<div class="acts"><button class="mini" onclick="D2.prev(\''+jsq(p.name)+'\')">👁 Ansehen</button>'+(m?'<button class="mini" onclick="D2.toggle(\''+jsq(p.name)+'\')">✏️ '+(o?"Schließen":"Bearbeiten")+'</button><button class="mini'+(ed.frei&&!err?" on":"")+'" onclick="D2.frei(\''+jsq(p.name)+'\')"'+(err?" disabled":"")+">"+(ed.frei&&!err?"✓ freigegeben":"☐ freigeben")+"</button>":"")+
       (st.edit[p.name]&&st.edit[p.name].meta?'<button class="mini" onclick="D2.reset(\''+jsq(p.name)+'\')">↺ Vorschlag</button>':"")+"</div>"+
       (o&&m?form(p.name,m):"")+"</div>";});
-  h+='<div class="foot"><div class="row2"><button class="btn" style="background:#22c55e" onclick="D2.ablegen()"'+(frei&&!st.run?"":" disabled")+'>📤 '+frei+" freigegebene ablegen</button>"+(sicher?'<button class="btn ghost" style="flex:0 0 auto" onclick="D2.alleSicher()">✓ '+sicher+" sichere freigeben</button>":"")+"</div></div>";
+  h+='<div class="foot"><div class="row2"><button class="btn" style="background:#22c55e" onclick="D2.ablegen()"'+((frei||verw)&&!st.run?"":" disabled")+'>📤 '+frei+" freigegebene ablegen"+(verw?" · "+verw+" Dublette"+(verw===1?"":"n")+" aussortieren":"")+"</button>"+(sicher?'<button class="btn ghost" style="flex:0 0 auto" onclick="D2.alleSicher()">✓ '+sicher+" sichere freigeben</button>":"")+"</div></div>";
   return h;
 }
 function jsq(s){return String(s).replace(/\\/g,"\\\\").replace(/'/g,"\\'").replace(/"/g,"&quot;");}
+/* Dublette: gleiche Datei (md5) schon im Archiv/Eingang – oder gleicher Absender, gleiches Datum, gleicher Betrag */
+function dubZeile(n,m,ed){var wo=String(m.doppelt||""),o=data.index.filter(function(e){return e.archiv===wo;})[0],ein=wo.indexOf("00_Eingang/")===0,gl=m.doppelt_art!=="aehnlich";
+  return '<div class="dub">⚠ '+(gl?"<b>Dublette</b> – dieselbe Datei liegt schon "+(ein?"im Eingang":"im Archiv")+": ":"<b>Vermutlich doppelt</b> – gleiches Datum und gleicher Betrag wie ")+
+    (o?"„"+esc(D.titel(o))+"“"+(o.datum?" vom "+D.de(o.datum):""):esc(wo.replace(/^02_Archiv\//,"")))+
+    (gl?"":'<br><span style="color:#cbd5e1">Prüfen: Ist es wirklich derselbe Brief (nicht z. B. eine Mahnung oder Korrektur)?</span>')+
+    '<div class="acts" style="margin-top:6px">'+(o?'<button class="mini" onclick="D2.open(\''+esc(o.id)+'\')">👁 Original öffnen</button>':ein?'<button class="mini" onclick="D2.prev(\''+jsq(wo.slice(11))+'\')">👁 Andere ansehen</button>':"")+
+    '<button class="mini'+(ed.verwerfen?" on":"")+'" onclick="D2.verw(\''+jsq(n)+'\')">'+(ed.verwerfen?"✓ wird aussortiert":"🗑 Dublette – nicht ablegen")+"</button></div>"+
+    (ed.verwerfen?'<div class="small" style="margin-top:4px;color:#cbd5e1">Wandert beim Ablegen nach _Doppelt_pruefen/00_Eingang – nichts wird gelöscht.</div>':"")+"</div>";}
+/* Meldungen des Hausmeisters (automatischer Lauf am PC) */
+function hmEingang(){var hm=st.hm;if(!hm)return "";var w=Date.now()-7*864e5,ab=(hm.abgelegt||[]).filter(function(x){return Date.parse(x.zeit)>w;}),fo=hm.fotos_unklar||[],h="";
+  if(ab.length)h+='<div class="panel" style="border-color:#22c55e55"><b style="color:#86efac">🤖 '+ab.length+" Brief"+(ab.length===1?"":"e")+' bekannter Absender automatisch abgelegt (7 Tage)</b><div class="note" style="margin:4px 0 6px">Nur wenn die letzten zwei Briefe desselben Absenders genauso einsortiert wurden. Ausschalten unter Einrichtung → Hausmeister.</div>'+
+    ab.slice(0,6).map(function(x){var e=idxById(x.id);return '<div class="row" style="padding:5px 0"><div class="l"><b style="font-size:12px">'+esc(x.titel||x.datei)+"</b><div>"+esc(String(x.ziel||"").replace(/^02_Archiv\//,"").split("/").slice(0,-1).join(" / "))+" · "+zeitDe(x.zeit)+"</div></div>"+
+      (e&&(st.perm==="granted"||st.perm==="prompt")?'<div class="r"><button class="mini" onclick="D2.open(\''+esc(e.id)+'\')">Öffnen</button></div>':"")+"</div>";}).join("")+"</div>";
+  if(fo.length)h+='<div class="panel" style="border-color:#f59e0b55"><b style="color:#fcd34d">📷 '+fo.length+" Foto"+(fo.length===1?"":"s")+' im Eingang ohne lesbaren Zählerstand</b><div class="note" style="margin-top:4px">'+fo.slice(0,5).map(esc).join(", ")+(fo.length>5?" …":"")+
+    " – neu fotografieren (Ziffern scharf, ohne Spiegelung) oder löschen. Den Wert kannst du in Energie auch eintippen.</div></div>";
+  var zo=D.zstOffen(data,C.getLocal("energie",null)).length;
+  if(zo)h+='<div class="panel" style="border-color:#38bdf855"><b style="color:#7dd3fc">📷 '+zo+(zo===1?" Zählerstand":" Zählerstände")+' aus Fotos gelesen</b><div class="note" style="margin:4px 0 8px">Bitte in Energie kurz prüfen und übernehmen.</div><a class="mini" style="text-decoration:none;display:inline-block" href="../energie/index.html#fotos">⚡ Energie öffnen</a></div>';
+  return h;}
 function bonZeile(b){return '<div class="bon">🧾 Kassenbon '+esc(b.laden||"")+" · "+C.eur(+b.summe)+" · "+EINK.ICON[b.zahlart||"unbekannt"]+" "+esc(EINK.ZA[b.zahlart||"unbekannt"])+" · "+(b.artikel||[]).length+" Artikel"+
   (b.diff?' · <span style="color:#fbbf24">Positionen weichen um '+C.eur(Math.abs(b.diff))+" ab</span>":"")+"</div>";}
 function bonForm(n,b){var arts=b.artikel||[];
@@ -235,18 +268,24 @@ function hatBetrag(e){return (e.betrag!=null||e.zahlbetrag!=null)&&e.zahlart!=="
 function bezuege(){var key=data.index.length+"|"+(data.aktualisiert||"")+"|"+(data.upd||0);if(st.bz&&st.bzKey===key)return st.bz;st.bzKey=key;var idx=data.index,o={};function add(id,c){(o[id]=o[id]||[]).push(c);}
   st.tx=[];st.zuErg=null;
   try{var fin=C.getLocal("finanzen",null);if(fin&&Array.isArray(fin.tx)){st.tx=fin.tx;st.txVon=fin.tx.reduce(function(m,t){return !m||t.d<m?t.d:m;},"");var z=D.zuordnung(idx,fin.tx,C.getLocal("zuordnung",null));st.zuErg=z;
-    Object.keys(z.doc).forEach(function(id){var p=z.doc[id];add(id,{k:"tx",art:p.art,t:p.t});});}}catch(x){}
-  try{var vt=window.VERTR&&C.getLocal("vertraege",null);if(vt){vt=VERTR.norm(vt);VERTR.aktiv(vt.vertraege).forEach(function(v){VERTR.docMatch(v,idx).forEach(function(e){add(e.id,{k:"vt",v:v});});});}}catch(x){}
+    /* Finanzkategorie der Buchung (wie in Finanzen) – zum Filtern des Archivs */
+    var R=null;if(window.FIN){R=fin.rules||FIN.DEFAULT_RULES;FIN.setPartnerMap(fin.pmap,fin.tmap,fin.zmap);}
+    Object.keys(z.doc).forEach(function(id){var p=z.doc[id],kat=null;try{kat=R?FIN.category(p.t,R):null;}catch(x){}if(kat===(window.FIN&&FIN.UNKAT))kat=null;add(id,{k:"tx",art:p.art,t:p.t,kat:kat});});}}catch(x){}
+  try{var vt=window.VERTR&&C.getLocal("vertraege",null);if(vt){vt=VERTR.norm(vt);var alleV=VERTR.aktiv(vt.vertraege);alleV.forEach(function(v){VERTR.docMatch(v,idx,{alle:alleV}).forEach(function(e){add(e.id,{k:"vt",v:v});});});}}catch(x){}
   try{var au=window.AUTO&&C.getLocal("auto",null);if(au)idx.forEach(function(e){var fz=AUTO.fahrzeugVon(au,e);if(fz)add(e.id,{k:"fz",fz:fz});});}catch(x){}
   /* Nebenkosten: nur echte Verknüpfungen aus Haus → Kosten */
   try{var hs=window.HAUS&&C.getLocal("haus",null);if(hs){var bi=HAUS.belegIndex(hs);Object.keys(bi).forEach(function(id){bi[id].forEach(function(x){add(id,{k:"haus",n:"NK "+x.y+": "+x.n});});});}}catch(x){}
   st.bz=o;return o;}
+/* Zahlungsüberwachung (DOKS.offenePosten) */
+function offen(){var key=data.index.length+"|"+(data.aktualisiert||"")+"|"+(data.upd||0)+"|"+st.offenV;if(st.op&&st.opKey===key)return st.op;st.opKey=key;
+  try{st.op=D.offenePosten(data.index,C.getLocal("finanzen",null),C.getLocal("zuordnung",null));}catch(x){st.op=[];}return st.op;}
+function offenZeile(x){var did=esc(x.e.id);return '<div class="bz"><span class="bzc warn">⏰ fällig seit '+D.de(x.e.faellig)+" ("+x.tage+" Tage) · "+C.eur(x.b)+' – keine Abbuchung gefunden<button title="Bar, Karte oder anderes Konto" onclick="D2.erledigt(\''+did+'\',1)">✓ anders bezahlt</button></span></div>';}
 function bezugChips(e,bz){var l=bz[e.id]||[],did=esc(e.id),ohne=hatBetrag(e)&&st.tx.length&&!l.some(function(c){return c.k==="tx";});
   if(!l.length&&!ohne)return st.zuWahl===e.id?buchWahl(e):"";
   return '<div class="bz">'+(ohne?'<a class="bzc" style="cursor:pointer;border:1px dashed #334155;background:transparent" onclick="D2.zuWahl(\''+did+'\')">💶 Buchung zuordnen</a>':"")+l.map(function(c){
     if(c.k==="tx"){var tid=esc(c.t.id),txt=esc((c.t.n||c.t.p||"")+(c.t.z?" · "+String(c.t.z).slice(0,60):""));
-      return c.art==="vorschlag"?'<span class="bzc warn" title="'+txt+'">💶? Buchung '+D.de(c.t.d)+" · "+C.eur(+c.t.b)+'<button title="Passt" onclick="D2.zu(\''+tid+'\',\''+did+'\',1)">✓</button><button title="Andere Buchung wählen" onclick="D2.zuWahl(\''+did+'\')">↔</button><button title="Passt nicht" onclick="D2.zu(\''+tid+'\',\''+did+'\',0)">✕</button></span>'
-        :'<span class="bzc gr" title="'+txt+'">💶 bezahlt '+D.de(c.t.d)+" · "+C.eur(+c.t.b)+'<button title="Andere Buchung wählen" onclick="D2.zuWahl(\''+did+'\')">↔</button><button title="Falsche Buchung – lösen" onclick="D2.zu(\''+tid+'\',\''+did+'\',0)">✕</button></span>';}
+      return c.art==="vorschlag"?'<span class="bzc warn" title="'+txt+'">💶? Buchung '+D.de(c.t.d)+" · "+C.eur(+c.t.b)+(c.kat?" · "+esc(c.kat):"")+'<button title="Passt" onclick="D2.zu(\''+tid+'\',\''+did+'\',1)">✓</button><button title="Andere Buchung wählen" onclick="D2.zuWahl(\''+did+'\')">↔</button><button title="Passt nicht" onclick="D2.zu(\''+tid+'\',\''+did+'\',0)">✕</button></span>'
+        :'<span class="bzc gr" title="'+txt+'">💶 bezahlt '+D.de(c.t.d)+" · "+C.eur(+c.t.b)+(c.kat?" · "+esc(c.kat):"")+'<button title="Andere Buchung wählen" onclick="D2.zuWahl(\''+did+'\')">↔</button><button title="Falsche Buchung – lösen" onclick="D2.zu(\''+tid+'\',\''+did+'\',0)">✕</button></span>';}
     if(c.k==="vt")return '<a class="bzc" href="../vertraege/index.html#v-'+esc(c.v.id)+'">📑 '+esc(c.v.name||"Vertrag")+"</a>";
     if(c.k==="fz")return '<a class="bzc" href="../auto/index.html#fz-'+esc(c.fz)+'">🚗 '+esc((AUTO.FZ[c.fz]||{}).kurz||c.fz)+"</a>";
     if(c.k==="haus")return '<a class="bzc" href="../haus/index.html">🏘️ '+esc(c.n)+"</a>";
@@ -263,7 +302,9 @@ function buchWahl(e){var did=esc(e.id),z=st.zuErg,cur=z&&z.doc[e.id],zu=C.getLoc
 function vArchiv(){
   var idx=data.index,q=D.norm(st.q),ys={};idx.forEach(function(e){var y=e.jahr||(e.datum?e.datum.slice(0,4):"");if(y)ys[y]=1;});
   var nBon=0,zeigBons=st.fbon||!!q,bz=bezuege(),ohneTx=function(e){return hatBetrag(e)&&!(bz[e.id]||[]).some(function(c){return c.k==="tx";});},nOhne=idx.filter(ohneTx).length;
-  var list=idx.filter(function(e){if(st.fb!=="alle"&&e.bereich!==st.fb)return false;if(st.fst&&!e.st)return false;if(st.fohne&&!ohneTx(e))return false;
+  var op=offen(),opId={};op.forEach(function(x){opId[x.e.id]=x;});
+  var katVon=function(e){var c=(bz[e.id]||[]).filter(function(c){return c.k==="tx"&&c.kat;})[0];return c?c.kat:"";},kats={};idx.forEach(function(e){var k=katVon(e);if(k)kats[k]=(kats[k]||0)+1;});
+  var list=idx.filter(function(e){if(st.fb!=="alle"&&e.bereich!==st.fb)return false;if(st.fst&&!e.st)return false;if(st.fohne&&!ohneTx(e))return false;if(st.foffen&&!opId[e.id])return false;if(st.fkat&&katVon(e)!==st.fkat)return false;
     if(e.kategorie==="Einkaeufe"&&!zeigBons){nBon++;return false;}
     if(st.fy&&String(e.jahr||(e.datum||"").slice(0,4))!==st.fy)return false;
     if(q&&D.norm([e.datei,e.absender,e.betreff,e.kategorie,e.belegart,e.empfaenger,e.betrag].join(" ")).indexOf(q)<0)return false;return true;});
@@ -271,16 +312,20 @@ function vArchiv(){
   h+=nachPanel();
   h+='<input class="inp" style="margin-bottom:10px" placeholder="Suchen: Absender, Betreff, Kategorie, Betrag …" value="'+esc(st.q)+'" oninput="D2.q(this.value)">';
   h+='<div class="filt"><select class="sel" style="width:auto;padding:6px 8px;font-size:12px" onchange="D2.fy(this.value)"><option value="">alle Jahre</option>'+Object.keys(ys).sort().reverse().map(function(y){return '<option'+(st.fy===y?" selected":"")+">"+y+"</option>";}).join("")+"</select>"+
+    (Object.keys(kats).length?'<select class="sel" style="width:auto;padding:6px 8px;font-size:12px" title="Kategorie der verknüpften Buchung (wie in Finanzen)" onchange="D2.fkat(this.value)"><option value="">alle Finanzkategorien</option>'+
+      Object.keys(kats).sort(function(a,b){return a.localeCompare(b,"de");}).map(function(k){return '<option'+(st.fkat===k?" selected":"")+' value="'+esc(k)+'">'+esc(k)+" ("+kats[k]+")</option>";}).join("")+"</select>":"")+
     [["alle","Alle"],["Privat","Privat"],["Geschaeftlich","Geschäft"]].map(function(b){return '<button class="pill'+(st.fb===b[0]?" on":"")+'" onclick="D2.fb(\''+b[0]+'\')">'+b[1]+"</button>";}).join("")+
     '<button class="pill'+(st.fst?" on":"")+'" onclick="D2.fst()">nur Steuer</button>'+
+    (op.length||st.foffen?'<button class="pill'+(st.foffen?" on":"")+'" style="'+(op.length?"border-color:#f59e0b88;color:#fcd34d":"")+'" title="Fällige Rechnungen ohne passende Abbuchung" onclick="D2.foffen()">⏰ offen ('+op.length+')</button>':"")+
     (nOhne?'<button class="pill'+(st.fohne?" on":"")+'" title="Rechnungen mit Betrag, zu denen keine Buchung gefunden wurde" onclick="D2.fohne()">💶 ohne Buchung ('+nOhne+')</button>':"")+
     (idx.some(function(e){return e.kategorie==="Einkaeufe";})?'<button class="pill'+(st.fbon?" on":"")+'" onclick="D2.fbon()">🧾 Kassenbons</button>':"")+"</div>";
+  if(st.foffen)h+='<div class="note" style="margin:-4px 0 8px">Rechnungen, die seit mindestens 5 Tagen fällig sind, ohne passende Abbuchung – obwohl die Kontoauszüge schon weiter reichen. Bar, per Karte oder von einem anderen Konto bezahlt? Dann „✓ anders bezahlt“; sonst „💶 Buchung zuordnen“ oder nachfragen.</div>';
   if(st.fohne)h+='<div class="note" style="margin:-4px 0 8px">Rechnungen mit Betrag ohne passende Buchung: bar bezahlt, noch offen, über ein Konto, das nicht im Cockpit ist – oder der Kontoauszug fehlt noch. Ältere Dokumente erst „auslesen“, dann haben sie einen Betrag.</div>';
   if(nBon)h+='<div class="note" style="margin:-4px 0 8px">'+nBon+' Kassenbons ausgeblendet – die Auswertung steht unter <a class="dl" href="../finanzen/index.html#einkauf">Finanzen → Einkäufe</a>.</div>';
   h+='<div class="small muted" style="margin-bottom:8px">'+list.length+" von "+idx.length+" Dokumenten"+(data.aktualisiert?" · Stand "+D.de(data.aktualisiert)+" "+String(data.aktualisiert).slice(11,16):"")+"</div>";
   if(!idx.length)return h+'<div class="empty">Noch keine Dokumente verzeichnet.<br><span class="small">Nach dem ersten Ablegen – oder unter Einrichtung „Bestehendes Archiv aufnehmen“.</span></div>';
   h+='<div class="panel" style="padding:4px 14px">'+list.slice(0,st.limit).map(function(e){
-    return '<div class="row"><div class="l"><b>'+esc(D.titel(e))+"</b>"+(e.st?'<span class="badge k-st">ST</span>':"")+"<div>"+D.de(e.datum)+" · "+esc(e.kategorie||"")+(e.empfaenger?" · "+esc(e.empfaenger):"")+(e.st&&e.belegart?" · Steuer "+esc(D.steuerJahr(e)+": "+e.belegart):"")+"</div>"+bezugChips(e,bz)+"</div>"+
+    return '<div class="row"><div class="l"><b>'+esc(D.titel(e))+"</b>"+(e.st?'<span class="badge k-st">ST</span>':"")+"<div>"+D.de(e.datum)+" · "+esc(e.kategorie||"")+(e.empfaenger?" · "+esc(e.empfaenger):"")+(e.st&&e.belegart?" · Steuer "+esc(D.steuerJahr(e)+": "+e.belegart):"")+"</div>"+(opId[e.id]?offenZeile(opId[e.id]):"")+bezugChips(e,bz)+"</div>"+
       '<div class="r">'+(e.betrag!=null?C.eur(+e.betrag):"")+(st.perm==="granted"||st.perm==="prompt"?'<div><button class="mini" style="margin-top:4px" onclick="D2.open(\''+esc(e.id)+'\')">Öffnen</button></div>':"")+"</div></div>";}).join("")+"</div>";
   if(list.length>st.limit)h+='<button class="btn ghost full" onclick="D2.more()">Weitere anzeigen</button>';
   return h;
@@ -300,6 +345,7 @@ function vEinr(){
       '<div style="margin-top:8px">'+(st.perm==="unsupported"?"Geht nur am PC in Chrome.":'<button class="mini" onclick="D2.pick()">📁 '+(ok1?"Anderen Ordner wählen":"Ordner verbinden")+"</button>")+"</div></div></div>"+
     '<div class="step"><div class="n'+(t&&t.status==="fertig"&&t.ergebnis&&t.ergebnis.api_key?" ok":"")+'">'+(t&&t.status==="fertig"&&t.ergebnis&&t.ergebnis.api_key?"✓":"4")+'</div><div class="t">Verbindung testen – startet das Skript kurz im Konsolenfenster.<div>Chrome fragt beim ersten Mal: „cockpit-ablage öffnen?“ → <b>Immer zulassen</b> anhaken und öffnen.</div>'+
       '<div style="margin-top:8px"><button class="mini" onclick="D2.test()"'+(st.perm!=="granted"||st.run?" disabled":"")+">🔌 Verbindung testen</button></div>"+testResult()+"</div></div></div>";
+  h+=hmEinr();
   h+='<div class="panel"><h3>Weitere Aktionen</h3>'+
     '<div class="row"><div class="l"><b>Bestehendes Archiv aufnehmen</b><div>Liest die Dateinamen in 02_Archiv ein – auch Dokumente, die mit ablage.py oder auto_ablage.py abgelegt wurden. Danach „Altbestand auslesen“, damit auch ältere Dokumente Beträge und Nummern haben.</div></div><div class="r"><button class="mini" onclick="D2.index()"'+(st.perm!=="granted"||st.run?" disabled":"")+'>🗂 Aufnehmen</button></div></div>'+
     '<div class="row"><div class="l"><b>Altbestand auslesen</b><div>Liest Dokumente, die nur über den Dateinamen erfasst sind, einmal inhaltlich aus: Betrag, Datum, Vertrags-/Kundennummern, Kfz-Angaben. Dateien bleiben, wo sie sind. '+nNach()+' offen.</div></div><div class="r"><button class="mini" onclick="D2.nachlesen()"'+(st.perm!=="granted"||st.run||!nNach()?" disabled":"")+'>📚 Auslesen</button></div></div>'+
@@ -308,6 +354,20 @@ function vEinr(){
   h+='<div class="note">Datenschutz: Die PDFs bleiben in deinem Ablage-Ordner. Ins Cockpit – und damit in dein privates Daten-Repo – kommen nur Datum, Empfänger-Kürzel, Absender, Betreff, Kategorie, Betrag und Ablageort. Die Analyse übernimmt weiterhin dein Python-Skript mit deinem API-Schlüssel; die Regeln pflegst du in <code>ablage.py</code>.</div>';
   return h;
 }
+/* Hausmeister: Einrichtung, Zustand, Sicherung */
+function hmEinr(){var hm=st.hm,e=st.hmE||{},s=(hm&&hm.sicherung)||{},ok=st.perm==="granted",dis=ok?"":" disabled";
+  var h='<div class="panel"><h3>🤖 Hausmeister – läuft von selbst am PC</h3><div class="note" style="margin-bottom:8px">Liest Zählerfotos, analysiert neue Scans, erkennt Dubletten, legt Briefe sicher bekannter Absender ab und sichert die Ablage. Unsichtbar 10 Minuten nach dem Anmelden, danach stündlich; ist der PC aus, holt Windows den Lauf nach. Ein Lauf aus dem Cockpit hat immer Vorrang.</div>'+
+    '<div class="step"><div class="n'+(hm?" ok":"")+'">'+(hm?"✓":"1")+'</div><div class="t">Einmalig: <a class="dl" href="werkzeug/Cockpit-Hausmeister-einrichten.bat" download>⬇ Cockpit-Hausmeister-einrichten.bat</a> neben <code>cockpit_ablage.py</code> legen und doppelklicken.'+
+      (hm?"<div>Letzter Lauf: <b>"+zeitDe(hm.lauf)+"</b>"+(hm.fehler&&hm.fehler.length?' · <span style="color:#f87171">'+esc(hm.fehler.join("; "))+"</span>":" · ohne Fehler")+"</div>":"<div>Noch kein Lauf gemeldet. Entfernen: <code>schtasks /delete /tn \"Cockpit Hausmeister\" /f</code></div>")+"</div></div>";
+  h+='<div class="lbl" style="margin-top:12px">Sicherung der ganzen Ablage (ZIP) nach</div><input class="inp" id="hm_ziel" placeholder="z. B. F:\\Sicherung – eigenes Laufwerk, nicht OneDrive" value="'+esc(e.sicherung_ziel||"")+'"'+dis+'>'+
+    '<div class="g2" style="margin-top:8px"><div><div class="lbl">alle … Tage</div><input class="inp" id="hm_tage" type="number" min="1" max="90" value="'+(+e.sicherung_tage||7)+'"'+dis+'></div><div><div class="lbl">Sicherungen behalten</div><input class="inp" id="hm_beh" type="number" min="1" max="60" value="'+(+e.sicherung_behalten||10)+'"'+dis+"></div></div>"+
+    '<label class="note" style="display:flex;gap:8px;align-items:center;margin-top:10px;font-size:13px;color:#e2e8f0"><input type="checkbox" id="hm_auto" '+(e.auto_ablegen!==false?"checked ":"")+dis+'> Briefe sicher bekannter Absender automatisch ablegen</label>'+
+    '<div class="acts" style="margin-top:10px"><button class="mini on" onclick="D2.hmSave()"'+dis+'>💾 Speichern</button><button class="mini" onclick="D2.sichern()"'+(ok&&e.sicherung_ziel&&!st.run?"":" disabled")+">🗄 Jetzt sichern</button></div>"+
+    '<div class="note" style="margin-top:8px">'+(s.zuletzt?"Letzte Sicherung: <b>"+zeitDe(s.zuletzt)+"</b>"+(s.dateien?" · "+s.dateien+" Dateien":"")+(s.groesse_mb!=null?" · "+String(s.groesse_mb).replace(".",",")+" MB":""):"Noch keine Sicherung.")+
+      (s.ok===false?'<br><span style="color:#fbbf24">⚠ '+esc(s.fehler||"Fehler")+(s.versucht?" ("+zeitDe(s.versucht)+")":"")+"</span>":"")+
+      "<br>Abgelegt wird in <code>…\\Cockpit-Sicherung\\Ablage_JJJJ-MM-TT.zip</code>; ältere über die Anzahl hinaus löscht der Hausmeister nur dort. Ist das Laufwerk nicht angeschlossen, versucht er es beim nächsten Lauf wieder. Aussortierte Dubletten werden nicht mitgesichert."+
+      " Das Cockpit legt am PC außerdem täglich <code>_cockpit/cockpit-daten.json</code> ab (alle Bereiche außer ThingCounter, ohne Zugangsdaten) – so stecken auch die Cockpit-Daten in der Sicherung.</div></div>";
+  return h;}
 function testResult(){var t=st.test;if(!t)return "";
   if(t.status==="timeout")return '<div class="note" style="margin-top:8px;color:#fbbf24"><b>Keine Antwort vom PC.</b><br>• Kam <b>keine</b> Rückfrage von Chrome („cockpit-ablage öffnen?“), ist der Link-Typ nicht eingerichtet → Schritt 2 ausführen und auf den Selbsttest achten.<br>• Hat Chrome gefragt und du hast „Öffnen“ gewählt, aber es erschien kein schwarzes Fenster → Schritt 2 noch einmal ausführen; der Selbsttest am Ende zeigt, ob Python startet.<br>• Öffnete sich ein Fenster mit Fehlermeldung → Foto davon schicken. Zeigt es einen anderen Ablage-Ordner als den hier verbundenen („'+esc(st.rootName)+'“), Schritt 2 erneut ausführen und den richtigen Pfad angeben.</div>';
   if(t.status==="fehler")return '<div class="note" style="margin-top:8px;color:#f87171">'+esc(t.meldung||"Fehler")+"</div>";
@@ -356,10 +416,17 @@ window.D2={
     e.frei=false;after();},
   emp:function(n,x){var e=editOf(n),m=e.meta,l=String(m.empfaenger||"").split("-").filter(Boolean),keys=Object.keys(konfig().empfaenger||{});
     if(l.indexOf(x)>-1)l=l.filter(function(y){return y!==x;});else l.push(x);l.sort(function(a,b){return keys.indexOf(a)-keys.indexOf(b);});m.empfaenger=l.join("-");e.frei=false;after();},
-  frei:function(n,inPrev){var e=editOf(n);if(!e.meta||D.valid(e.meta,konfig()))return;e.frei=!e.frei;if(inPrev&&e.frei){saveEdits();render();D2.next();return;}after();},
+  verw:function(n){var e=editOf(n);e.verwerfen=!e.verwerfen;if(e.verwerfen)e.frei=false;after();},
+  hmSave:function(){if(!st.root)return;var v=function(id){var el=document.getElementById(id);return el?el.value:"";},ziel=v("hm_ziel").trim().replace(/^"|"$/g,"");
+    var o=Object.assign({},st.hmE||{},{sicherung_ziel:ziel,sicherung_tage:Math.max(1,Math.min(90,+v("hm_tage")||7)),sicherung_behalten:Math.max(1,Math.min(60,+v("hm_beh")||10)),auto_ablegen:!!(document.getElementById("hm_auto")||{}).checked});
+    if(ziel&&/onedrive/i.test(ziel)&&!confirm("Das Ziel liegt in OneDrive – dann liegt die Sicherung am selben Ort wie das Original. Trotzdem speichern?"))return;
+    D.writeJSON(st.root,"_cockpit/hausmeister_einst.json",o).then(function(){st.hmE=o;flash("✓ Gespeichert – gilt ab dem nächsten Lauf");reload();},function(e){flash("⚠ "+(e.message||e),true);});},
+  sichern:function(){run("sicherung","Sicherung der Ablage",45*60000);},
+  frei:function(n,inPrev){var e=editOf(n);if(!e.meta||D.valid(e.meta,konfig()))return;e.frei=!e.frei;if(e.frei)e.verwerfen=false;if(inPrev&&e.frei){saveEdits();render();D2.next();return;}after();},
   reset:function(n){delete st.edit[n];after();},
   alleSicher:function(){(st.pdfs||[]).forEach(function(p){var m=meta(p.name);if(m&&!m.doppelt&&!D.valid(m,konfig())&&(m.konfidenz==="hoch"||m.konfidenz==="mittel")){editOf(p.name).frei=true;}});after();},
-  ablegen:function(){var docs=(st.pdfs||[]).filter(function(p){var e=st.edit[p.name];return e&&e.frei&&e.meta&&!D.valid(e.meta,konfig());}).map(function(p){return {datei:p.name,meta:st.edit[p.name].meta};});
+  ablegen:function(){var docs=(st.pdfs||[]).filter(function(p){var e=st.edit[p.name];return e&&e.frei&&!e.verwerfen&&e.meta&&!D.valid(e.meta,konfig());}).map(function(p){return {datei:p.name,meta:st.edit[p.name].meta};});
+    (st.pdfs||[]).forEach(function(p){var e=st.edit[p.name];if(e&&e.verwerfen)docs.push({datei:p.name,verwerfen:true});});
     if(!docs.length)return;var id=D.newId();
     D.writeJSON(st.root,"_cockpit/auftrag.json",{id:id,erstellt:new Date().toISOString(),dokumente:docs}).then(function(){
       if(st.run)return;st.run={cmd:"ablegen",label:"Ablage von "+docs.length+" Dokument(en)",msg:"Wird gestartet …",i:0,n:0};render();D.start("ablegen",id);
@@ -373,6 +440,8 @@ window.D2={
     .catch(function(e){flash("⚠ Auftrag konnte nicht geschrieben werden: "+(e.message||e),true);});},
   q:function(v){st.q=v;var el=document.activeElement,pos=el&&el.selectionStart;render();var i=document.querySelector('#main input.inp');if(i){i.focus();try{i.setSelectionRange(pos,pos);}catch(e){}}},
   fy:function(v){st.fy=v;render();},fb:function(v){st.fb=v;render();},fst:function(){st.fst=!st.fst;render();},fohne:function(){st.fohne=!st.fohne;render();},
+  foffen:function(){st.foffen=!st.foffen;render();},fkat:function(v){st.fkat=v;render();},
+  erledigt:function(did,an){C.save("zuordnung",D.zuErledigt(C.getLocal("zuordnung",null),did,!!an));st.offenV=(st.offenV||0)+1;st.bz=null;flash(an?"✓ Als bezahlt markiert – wird nicht mehr gemeldet":"Wieder als offen geprüft");},
   zuWahl:function(did){st.zuWahl=st.zuWahl===did?null:did;render();},
   zuSetz:function(tid,did){var z=st.zuErg,alt=[];if(z&&z.doc[did])alt.push(z.doc[did].t.id+"|"+did);if(z&&z.tx[tid])alt.push(tid+"|"+z.tx[tid].e.id);
     C.save("zuordnung",D.zuSetzen(C.getLocal("zuordnung",null),tid,did,alt));st.bz=null;st.zuWahl=null;flash("✓ Fest zugeordnet");},
@@ -382,8 +451,10 @@ window.D2={
   open:function(id){var e=data.index.filter(function(x){return x.id===id;})[0];if(!e)return;D.oeffnen(e).then(function(){if(st.perm==="prompt")init();},function(err){flash("⚠ "+(err.message||err),true);});}
 };
 document.addEventListener("keydown",function(e){if(e.key==="Escape"&&st.prevName)D2.closePrev();});
+function hashTab(){if(location.hash==="#offen"){st.tab="archiv";st.foffen=true;return true;}return false;}
+hashTab();window.addEventListener("hashchange",function(){if(hashTab())render();});
 render();init();
-C.autoPull([AREA,"einkaeufe","zuordnung","finanzen","vertraege","auto","haus"],function(a,d){if(a===AREA)data=norm(d);if(a!=="einkaeufe"){st.bz=null;render();}});
+C.autoPull([AREA,"einkaeufe","zuordnung","finanzen","vertraege","auto","haus","energie"],function(a,d){if(a===AREA)data=norm(d);if(a!=="einkaeufe"){st.bz=null;st.op=null;render();}});
 })();
 </script>
 </body>

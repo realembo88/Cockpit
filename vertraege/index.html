@@ -181,7 +181,7 @@ function vForm(v,fx,t){var id=jsq(v.id),r=V.termin(v,t);
 /* Dokumente zum Vertrag – Zuordnung in VERTR.docMatch (gemeinsam mit Steuer und Startseite) */
 function kompakt(s){return String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");}
 function suchBegriff(v){return V.suchBegriff(v);}
-function dokumente(v){if(!window.DOKS)return [];return V.docMatch(v,DOKS.index()).sort(function(a,b){return String(b.datum).localeCompare(String(a.datum));}).slice(0,5);}
+function dokumente(v){if(!window.DOKS)return [];return V.docMatch(v,DOKS.index(),{alle:V.aktiv(data.vertraege)}).sort(function(a,b){return String(b.datum).localeCompare(String(a.datum));}).slice(0,5);}
 function docBlock(v){if(!window.DOKS)return "";var id=jsq(v.id),docs=dokumente(v),nAus=Object.keys(v.docAus||{}).length,auto=suchBegriff(Object.assign({},v,{suchwort:""}));
   return '<div class="mt"><div class="lbl">Dokumente</div>'+(docs.length?docs.map(function(e){var did=jsq(e.id);return '<div class="row" style="padding:6px 0"><div class="l"><span style="font-size:12px;color:#cbd5e1">📎 '+esc(DOKS.titel(e))+'</span><div class="s">'+DOKS.de(e.datum)+" · "+esc(e.kategorie)+'</div></div><div class="r"><div class="acts" style="margin-top:0;justify-content:flex-end"><button class="mini" onclick="V2.doc(\''+did+'\')">Öffnen</button><button class="mini" title="Gehört nicht zu diesem Vertrag" onclick="V2.docAus(\''+id+'\',\''+did+'\')">✕</button></div></div></div>';}).join(""):'<div class="note">Keine passenden Dokumente gefunden.</div>')+
     '<div class="mt"><div class="lbl">Dokumente finden über</div><input class="inp" value="'+esc(v.suchwort||"")+'" placeholder="'+esc(auto?"automatisch: „"+auto+"“":"Wort aus Absender/Betreff")+'" onchange="V2.set(\''+id+'\',\'suchwort\',this.value)">'+

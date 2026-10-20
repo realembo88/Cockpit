@@ -608,6 +608,7 @@ window.H2={
     .catch(function(e){flash("⚠ "+(e.message||"Datei konnte nicht gelesen werden"),true);});}
 };
 document.addEventListener("keydown",function(e){if(e.key==="Escape"&&document.body.classList.contains("doc-on"))H2.closeDoc();});
+(function(){var h=location.hash.slice(1);if(["uebersicht","abrechnung","kosten","belegung","zaehler","steuer","technik","einst"].indexOf(h)>-1){st.tab=h;if(h==="technik")setTimeout(function(){ladeWetter(false);},50);}})();
 render();
 C.autoPull([AREA,"finanzen","ferienwohnung","energie","dokumente","zuordnung"],function(a,d){if(a===AREA)data=norm(d);render();});
 })();

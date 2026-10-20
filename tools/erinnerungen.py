@@ -141,7 +141,56 @@ def auto_fristen(haus, t):
                 continue
             out.append({"id": f"nka:{y}:{b.get('id')}", "titel": f"Nebenkostenabrechnung {y} an {b.get('name') or 'Mieter'}",
                         "datum": f"{y + 1}-12-31", "vorlauf": 60})
+    # Heizung: Sommer- und Winterbetrieb (wie vertraege/logic.js), mehr als 3 Wochen vorbei -> nicht mehr melden
+    if hat_heizung(haus):
+        for art, md, titel in (("sommer", "05-15", "Heizung auf Sommerbetrieb (nur Warmwasser) – Thermostate ganz auf"),
+                               ("winter", "09-25", "Heizung auf Winterbetrieb – Thermostate wieder auf Normalstellung")):
+            D = f"{jetzt}-{md}"
+            if tage(D, t) <= 21:
+                out.append({"id": f"heiz-{art}:{jetzt}", "titel": titel, "datum": D, "vorlauf": 7})
     return out
+
+
+def hat_heizung(haus):
+    hk = ((haus or {}).get("technik") or {}).get("heizkreise") or []
+    return any(isinstance(h, dict) and not h.get("del") for h in hk)
+
+
+def heiz_kreis(haus):
+    if not hat_heizung(haus):
+        return None
+    for h in haus["technik"]["heizkreise"]:
+        if isinstance(h, dict) and not h.get("del") and re.search(r"ferien|fewo", f"{h.get('name') or ''} {h.get('hinweis') or ''}", re.I):
+            return h.get("id") or "HK1"
+    return None
+
+
+def heiz_saison(d):
+    md = str(d)[5:10]
+    return md >= "09-25" or md < "05-15"
+
+
+def heiz_hinweise(fw, haus, t, von=0, bis=6):
+    """Heizung der Ferienwohnung nach Belegung (wie VERTR.heizHinweise): mind. 2 freie Naechte -> absenken / am Vortag hochstellen."""
+    hk = heiz_kreis(haus)
+    if not hk:
+        return []
+    bs = [b for b in buchungen(fw) if b["dep"] > b["arr"]]
+
+    def belegt(d):
+        return any(b["arr"] <= d < b["dep"] for b in bs)
+
+    out = []
+    for b in bs:
+        n = tage(t, b["dep"])
+        if von <= n <= bis and heiz_saison(b["dep"]) and not belegt(b["dep"]) and not belegt(plus_t(b["dep"], 1)):
+            nx = min((x["arr"] for x in bs if x["arr"] >= b["dep"]), default=None)
+            out.append({"datum": b["dep"], "titel": f"{hk} absenken – Ferienwohnung leer " + (f"bis {de_kurz(nx)}" if nx else "(keine weitere Buchung)")})
+        D = plus_t(b["arr"], -1)
+        m = tage(t, D)
+        if von <= m <= bis and heiz_saison(b["arr"]) and not belegt(D) and not belegt(plus_t(b["arr"], -2)):
+            out.append({"datum": D, "titel": f"{hk} wieder aufs Zeitprogramm – Anreise {de_kurz(b['arr'])}"})
+    return sorted(out, key=lambda e: e["datum"])
 
 
 def preis_relevant(v):
@@ -372,7 +421,9 @@ def doc_match(v, idx):
         if not e or aus.get(e.get("id")):
             continue
         k = alnum(f"{e.get('absender') or ''} {e.get('betreff') or ''} {e.get('datei') or ''}")
-        if any(n in k for n in nrs) or (w and f" {w} " in " " + dnorm(f"{e.get('absender') or ''} {e.get('betreff') or ''}") + " "):
+        refs = [alnum((r or {}).get("wert")) for r in e.get("refs") or [] if isinstance(r, dict)]
+        ref_hit = any(len(r) >= 5 and any(r == n or (len(r) >= 7 and r in n) or (len(n) >= 7 and n in r) for n in nrs) for r in refs)
+        if any(n in k for n in nrs) or ref_hit or (w and f" {w} " in " " + dnorm(f"{e.get('absender') or ''} {e.get('betreff') or ''}") + " "):
             out.append(e)
     return out
 
@@ -434,6 +485,51 @@ def fehlende_bescheinigungen(y, vt, dok, steuer):
 
 
 # ----------------------------------------------------------------------------- Ferienwohnung
+# ----------------------------------------------------------------------------- Zahlungsueberwachung (vereinfacht wie DOKS.offenePosten)
+ZAHL_ART = re.compile(r"rechnung|mahnung|zahlungserinnerung|zahlungsaufforderung|liquidation|honorar|kostennote|gebuehr|beitrag|forderung|bescheid")
+ZAHL_NICHT = re.compile(r"gutschrift|erstattung|bescheinigung|angebot|kontoauszug|vertrag")
+
+
+def offene_posten(dok, fin, zu, t):
+    """Faellige Rechnung (mind. 5 Tage) ohne Abbuchung mit gleichem Betrag - nur wenn die Kontoauszuege ueber die Faelligkeit hinaus reichen."""
+    tx = (fin or {}).get("tx") or []
+    if not tx or not dok:
+        return []
+    ko = (fin or {}).get("konten") or {}
+    bis, von = {}, min(x["d"] for x in tx)
+    for x in tx:
+        b = (ko.get(x.get("k")) or {}).get("bereich") or "privat"
+        bis[b] = max(bis.get(b, ""), x["d"])
+    erl = (zu or {}).get("erledigt") or {}
+    fest = {k.split("|")[-1] for k, p in ((zu or {}).get("paare") or {}).items() if isinstance(p, dict) and p.get("ok") and not p.get("del")}
+    out = []
+    for e in dok.get("index") or []:
+        if not isinstance(e, dict) or not e.get("faellig") or e.get("zahlart") == "bar" or e.get("kategorie") == "Einkaeufe":
+            continue
+        art = dnorm(e.get("art"))
+        if not ZAHL_ART.search(art) or ZAHL_NICHT.search(art) or ("bescheid" in art and e.get("zahlbetrag") is None):
+            continue
+        b = e.get("zahlbetrag") if e.get("zahlbetrag") is not None else e.get("betrag")
+        try:
+            b = float(b)
+        except (TypeError, ValueError):
+            continue
+        x = erl.get(e.get("id")) or {}
+        if b <= 0 or (x and not x.get("del")) or e.get("id") in fest:
+            continue
+        n = tage(e["faellig"], t)
+        stand = bis.get("geschaeft" if e.get("bereich") == "Geschaeftlich" else "privat")
+        if n < 5 or n > 120 or not stand or tage(e["faellig"], stand) < 3 or von > e["faellig"]:
+            continue
+        a, z = plus_t(e.get("datum") or e["faellig"], -14), plus_t(e["faellig"], 45)
+        if any(abs(abs(float(x.get("b") or 0)) - b) <= 0.011 and a <= x["d"] <= z for x in tx):
+            continue
+        # nur der Absender (kurz) - der Betreff kann Persoenliches enthalten (z. B. Behandlungen)
+        titel = " ".join((str(e.get("absender") or "").replace("_", " ") or str(e.get("betreff") or "Rechnung").replace("_", " ")).split()[:2])
+        out.append({"titel": titel, "faellig": e["faellig"], "betrag": b, "tage": n})
+    return sorted(out, key=lambda o: -o["tage"])
+
+
 def buchungen(fw):
     return [b for b in ((fw or {}).get("bookings") or {}).values()
             if isinstance(b, dict) and b.get("arr") and b.get("dep") and not b.get("cancelled") and not b.get("blocked")]
@@ -445,7 +541,7 @@ def gaeste(b):
 
 # ----------------------------------------------------------------------------- Wochenvorschau
 def woche(ordner, t):
-    vt, haus, fw, dok, fin, steuer, kfz = (lade(ordner, n) for n in ("vertraege", "haus", "ferienwohnung", "dokumente", "finanzen", "steuer", "auto"))
+    vt, haus, fw, dok, fin, steuer, kfz, zu, en = (lade(ordner, n) for n in ("vertraege", "haus", "ferienwohnung", "dokumente", "finanzen", "steuer", "auto", "zuordnung", "energie"))
     ende = plus_t(t, 6)
     kw = dt(t).isocalendar()[1]
     zeilen = [f"📅 Wochenvorschau KW {kw} ({de_kurz(t)} – {de_kurz(ende)})"]
@@ -461,7 +557,8 @@ def woche(ordner, t):
 
     an = sorted((b for b in buchungen(fw) if t <= b["arr"] <= ende), key=lambda b: b["arr"])
     ab = sorted((b for b in buchungen(fw) if t <= b["dep"] <= ende), key=lambda b: b["dep"])
-    if an or ab:
+    hz = heiz_hinweise(fw, haus, t, 0, 6)
+    if an or ab or hz:
         zeilen.append("")
         zeilen.append("🏡 Ferienwohnung")
         for b in an:
@@ -469,6 +566,8 @@ def woche(ordner, t):
             zeilen.append(f"🧳 Anreise {de_kurz(b['arr'])}: " + (f"{g} Gäste, " if g else "") + f"{tage(b['arr'], b['dep'])} Nächte")
         for b in ab:
             zeilen.append(f"🧹 Abreise {de_kurz(b['dep'])} – Reinigung")
+        for e in hz:
+            zeilen.append(f"🌡️ {de_kurz(e['datum'])}: {e['titel']}")
 
     sonst = []
     if "02-01" <= t[5:10] <= "05-31":  # Bescheinigungen des Vorjahres
@@ -489,6 +588,26 @@ def woche(ordner, t):
             n = max(0, n - len({i.get("file") for i in ((fin or {}).get("imports") or []) if i.get("auto") and (i.get("ts") or 0) > dok["upd"]}))
         if n:
             sonst.append(f"🏦 {n} {'Kontoauszug' if n == 1 else 'Kontoauszüge'} im Eingang (Finanzen am PC öffnen)")
+        erl = ((en or {}).get("fixed") or {}).get("zfoto") or {}
+        zo = sum(1 for x in dok.get("zst") or [] if isinstance(x, dict) and x.get("id") and x["id"] not in erl)
+        if zo:
+            sonst.append(f"📷 {zo} {'Zählerstand' if zo == 1 else 'Zählerstände'} aus Fotos in Energie übernehmen")
+        hm = dok.get("hm") or {}
+        if hm.get("ziel"):
+            ok = hm.get("sOk")
+            # Bezug: letzter Abgleich am PC (neuere Laeufe kennt das Cockpit noch nicht)
+            from datetime import datetime
+            ref = min(t, datetime.fromtimestamp(dok["upd"] / 1000).date().isoformat()) if dok.get("upd") else t
+            alter = tage(ok[:10], ref) if ok else None
+            grenze = max(14, int(hm.get("tage") or 7) * 2)
+            if alter is None or alter > grenze:
+                sonst.append("💾 Sicherung der Ablage " + (f"seit {alter} Tagen nicht gelaufen" if alter is not None else "noch nie gelaufen")
+                             + (f" – {hm['sFehler']}" if hm.get("sFehler") else ""))
+    op = offene_posten(dok, fin, zu, t)
+    for o in op[:5]:
+        sonst.append(f"⏰ Rechnung offen? {o['titel']} – {eur(o['betrag'], 2)}, fällig seit {de(o['faellig'])}")
+    if len(op) > 5:
+        sonst.append(f"⏰ … und {len(op) - 5} weitere offene Rechnungen (Dokumente → offen)")
     if fin and fin.get("tx"):
         neu = max(x["d"] for x in fin["tx"])
         if tage(neu, t) > 14:

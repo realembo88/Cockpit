@@ -14,6 +14,9 @@ Befehle:
   cockpit-ablage://nachlesen Altbestand (nur ueber den Dateinamen erfasst) einmal inhaltlich auslesen:
                              Betrag, Datum, Vertrags-/Kundennummern, Kfz-Angaben - die Dateien bleiben, wo sie sind
   cockpit-ablage://konsole   klassische Ablage (ablage.py) im Konsolenfenster
+  hausmeister                automatischer Lauf ohne Fenster (Windows-Aufgabenplanung: 10 Min. nach
+                             der Anmeldung, dann stuendlich): Zaehlerfotos lesen, Eingang analysieren,
+                             Briefe bekannter Absender ablegen, Sicherung - siehe Cockpit-Hausmeister-einrichten.bat
 
 Regeln, Kategorien, Namenskonvention und Modell kommen unveraendert aus ablage.py,
 d. h. Aenderungen dort gelten automatisch auch fuer das Cockpit.
@@ -26,6 +29,10 @@ Austausch mit dem Cockpit ueber den Ordner <Ablage>/_cockpit/:
   laeden.json       eigene Ladennamen aus dem Cockpit (gelesener Name -> Name)
   status.json       Stand des letzten Laufs
   protokoll.txt     Protokoll aller Ablagen
+  hausmeister.json  Stand des automatischen Laufs (Ablagen, Zaehlerfotos, Sicherung) fuers Cockpit
+  hausmeister_einst.json  Einstellungen dafuer (sicherung_ziel, sicherung_tage, sicherung_behalten, auto_ablegen)
+  zaehlerstaende.json     aus Fotos gelesene Zaehlerstaende - das Cockpit (Energie) uebernimmt sie
+  lauf.lock / vorrang     Sperre gegen gleichzeitige Laeufe; ein Lauf aus dem Cockpit hat Vorrang
 
 Direkt aufrufen zum Testen:  python cockpit_ablage.py test
 """
@@ -206,7 +213,13 @@ def lies_json(pfad: Path, standard):
         return standard
 
 
+STILL = False  # Hausmeister: kein status.json (gehoert dem Lauf aus dem Cockpit), keine Ausgaben
+
+
 def status(id_, befehl, zustand, meldung="", ergebnis=None, start=None, fortschritt=None):
+    lebenszeichen()
+    if STILL:
+        return
     try:
         schreibe_json(KANAL / "status.json", {
             "id": id_, "befehl": befehl, "status": zustand, "meldung": meldung,
@@ -520,7 +533,7 @@ def gueltig(meta: dict):
     return True, ""
 
 
-def eintrag(meta: dict, ziel: Path, stb, quelle: str) -> dict:
+def eintrag(meta: dict, ziel: Path, stb, quelle: str, md5=None) -> dict:
     ra = rel(ziel)
     st = bool(meta.get("steuerrelevant"))
     e = {
@@ -533,6 +546,12 @@ def eintrag(meta: dict, ziel: Path, stb, quelle: str) -> dict:
         "betrag": meta.get("betrag"), "zahlbetrag": meta.get("zahlbetrag"), "jahr": meta.get("jahr"),
         "abgelegt": jetzt(), "quelle": quelle,
     }
+    if md5:
+        e["md5"] = md5
+        try:
+            e["groesse"] = ziel.stat().st_size
+        except OSError:
+            pass
     if meta.get("kassenbon"):
         e["zahlart"] = meta["kassenbon"].get("zahlart") or "unbekannt"
     zusatz(e, meta)
@@ -633,6 +652,23 @@ def cmd_analyse(id_):
         raise Fehler("Umgebungsvariable ANTHROPIC_API_KEY ist nicht gesetzt (siehe Einrichtung).")
     if not A.EINGANG.exists():
         raise Fehler(f"Eingangsordner existiert nicht: {A.EINGANG}")
+    z = zaehlerfotos(None)
+    if z["unklar"]:
+        hm = lies_json(KANAL / "hausmeister.json", {})
+        hm["fotos_unklar"] = z["unklar_namen"]
+        schreibe_json(KANAL / "hausmeister.json", hm)
+    erg = analyse_eingang(id_)
+    if z["gelesen"] or z["unklar"]:
+        teile = [f"{z['gelesen']} Zaehlerfoto(s) gelesen - in Energie uebernehmen"] if z["gelesen"] else []
+        if z["unklar"]:
+            teile.append(f"{z['unklar']} Foto(s) ohne erkennbaren Zaehler bleiben im Eingang")
+        erg["meldung"] = erg["meldung"].rstrip(".") + ", " + ", ".join(teile) + "."
+        erg["zaehlerfotos"] = z["gelesen"]
+    return erg
+
+
+def analyse_eingang(id_, stopp=None, neu_namen=None) -> dict:
+    """PDFs im Eingang analysieren (nur neue/geaenderte). stopp(): True -> abbrechen (Vorrang fuer einen Lauf aus dem Cockpit)."""
     alt = lade_vorschlaege()["dateien"]
     pdfs = sorted(p for p in A.EINGANG.glob("*.pdf") if p.is_file())
     dateien, offen = {}, []
@@ -648,27 +684,59 @@ def cmd_analyse(id_):
     speichere_vorschlaege(dateien)
     if not offen:
         return {"meldung": f"Nichts Neues - {len(pdfs)} PDF(s) waren schon analysiert.", "dateien": len(pdfs), "neu": 0, "fehler": 0}
-    client = A.Anthropic()
-    fehler, bons = 0, 0
-    idx, eink, log = None, None, [f"--- Kassenbons automatisch abgelegt {jetzt()} ---"]
+    idx = lade_index()
+    if index_hashes(idx):
+        speichere_index(idx)
+    nach_md5 = {e["md5"]: e for e in idx.values() if e.get("md5")}
+    im_eingang = {}
+    client = None
+    fehler, bons, doppelt, n_fertig = 0, 0, 0, 0
+    eink, log = None, [f"--- Kassenbons automatisch abgelegt {jetzt()} ---"]
     for i, (p, sig) in enumerate(offen, 1):
+        if stopp and stopp():
+            break
+        n_fertig = i
         print(f"  [{i:3}/{len(offen)}] {p.name[:52]:<52} ", end="", flush=True)
         try:
+            h = datei_md5(p)
+            gleich = nach_md5.get(h)
+            if gleich or h in im_eingang:
+                # dieselbe Datei liegt schon im Archiv (oder zweimal im Eingang): ohne KI-Aufruf als Dublette melden
+                meta = meta_aus_eintrag(gleich) if gleich else dict(dateien[im_eingang[h]].get("meta") or {})
+                wo = gleich["archiv"] if gleich else f"00_Eingang/{im_eingang[h]}"
+                meta.update({"doppelt": wo, "doppelt_art": "gleich",
+                             "hinweise": f"Diese Datei liegt schon {'im Archiv' if gleich else 'im Eingang'}: {wo} - nicht noch einmal ablegen."})
+                dateien[p.name] = dict(sig, meta=meta, analysiert=jetzt(), fehler=None, pruefen="Dublette", md5=h)
+                doppelt += 1
+                print("DUBLETTE")
+                speichere_vorschlaege(dateien)
+                continue
+            im_eingang[h] = p.name
+            if client is None:
+                client = A.Anthropic()
             meta = analysiere(client, p)
             ok, grund = gueltig(meta)
+            aehnlich = aehnliches_dokument(meta, idx)
+            if aehnlich:
+                meta.update({"doppelt": aehnlich["archiv"], "doppelt_art": "aehnlich",
+                             "hinweise": (f"Gleiches Datum und gleicher Betrag wie {aehnlich['archiv']} - vermutlich derselbe Brief. "
+                                          + meta.get("hinweise", "")).strip()})
+                doppelt += 1
             bon = meta.get("kassenbon")
-            if bon and ok:
+            if bon and ok and not aehnlich:
                 if eink is None:
-                    idx, eink = lade_index(), lade_einkaeufe()
-                alt = bon_doppelt(eink, bon)
-                if alt:
-                    meta["doppelt"] = alt.get("archiv")
-                    meta["hinweise"] = (f"Dieser Kassenbon ist schon erfasst ({alt.get('archiv')}) - den Scan am besten loeschen. "
+                    eink = lade_einkaeufe()
+                alt_bon = bon_doppelt(eink, bon)
+                if alt_bon:
+                    meta["doppelt"] = alt_bon.get("archiv")
+                    meta["doppelt_art"] = "gleich"
+                    meta["hinweise"] = (f"Dieser Kassenbon ist schon erfasst ({alt_bon.get('archiv')}) - den Scan am besten loeschen. "
                                         + meta.get("hinweise", "")).strip()
                 elif bon_sicher(meta):
                     # sichere Kassenbons ohne Rueckfrage ablegen - sie erscheinen direkt in der Einkaufs-Statistik
                     e = lege_ab(meta, p)
                     idx[e["archiv"]] = e
+                    nach_md5[h] = e
                     bon_eintragen(eink, meta, e)
                     speichere_index(idx)
                     speichere_einkaeufe(eink)
@@ -677,8 +745,13 @@ def cmd_analyse(id_):
                     print("KASSENBON abgelegt")
                     status(id_, "analyse", "laeuft", f"{i} von {len(offen)} analysiert", fortschritt={"i": i, "n": len(offen)})
                     continue
-            dateien[p.name] = dict(sig, meta=meta, analysiert=jetzt(), fehler=None, pruefen=None if ok else grund)
-            print(("KASSENBON " if bon else "") + ("OK" if ok else "PRUEFEN"))
+            pruefen = None if ok else grund
+            if meta.get("doppelt") and not pruefen:
+                pruefen = "Dublette?"
+            dateien[p.name] = dict(sig, meta=meta, analysiert=jetzt(), fehler=None, pruefen=pruefen, md5=h)
+            if neu_namen is not None:
+                neu_namen.add(p.name)
+            print(("KASSENBON " if bon else "") + ("DUBLETTE? " if meta.get("doppelt") else "") + ("OK" if ok else "PRUEFEN"))
         except Exception as e:  # noqa: BLE001 - weiter mit dem naechsten Dokument
             fehler += 1
             dateien[p.name] = dict(sig, meta=None, analysiert=jetzt(), fehler=f"{type(e).__name__}: {e}"[:300], pruefen=None)
@@ -688,15 +761,93 @@ def cmd_analyse(id_):
     speichere_vorschlaege(dateien)
     if bons:
         protokoll(log)
-    rest = len(offen) - fehler - bons
+    rest = n_fertig - fehler - bons
     teile = []
     if bons:
         teile.append(f"{bons} Kassenbon(s) direkt abgelegt")
-    if rest:
+    if rest > 0:
         teile.append(f"{rest} Dokument(e) analysiert - jetzt im Cockpit pruefen und freigeben")
+    if doppelt:
+        teile.append(f"davon {doppelt} vermutlich schon abgelegt")
     if fehler:
         teile.append(f"{fehler} Fehler")
-    return {"meldung": (", ".join(teile) or "Fertig") + ".", "dateien": len(pdfs), "neu": len(offen), "fehler": fehler, "kassenbons": bons}
+    if n_fertig < len(offen):
+        teile.append(f"{len(offen) - n_fertig} noch offen")
+    return {"meldung": (", ".join(teile) or "Fertig") + ".", "dateien": len(pdfs), "neu": n_fertig, "fehler": fehler,
+            "kassenbons": bons, "dubletten": doppelt}
+
+
+# =============================================================================
+# Dubletten
+# =============================================================================
+
+def datei_md5(p: Path) -> str:
+    h = hashlib.md5()
+    with open(p, "rb") as f:
+        for b in iter(lambda: f.read(1 << 20), b""):
+            h.update(b)
+    return h.hexdigest()
+
+
+def index_hashes(idx: dict) -> bool:
+    """md5 und Groesse der abgelegten PDFs im Verzeichnis nachtragen (einmalig, danach nur fuer neue/geaenderte Dateien)."""
+    neu = False
+    for e in idx.values():
+        p = ROOT / e["archiv"]
+        try:
+            g = p.stat().st_size
+        except OSError:
+            continue
+        if e.get("md5") and e.get("groesse") == g:
+            continue
+        try:
+            e["md5"], e["groesse"] = datei_md5(p), g
+            neu = True
+        except OSError:
+            pass
+    return neu
+
+
+STOPP_WORTE = {"gmbh", "mbh", "und", "der", "die", "das", "co", "kg", "ag", "se", "von", "fuer"}
+
+
+def absender_wort(s) -> str:
+    w = [x for x in einfach(s).split() if len(x) >= 3 and x not in STOPP_WORTE]
+    return w[0] if w else ""
+
+
+def aehnliches_dokument(meta: dict, idx: dict):
+    """Schon abgelegt? Gleiches Datum, gleicher Betrag und gleicher Absender (erstes markantes Wort)."""
+    b = meta.get("betrag") if meta.get("betrag") is not None else meta.get("zahlbetrag")
+    d, w = meta.get("datum"), absender_wort(meta.get("absender"))
+    if b is None or not d or not w:
+        return None
+    for e in idx.values():
+        eb = e.get("betrag") if e.get("betrag") is not None else e.get("zahlbetrag")
+        if e.get("datum") != d or eb is None or abs(abs(float(eb)) - abs(float(b))) > 0.011:
+            continue
+        txt = " " + einfach(" ".join(str(e.get(k) or "") for k in ("absender", "ki_absender", "betreff", "datei"))) + " "
+        if f" {w} " in txt:
+            return e
+    return None
+
+
+def meta_aus_eintrag(e: dict) -> dict:
+    """Vorschlag fuer eine Dublette aus dem vorhandenen Verzeichniseintrag (ohne KI-Aufruf)."""
+    return {"datum": e.get("datum") or "", "absender": e.get("absender") or e.get("ki_absender") or "", "betreff": e.get("betreff") or "",
+            "empfaenger": e.get("empfaenger") or "", "archiv_bereich": e.get("bereich") or "", "archiv_kategorie": e.get("kategorie") or "",
+            "steuerrelevant": bool(e.get("st")), "stb_belegart": e.get("belegart"), "betrag": e.get("betrag"), "zahlbetrag": e.get("zahlbetrag"),
+            "jahr": e.get("jahr"), "konfidenz": "hoch", "hinweise": "", "kassenbon": None}
+
+
+def verwerfen(name: str) -> str:
+    """Dublette aus dem Eingang nach _Doppelt_pruefen/00_Eingang verschieben (nichts wird geloescht)."""
+    src = A.EINGANG / name
+    zdir = ROOT / "_Doppelt_pruefen" / "00_Eingang"
+    zdir.mkdir(parents=True, exist_ok=True)
+    ziel = A.ensure_unique(zdir / name)
+    shutil.move(str(src), str(ziel))
+    return rel(ziel)
 
 
 def bon_sicher(meta: dict) -> bool:
@@ -706,7 +857,8 @@ def bon_sicher(meta: dict) -> bool:
             and bool(bon.get("datum")) and bon.get("summe") is not None and bool(bon.get("laden")))
 
 
-def lege_ab(meta: dict, src: Path) -> dict:
+def lege_ab(meta: dict, src: Path, quelle="cockpit") -> dict:
+    md5 = datei_md5(src)
     name = A.build_filename(meta)
     adir = A.ARCHIV / meta["archiv_bereich"] / meta["archiv_kategorie"]
     if meta["archiv_kategorie"] == EINKAUF_KAT:  # viele Bons -> Unterordner je Jahr
@@ -724,7 +876,7 @@ def lege_ab(meta: dict, src: Path) -> dict:
         sziel = A.ensure_unique(sdir / ziel.name)
         shutil.copy2(str(ziel), str(sziel))
         stb = rel(sziel)
-    return eintrag(meta, ziel, stb, "cockpit")
+    return eintrag(meta, ziel, stb, quelle, md5)
 
 
 def cmd_ablegen(id_):
@@ -741,6 +893,14 @@ def cmd_ablegen(id_):
     for d in auftrag["dokumente"]:
         name = Path(str(d.get("datei", ""))).name  # nur Dateinamen, keine Pfade
         src = A.EINGANG / name
+        if d.get("verwerfen"):
+            if name and src.is_file():
+                ziel = verwerfen(name)
+                v.pop(name, None)
+                erg.append({"datei": name, "ok": True, "ziel": ziel, "verworfen": True})
+                log.append(f"[DUBLETTE] {name} -> {ziel}")
+                print(f"  {name[:52]:<52} DUBLETTE verschoben")
+            continue
         meta = normalisiere(d.get("meta"))
         print(f"  {name[:52]:<52} ", end="", flush=True)
         if not name or not src.is_file():
@@ -774,8 +934,10 @@ def cmd_ablegen(id_):
     except FileNotFoundError:
         pass
     protokoll(log)
-    n_err = len(erg) - ok_n
-    return {"meldung": f"{ok_n} Dokument(e) abgelegt" + (f", {n_err} nicht abgelegt" if n_err else "") + ".",
+    n_verw = sum(1 for x in erg if x.get("verworfen"))
+    n_err = len(erg) - ok_n - n_verw
+    return {"meldung": f"{ok_n} Dokument(e) abgelegt" + (f", {n_verw} Dublette(n) nach _Doppelt_pruefen verschoben" if n_verw else "")
+            + (f", {n_err} nicht abgelegt" if n_err else "") + ".",
             "abgelegt": ok_n, "fehler": n_err, "dokumente": erg}
 
 
@@ -917,6 +1079,436 @@ def cmd_nachlesen(id_):
             "neu": ok, "betraege": betraege, "fehler": fehler}
 
 
+
+# =============================================================================
+# Zaehlerfotos: Foto vom Gas-, Wasser- oder Stromzaehler in den Eingang -> Stand fuers Cockpit (Energie)
+# =============================================================================
+
+BILD_TYPEN = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
+ZAEHLER_SYSTEM = """Du liest auf einem Foto den Stand eines Verbrauchszaehlers ab (Haushalt in Deutschland).
+Antworte NUR mit JSON:
+{"zaehlerfoto": true/false,          // false, wenn kein Zaehler mit lesbarem Zaehlwerk zu sehen ist
+ "art": "gas" | "wasser" | "strom" | "waerme" | "sonst",
+ "nummer": "Zaehlernummer bzw. Seriennummer wie aufgedruckt (z.B. 1ESY1160123456, 7GMT0012345678) oder null",
+ "stand": Zahl mit Punkt als Dezimaltrenner,
+ "einheit": "m3" | "kWh" | "MWh" | null,
+ "obis": "1.8.0" (Bezug) | "2.8.0" (Einspeisung) | null,
+ "unsicher": true/false,             // true, wenn Ziffern verdeckt, verwackelt oder nicht eindeutig sind
+ "hinweis": "kurz, nur wenn etwas auffaellt, sonst leer"}
+Regeln:
+- Mechanische Rollenzaehlwerke: schwarze/weisse Rollen sind ganze Einheiten, rote Rollen bzw. Stellen hinter dem
+  Komma sind Nachkommastellen (Gas meist 3 rote Stellen, Wasser haeufig 3 rote Stellen bzw. Zeiger).
+- Digitale Stromzaehler zeigen oft abwechselnd 1.8.0 (Bezug) und 2.8.0 (Einspeisung) - lies das angezeigte Register.
+- Bei mehreren Zaehlern im Bild den groessten, deutlich lesbaren nehmen und "unsicher": true setzen."""
+
+
+def exif_datum(daten: bytes):
+    """Aufnahmezeit aus den EXIF-Daten eines JPEG (DateTimeOriginal, sonst DateTime) als datetime oder None."""
+    import struct
+    try:
+        if daten[:2] != b"\xff\xd8":
+            return None
+        i = 2
+        while i + 4 < len(daten):
+            if daten[i] != 0xFF:
+                return None
+            marker, laenge = daten[i + 1], struct.unpack(">H", daten[i + 2:i + 4])[0]
+            if marker == 0xE1 and daten[i + 4:i + 10] == b"Exif\x00\x00":
+                t = daten[i + 10:i + 2 + laenge]
+                bo = "<" if t[:2] == b"II" else ">"
+                def ifd(off):
+                    n = struct.unpack(bo + "H", t[off:off + 2])[0]
+                    out = {}
+                    for k in range(n):
+                        e = off + 2 + 12 * k
+                        tag, typ, cnt, val = struct.unpack(bo + "HHI4s", t[e:e + 12])
+                        if typ == 2:
+                            vo = struct.unpack(bo + "I", val)[0] if cnt > 4 else None
+                            out[tag] = (t[vo:vo + cnt] if vo is not None else val[:cnt]).rstrip(b"\x00").decode("ascii", "ignore")
+                        elif typ == 4:
+                            out[tag] = struct.unpack(bo + "I", val)[0]
+                    return out
+                ifd0 = ifd(struct.unpack(bo + "I", t[4:8])[0])
+                werte = []
+                if 0x8769 in ifd0:
+                    werte.append(ifd(ifd0[0x8769]).get(0x9003))
+                werte.append(ifd0.get(0x0132))
+                for w in werte:
+                    if w and re.match(r"\d{4}:\d\d:\d\d \d\d:\d\d", w):
+                        return datetime.strptime(w[:16], "%Y:%m:%d %H:%M")
+                return None
+            if marker == 0xDA:
+                return None
+            i += 2 + laenge
+    except Exception:  # noqa: BLE001 - kaputte EXIF-Daten sind kein Fehler
+        return None
+    return None
+
+
+def foto_datum(p: Path, daten: bytes) -> datetime:
+    d = exif_datum(daten)
+    if d:
+        return d
+    m = re.search(r"(20\d\d)[-_]?([01]\d)[-_]?([0-3]\d)[-_ ]?([0-2]\d)?[-_.]?([0-5]\d)?", p.name)
+    if m:
+        try:
+            return datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4) or 12), int(m.group(5) or 0))
+        except ValueError:
+            pass
+    return datetime.fromtimestamp(p.stat().st_mtime)
+
+
+def bild_verkleinern(daten: bytes, typ: str):
+    """Grosse Fotos fuer die API verkleinern (nur wenn Pillow installiert ist)."""
+    if len(daten) <= 3_500_000:
+        return daten, typ
+    try:
+        from io import BytesIO
+        from PIL import Image
+        im = Image.open(BytesIO(daten))
+        im.thumbnail((1800, 1800))
+        buf = BytesIO()
+        im.convert("RGB").save(buf, "JPEG", quality=85)
+        return buf.getvalue(), "image/jpeg"
+    except Exception:  # noqa: BLE001
+        return daten, typ
+
+
+def zaehler_zahl(v):
+    """Zaehlerstand mit bis zu drei Nachkommastellen (12345.678 bzw. "12.345,678")."""
+    if isinstance(v, (int, float)):
+        return round(float(v), 3)
+    t = re.sub(r"[^0-9,.]", "", str(v or ""))
+    if not t:
+        return None
+    if "," in t:
+        t = t.replace(".", "").replace(",", ".")
+    elif t.count(".") > 1:
+        t = t.replace(".", "")
+    try:
+        return round(float(t), 3)
+    except ValueError:
+        return None
+
+
+def lies_zaehler(client, bild: Path, daten: bytes) -> dict:
+    roh, typ = bild_verkleinern(daten, BILD_TYPEN[bild.suffix.lower()])
+    if len(roh) > 4_900_000:
+        raise Fehler("Foto zu gross (ueber 5 MB) - bitte kleiner aufnehmen oder Pillow installieren")
+    antwort = client.messages.create(
+        model=A.MODEL, max_tokens=400, system=ZAEHLER_SYSTEM,
+        messages=[{"role": "user", "content": [
+            {"type": "image", "source": {"type": "base64", "media_type": typ, "data": base64.standard_b64encode(roh).decode("utf-8")}},
+            {"type": "text", "text": "Lies den Zaehlerstand ab und antworte mit reinem JSON."},
+        ]}],
+    )
+    m = A.extract_json(antwort.content[0].text) or {}
+    stand = zaehler_zahl(m.get("stand"))
+    art = str(m.get("art") or "sonst").lower()
+    nummer = re.sub(r"\s+", "", str(m.get("nummer") or "")) or None
+    obis = m.get("obis") if m.get("obis") in ("1.8.0", "2.8.0") else None
+    return {"zaehlerfoto": bool(m.get("zaehlerfoto")) and stand is not None,
+            "art": art if art in ("gas", "wasser", "strom", "waerme") else "sonst", "nummer": nummer,
+            "stand": stand, "einheit": m.get("einheit") if m.get("einheit") in ("m3", "kWh", "MWh") else None,
+            "obis": obis, "unsicher": bool(m.get("unsicher")), "hinweis": str(m.get("hinweis") or "")[:200]}
+
+
+def zaehlerfotos(stopp=None) -> dict:
+    """Fotos im Eingang lesen. Zaehlerfotos wandern nach 02_Archiv/Privat/Energie_PV/Zaehlerfotos/<Jahr>/,
+    der Stand kommt nach _cockpit/zaehlerstaende.json. Andere Fotos bleiben im Eingang."""
+    bilder = sorted(p for p in A.EINGANG.glob("*") if p.is_file() and p.suffix.lower() in BILD_TYPEN) if A.EINGANG.exists() else []
+    unklar_alt = {n for n in (lies_json(KANAL / "hausmeister.json", {}).get("fotos_unklar") or []) if (A.EINGANG / str(n)).is_file()}
+    bilder = [p for p in bilder if p.name not in unklar_alt]
+    erg = {"gelesen": 0, "unklar": 0, "fehler": 0, "unklar_namen": sorted(unklar_alt)}
+    if not bilder or not os.environ.get("ANTHROPIC_API_KEY"):
+        return erg
+    z = lies_json(KANAL / "zaehlerstaende.json", {})
+    staende = z.get("staende") if isinstance(z.get("staende"), list) else []
+    client = A.Anthropic()
+    log = []
+    for p in bilder:
+        if stopp and stopp():
+            break
+        print(f"  Foto {p.name[:48]:<48} ", end="", flush=True)
+        try:
+            daten = p.read_bytes()
+            when = foto_datum(p, daten)
+            m = lies_zaehler(client, p, daten)
+            if not m["zaehlerfoto"]:
+                erg["unklar"] += 1
+                erg["unklar_namen"].append(p.name)
+                print("KEIN ZAEHLER")
+                continue
+            zdir = A.ARCHIV / "Privat" / "Energie_PV" / "Zaehlerfotos" / str(when.year)
+            zdir.mkdir(parents=True, exist_ok=True)
+            name = f"{when:%Y%m%d}_Zaehlerstand_{m['art'].capitalize()}" + (f"_{re.sub(r'[^A-Za-z0-9]', '', m['nummer'])}" if m["nummer"] else "") + p.suffix.lower()
+            ziel = A.ensure_unique(zdir / name)
+            shutil.move(str(p), str(ziel))
+            staende.append(dict(m, id=hashlib.sha1((rel(ziel) + str(when)).encode("utf-8")).hexdigest()[:12],
+                                datum=f"{when:%Y-%m-%d}", zeit=f"{when:%H:%M}", foto=rel(ziel), gelesen=jetzt(), status="neu"))
+            erg["gelesen"] += 1
+            log.append(f"[ZAEHLER] {p.name} -> {rel(ziel)} | {m['art']} {m['nummer'] or ''} {m['stand']} {m['einheit'] or ''} {m['obis'] or ''}")
+            print(f"{m['art'].upper()} {m['stand']}")
+        except Exception as ex:  # noqa: BLE001
+            erg["fehler"] += 1
+            log.append(f"[FEHLER] Foto {p.name}: {ex}")
+            print("FEHLER")
+    schreibe_json(KANAL / "zaehlerstaende.json", {"version": 1, "aktualisiert": jetzt(), "staende": staende[-500:]})
+    if log:
+        protokoll([f"--- Zaehlerfotos {jetzt()} ---"] + log)
+    return erg
+
+
+# =============================================================================
+# Sicherung: ZIP der ganzen Ablage auf ein zweites Laufwerk (z. B. externe Platte)
+# =============================================================================
+
+def sicherung(einst: dict, alt: dict, stopp=None) -> dict:
+    ziel = str(einst.get("sicherung_ziel") or "").strip()
+    st = dict(alt or {})
+    if not ziel:
+        return st
+    st["ziel"] = ziel
+    tage = int(einst.get("sicherung_tage") or 7)
+    behalten = int(einst.get("sicherung_behalten") or 10)
+    zuletzt = st.get("zuletzt")
+    if zuletzt and (datetime.now() - datetime.fromisoformat(zuletzt)).days < tage and not einst.get("sicherung_jetzt"):
+        return st
+    zdir = Path(ziel)
+    try:
+        zdir.resolve().relative_to(ROOT.resolve())
+        st.update({"ok": False, "fehler": "Das Sicherungsziel liegt innerhalb der Ablage - bitte ein anderes Laufwerk waehlen.", "versucht": jetzt()})
+        return st
+    except ValueError:
+        pass
+    if not zdir.exists() and not (zdir.anchor and Path(zdir.anchor).exists()):
+        st.update({"ok": False, "fehler": "Ziel nicht erreichbar (Laufwerk angeschlossen?)", "versucht": jetzt()})
+        return st
+    import zipfile
+    zdir = zdir / "Cockpit-Sicherung"
+    zdir.mkdir(parents=True, exist_ok=True)
+    name = f"Ablage_{datetime.now():%Y-%m-%d}.zip"
+    tmp = zdir / (name + ".tmp")
+    gepackt = (".pdf", ".jpg", ".jpeg", ".png", ".webp", ".zip", ".heic")
+    n = 0
+    try:
+        with zipfile.ZipFile(tmp, "w", allowZip64=True) as z:
+            for p in ROOT.rglob("*"):
+                if stopp and stopp():
+                    raise Fehler("abgebrochen - Vorrang fuer einen Lauf aus dem Cockpit")
+                if not p.is_file() or p.name.endswith(".tmp") or p.name in ("lauf.lock", "vorrang"):
+                    continue
+                teile = p.relative_to(ROOT).parts
+                if teile[0] == "_Doppelt_pruefen" or "__pycache__" in teile:
+                    continue  # Ablage fuer aussortierte Dubletten und Python-Zwischendateien nicht mitsichern
+                if n % 50 == 0:
+                    lebenszeichen()
+                art = zipfile.ZIP_STORED if p.suffix.lower() in gepackt else zipfile.ZIP_DEFLATED
+                z.write(p, p.relative_to(ROOT).as_posix(), compress_type=art)
+                n += 1
+        ziel_datei = zdir / name
+        os.replace(tmp, ziel_datei)
+        alte = sorted(zdir.glob("Ablage_*.zip"))
+        for x in alte[:-behalten] if len(alte) > behalten else []:
+            x.unlink()  # nur eigene, aeltere Sicherungen in Cockpit-Sicherung
+        st.update({"ok": True, "fehler": None, "zuletzt": jetzt(), "datei": str(ziel_datei), "dateien": n,
+                   "groesse_mb": round(ziel_datei.stat().st_size / 1e6, 1), "versucht": jetzt()})
+        protokoll([f"--- Sicherung {jetzt()}: {n} Dateien -> {ziel_datei} ---"])
+    except Exception as ex:  # noqa: BLE001
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        st.update({"ok": False, "fehler": f"{type(ex).__name__}: {ex}"[:200], "versucht": jetzt()})
+    return st
+
+
+# =============================================================================
+# Hausmeister: automatischer Lauf ohne Fenster (Aufgabenplanung)
+# =============================================================================
+
+def stamm_sicher(meta: dict, idx: dict):
+    """Brief eines bekannten Absenders ohne Rueckfrage ablegen? Nur wenn die letzten zwei Briefe dieses Absenders
+    im Cockpit freigegeben wurden und genauso einsortiert sind (Bereich, Kategorie, Empfaenger, Steuer)."""
+    ok, _ = gueltig(meta)
+    if not ok or meta.get("kassenbon") or meta.get("doppelt") or meta.get("datum_unsicher"):
+        return None
+    if meta.get("konfidenz") != "hoch" or not meta.get("datum") or not meta.get("absender"):
+        return None
+    w = absender_wort(meta.get("absender"))
+    if not w:
+        return None
+    frueher = [e for e in idx.values() if e.get("quelle") in ("cockpit", "hausmeister")
+               and absender_wort(e.get("absender") or e.get("ki_absender")) == w]
+    frueher.sort(key=lambda e: e.get("abgelegt") or "", reverse=True)
+    if len(frueher) < 2:
+        return None
+    soll = (meta.get("archiv_bereich"), meta.get("archiv_kategorie"), meta.get("empfaenger"), bool(meta.get("steuerrelevant")),
+            meta.get("stb_belegart") if meta.get("steuerrelevant") else None)
+    for e in frueher[:2]:
+        if (e.get("bereich"), e.get("kategorie"), e.get("empfaenger"), bool(e.get("st")), e.get("belegart") if e.get("st") else None) != soll:
+            return None
+    return frueher[0]
+
+
+def stamm_ablegen(namen: set, stopp=None) -> list:
+    """Nur Briefe, die dieser Lauf gerade analysiert hat - an Vorschlaegen, die man im Cockpit schon sieht
+    (und vielleicht bearbeitet), aendert der Hausmeister nichts."""
+    v = lade_vorschlaege()["dateien"]
+    idx = lade_index()
+    erg, log = [], []
+    for name, d in list(v.items()):
+        if stopp and stopp():
+            break
+        meta = d.get("meta")
+        src = A.EINGANG / name
+        if name not in namen or not meta or d.get("fehler") or not src.is_file():
+            continue
+        if d.get("groesse") != src.stat().st_size:
+            continue
+        vorbild = stamm_sicher(normalisiere(meta), idx) if not meta.get("doppelt") else None
+        if not vorbild:
+            continue
+        try:
+            e = lege_ab(normalisiere(meta), src, "hausmeister")
+            idx[e["archiv"]] = e
+            v.pop(name, None)
+            erg.append({"datei": name, "ziel": e["archiv"], "id": e["id"], "titel": (e["absender"] + " - " + e["betreff"]).strip(" -"), "zeit": jetzt()})
+            log.append(f"[AUTO] {name} -> {e['archiv']} (wie {vorbild.get('archiv')})")
+        except Exception as ex:  # noqa: BLE001
+            log.append(f"[FEHLER] {name}: {ex}")
+    if erg:
+        speichere_index(idx)
+        speichere_vorschlaege(v)
+    if log:
+        protokoll([f"--- Hausmeister: Briefe bekannter Absender abgelegt {jetzt()} ---"] + log)
+    return erg
+
+
+SPERRE = None
+
+
+def sperre_holen(cmd: str, warten=True, id_="") -> bool:
+    """lauf.lock: nur ein Lauf gleichzeitig. Der Hausmeister wartet nicht; Laeufe aus dem Cockpit haben Vorrang
+    (sie setzen 'vorrang', der Hausmeister beendet sich nach dem aktuellen Dokument)."""
+    global SPERRE
+    KANAL.mkdir(parents=True, exist_ok=True)
+    lock = KANAL / "lauf.lock"
+    start = time.time()
+    while True:
+        try:
+            fd = os.open(str(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump({"befehl": cmd, "pid": os.getpid(), "start": jetzt()}, f)
+            SPERRE = lock
+            if cmd != "hausmeister":
+                try:
+                    (KANAL / "vorrang").unlink()
+                except FileNotFoundError:
+                    pass
+            return True
+        except FileExistsError:
+            try:
+                alter = time.time() - lock.stat().st_mtime
+                inhalt = lies_json(lock, {})
+            except OSError:
+                continue
+            if alter > 20 * 60:  # verwaist (Hausmeister meldet sich alle paar Minuten) -> uebernehmen
+                try:
+                    lock.unlink()
+                except OSError:
+                    pass
+                continue
+            if cmd == "hausmeister" or not warten:
+                return False
+            if inhalt.get("befehl") == "hausmeister":
+                (KANAL / "vorrang").write_text(jetzt(), encoding="utf-8")
+                status(id_, cmd, "laeuft", "Warte, bis der automatische Lauf das aktuelle Dokument fertig hat ...")
+            if time.time() - start > 15 * 60:
+                return False
+            time.sleep(2)
+
+
+def sperre_frei():
+    global SPERRE
+    if SPERRE:
+        try:
+            SPERRE.unlink()
+        except OSError:
+            pass
+        SPERRE = None
+
+
+def lebenszeichen():
+    if SPERRE:
+        try:
+            os.utime(SPERRE, None)
+        except OSError:
+            pass
+
+
+def hat_vorrang() -> bool:
+    lebenszeichen()
+    return (KANAL / "vorrang").exists()
+
+
+def cmd_hausmeister(id_):
+    einst = lies_json(KANAL / "hausmeister_einst.json", {})
+    alt = lies_json(KANAL / "hausmeister.json", {})
+    hm = {"lauf": jetzt(), "version": 1, "fehler": []}
+    try:
+        z = zaehlerfotos(hat_vorrang)
+        hm["zaehler_neu"] = z["gelesen"]
+        hm["fotos_unklar"] = z["unklar_namen"]
+    except Exception as ex:  # noqa: BLE001
+        hm["fehler"].append(f"Zaehlerfotos: {ex}"[:200])
+    neu_namen = set()
+    if os.environ.get("ANTHROPIC_API_KEY") and A.EINGANG.exists() and not hat_vorrang():
+        try:
+            a = analyse_eingang("", hat_vorrang, neu_namen)
+            hm["analyse"] = {k: a.get(k) for k in ("neu", "fehler", "dubletten", "kassenbons")}
+        except Exception as ex:  # noqa: BLE001
+            hm["fehler"].append(f"Analyse: {ex}"[:200])
+    abgelegt = []
+    if einst.get("auto_ablegen", True) and not hat_vorrang():
+        try:
+            abgelegt = stamm_ablegen(neu_namen, hat_vorrang)
+        except Exception as ex:  # noqa: BLE001
+            hm["fehler"].append(f"Ablegen: {ex}"[:200])
+    hm["abgelegt"] = (abgelegt + (alt.get("abgelegt") or []))[:30]
+    hm["abgelegt_neu"] = len(abgelegt)
+    if not hat_vorrang():
+        hm["sicherung"] = sicherung(einst, alt.get("sicherung"), hat_vorrang)
+        if einst.get("sicherung_jetzt") and (hm["sicherung"] or {}).get("ok"):
+            einst.pop("sicherung_jetzt", None)
+            schreibe_json(KANAL / "hausmeister_einst.json", einst)
+    else:
+        hm["sicherung"] = alt.get("sicherung")
+    hm["eingang"] = len(list(A.EINGANG.glob("*.pdf"))) if A.EINGANG.exists() else None
+    z = lies_json(KANAL / "zaehlerstaende.json", {})
+    hm["zaehler_offen"] = sum(1 for x in (z.get("staende") or []) if x.get("status") == "neu")
+    hm["sicherung_ziel"] = bool(einst.get("sicherung_ziel"))
+    schreibe_json(KANAL / "hausmeister.json", hm)
+    return {"meldung": f"Hausmeister: {len(abgelegt)} abgelegt, {hm.get('zaehler_neu', 0)} Zaehlerfoto(s)", "ohne_warten": True}
+
+
+def cmd_sicherung(id_):
+    """'Jetzt sichern' aus dem Cockpit: wie beim Hausmeister, aber sofort und mit Konsolenfenster."""
+    einst = lies_json(KANAL / "hausmeister_einst.json", {})
+    if not str(einst.get("sicherung_ziel") or "").strip():
+        raise Fehler("Kein Sicherungsziel eingetragen - im Cockpit unter Dokumente -> Einrichtung -> Hausmeister.")
+    alt = lies_json(KANAL / "hausmeister.json", {})
+    print(f"Sicherung der Ablage nach {einst['sicherung_ziel']} ...")
+    status(id_, "sicherung", "laeuft", "Sicherung laeuft - je nach Groesse einige Minuten ...")
+    s = sicherung(dict(einst, sicherung_jetzt=True), alt.get("sicherung"))
+    alt["sicherung"] = s
+    schreibe_json(KANAL / "hausmeister.json", alt)
+    if not s.get("ok"):
+        raise Fehler(s.get("fehler") or "Sicherung fehlgeschlagen")
+    print(f"Fertig: {s['dateien']} Dateien, {s['groesse_mb']} MB -> {s['datei']}")
+    return {"meldung": f"Sicherung fertig: {s['dateien']} Dateien, {s['groesse_mb']} MB", "sicherung": s}
+
+
 def cmd_konsole(id_):
     A.main()  # klassische Ablage mit Rueckfragen im Konsolenfenster
     print("\nVerzeichnis fuer das Cockpit wird aktualisiert ...")
@@ -925,7 +1517,8 @@ def cmd_konsole(id_):
     return erg
 
 
-BEFEHLE = {"test": cmd_test, "analyse": cmd_analyse, "ablegen": cmd_ablegen, "index": cmd_index, "nachlesen": cmd_nachlesen, "konsole": cmd_konsole}
+BEFEHLE = {"test": cmd_test, "analyse": cmd_analyse, "ablegen": cmd_ablegen, "index": cmd_index, "nachlesen": cmd_nachlesen, "konsole": cmd_konsole,
+           "hausmeister": cmd_hausmeister, "sicherung": cmd_sicherung}
 
 
 def lies_aufruf(argv):
@@ -940,8 +1533,35 @@ def lies_aufruf(argv):
     return arg.lower(), {}
 
 
+def hausmeister_main():
+    """Ohne Fenster und ohne Rueckfragen (pythonw). Fehler landen in _cockpit/hausmeister.log."""
+    global STILL
+    STILL = True
+    if not ROOT.exists():
+        return
+    if not sperre_holen("hausmeister"):
+        return
+    try:
+        cmd_hausmeister("")
+    except Exception as e:  # noqa: BLE001
+        try:
+            with open(KANAL / "hausmeister.log", "a", encoding="utf-8") as f:
+                f.write(f"{jetzt()} {type(e).__name__}: {e}\n{traceback.format_exc()}\n")
+        except OSError:
+            pass
+    finally:
+        sperre_frei()
+        try:
+            (KANAL / "vorrang").unlink()
+        except OSError:
+            pass
+
+
 def main():
     cmd, q = lies_aufruf(sys.argv)
+    if cmd == "hausmeister":
+        hausmeister_main()
+        return
     id_ = q.get("id", "")
     if not re.fullmatch(r"[A-Za-z0-9_-]{0,40}", id_):
         id_ = ""
@@ -962,9 +1582,14 @@ def main():
         warte()
         return
     start = jetzt()
+    gesperrt = False
     try:
         KANAL.mkdir(parents=True, exist_ok=True)
         status(id_, cmd, "laeuft", "gestartet", start=start)
+        if cmd != "test":
+            gesperrt = sperre_holen(cmd, True, id_)
+            if not gesperrt:
+                raise Fehler("Ein anderer Lauf ist noch aktiv - bitte gleich noch einmal versuchen.")
         erg = BEFEHLE[cmd](id_) or {}
         status(id_, cmd, "fertig", erg.get("meldung", ""), ergebnis=erg, start=start)
         print("\n" + erg.get("meldung", "Fertig."))
@@ -978,6 +1603,9 @@ def main():
         traceback.print_exc()
         status(id_, cmd, "fehler", f"{type(e).__name__}: {e}", start=start)
         warte()
+    finally:
+        if gesperrt:
+            sperre_frei()
 
 
 if __name__ == "__main__":

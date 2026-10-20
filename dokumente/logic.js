@@ -67,7 +67,7 @@ function kontoImport(r,fin){if(!window.FIN)return Promise.resolve(null);
       }catch(e){res.fehler.push(x.name+": "+(e.message||e));}}
     res.rest=list.length-res.dateien.length; /* bleiben im Eingang (neues Konto, Fehler) */
     return res;});}
-function blobUrl(r,path){return file(r,path).then(function(f){return URL.createObjectURL(f.slice(0,f.size,"application/pdf"));});}
+function blobUrl(r,path,typ){return file(r,path).then(function(f){var t=typ||(/\.(jpe?g)$/i.test(path)?"image/jpeg":/\.png$/i.test(path)?"image/png":/\.webp$/i.test(path)?"image/webp":"application/pdf");return URL.createObjectURL(f.slice(0,f.size,t));});}
 
 /* ---------- Python starten und auf das Ergebnis warten ---------- */
 function newId(){return Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
@@ -189,10 +189,71 @@ function zuZurueck(zu,keys){zu=zuNorm(zu);(keys||[]).forEach(function(k){zu.paar
 function zuSetzen(zu,tid,did,alt){zu=zuNorm(zu);(alt||[]).forEach(function(k){if(k&&k!==tid+"|"+did)zu.paare[k]={ok:false,t:Date.now()};});zu.paare[tid+"|"+did]={ok:true,t:Date.now()};return zu;}
 function paares(p){return p||{};}
 function zuBlank(){return {paare:{}};}
-function zuNorm(x){x=x&&typeof x==="object"?x:zuBlank();if(!x.paare||typeof x.paare!=="object")x.paare={};return x;}
+function zuNorm(x){x=x&&typeof x==="object"?x:zuBlank();if(!x.paare||typeof x.paare!=="object")x.paare={};if(!x.erledigt||typeof x.erledigt!=="object")x.erledigt={};return x;}
+/* „anders bezahlt“ (bar, Karte, anderes Konto): Rechnung nicht mehr als offen melden */
+function zuErledigt(zu,did,an){zu=zuNorm(zu);zu.erledigt[did]=an?{t:Date.now()}:{del:true,t:Date.now()};return zu;}
 function zuMerge(l,r){l=zuNorm(JSON.parse(JSON.stringify(l)));r=zuNorm(JSON.parse(JSON.stringify(r)));var o={paare:{}};
   Object.keys(Object.assign({},l.paare,r.paare)).forEach(function(k){var a=l.paare[k],b=r.paare[k];o.paare[k]=!a?b:!b?a:((a.t||0)>=(b.t||0)?a:b);});
+  o.erledigt={};Object.keys(Object.assign({},l.erledigt,r.erledigt)).forEach(function(k){var a=l.erledigt[k],b=r.erledigt[k];o.erledigt[k]=!a?b:!b?a:((a.t||0)>=(b.t||0)?a:b);});
   var n=Object.keys(o.paare).filter(function(k){return o.paare[k].ok;}).length;o._summary={k:n+" bestätigt",s:"Zuordnungen"};return o;}
+
+/* ---------- Zahlungsüberwachung ----------
+   Rechnung mit Fälligkeit und Betrag, zu der keine Buchung gefunden wurde – gemeldet ab 5 Tage nach der Fälligkeit, bis 120 Tage.
+   Nur wenn die Kontoauszüge (des passenden Bereichs) mindestens 3 Tage über die Fälligkeit hinaus reichen,
+   sonst fehlt womöglich nur der Auszug. Bar bezahlt, Guthaben und „anders bezahlt“ (zuordnung.erledigt) bleiben außen vor. */
+var ZAHL_ART=/rechnung|mahnung|zahlungserinnerung|zahlungsaufforderung|liquidation|honorar|kostennote|gebuehr|beitrag|forderung|bescheid/,ZAHL_NICHT=/gutschrift|erstattung|bescheinigung|angebot|kontoauszug|vertrag/;
+function isoHeute(){var x=new Date();return x.getFullYear()+"-"+("0"+(x.getMonth()+1)).slice(-2)+"-"+("0"+x.getDate()).slice(-2);}
+function offenePosten(idx,fin,zu,heute){heute=heute||isoHeute();var tx=(fin&&fin.tx)||[];if(!tx.length)return [];
+  var ko=(fin&&fin.konten)||{},bis={},von="";
+  tx.forEach(function(t){var b=((ko[t.k]||{}).bereich)||"privat";if(t.d>(bis[b]||""))bis[b]=t.d;if(!von||t.d<von)von=t.d;});
+  var z=zuordnung(idx,tx,zu),erl=(zu&&zu.erledigt)||{},out=[];
+  (idx||[]).forEach(function(e){if(!e||!e.faellig||e.zahlart==="bar"||e.kategorie==="Einkaeufe")return;
+    var art=norm(e.art);if(!ZAHL_ART.test(art)||ZAHL_NICHT.test(art))return;
+    if(/bescheid/.test(art)&&e.zahlbetrag==null)return; /* Bescheide nur mit ausdrücklichem Zahlbetrag (Nachzahlung) */
+    var b=e.zahlbetrag!=null?+e.zahlbetrag:(e.betrag!=null?+e.betrag:null);if(b==null||!(b>0))return;
+    if(erl[e.id]&&!erl[e.id].del)return;if(z.doc[e.id])return;
+    var tage=(d0(heute)-d0(e.faellig))/DAY;if(tage<5||tage>120)return;
+    var stand=bis[e.bereich==="Geschaeftlich"?"geschaeft":"privat"];if(!stand||(d0(stand)-d0(e.faellig))/DAY<3||von>e.faellig)return;
+    out.push({e:e,b:b,tage:Math.round(tage)});});
+  return out.sort(function(a,b){return b.tage-a.tage;});}
+
+/* ---------- Zählerstände aus Fotos (Hausmeister → _cockpit/zaehlerstaende.json, über Dokumente synchronisiert) ----------
+   offen = noch nicht in Energie übernommen oder verworfen (energie.fixed.zfoto {id: "ok"|"weg"}) */
+function zstOffen(dok,en){var f=((en&&en.fixed)||{}).zfoto||{};return ((dok&&dok.zst)||[]).filter(function(x){return x&&x.id&&!f[x.id];});}
+
+/* ---------- Bereich „dokumente“: Zusammenfassung, Zusammenführen, PC-Abgleich (Dokumente-Seite und Startseite) ---------- */
+function dokBlank(){return {index:[],konfig:null,aktualisiert:"",eingang:null,upd:0};}
+function dokNorm(d){d=d&&typeof d==="object"?d:dokBlank();if(!Array.isArray(d.index))d.index=[];return d;}
+function dokSummary(d){var n=(d.index||[]).length,e=d.eingang;
+  if(!n&&e==null)return {k:"—",s:"Noch nicht eingerichtet"};
+  return {k:n+" Dok.",s:(e?e+" im Eingang · ":"Eingang leer · ")+(d.aktualisiert?"Stand "+de(d.aktualisiert):"")};}
+/* Verzeichnis: der neuere Stand von index.json; Eingang, Hausmeister und Zählerfotos: der jüngere PC-Abgleich (upd) */
+function dokMerge(l,r){l=dokNorm(l);r=dokNorm(r);var n=String(l.aktualisiert||"")>=String(r.aktualisiert||"")?l:r,o=JSON.parse(JSON.stringify(n)),j=(l.upd||0)>=(r.upd||0)?l:r;
+  o.eingang=j.eingang;o.hm=j.hm;o.zst=j.zst;o.upd=Math.max(l.upd||0,r.upd||0);o._summary=dokSummary(o);return o;}
+/* Kurzfassung des Hausmeister-Laufs (ohne Pfade) für Handy, Startseite und Wochenvorschau */
+function hmSumme(hm,e){if(!hm&&!e)return null;hm=hm||{};e=e||{};var s=hm.sicherung||{},w=Date.now()-7*DAY;
+  return {lauf:hm.lauf||null,ziel:!!e.sicherung_ziel,tage:+e.sicherung_tage||7,sOk:s.zuletzt||null,sFehler:s.ok===false?String(s.fehler||"Fehler").slice(0,120):null,sMb:s.groesse_mb||null,
+    auto:(hm.abgelegt||[]).filter(function(x){return Date.parse(x.zeit)>w;}).length,fotos:(hm.fotos_unklar||[]).length,fehler:(hm.fehler||[]).length};}
+/* Zählerstände aus Fotos: nur die Werte (die Fotos bleiben am PC), letzte 400 Tage */
+function zstListe(f){if(!f||!Array.isArray(f.staende))return null;var w=Date.now()-400*DAY;
+  return f.staende.filter(function(x){return x&&x.id&&x.stand!=null&&Date.parse(x.datum||x.gelesen)>w;}).slice(-80).map(function(x){
+    return {id:x.id,art:x.art,nummer:x.nummer||null,obis:x.obis||null,stand:x.stand,einheit:x.einheit||null,datum:x.datum,zeit:x.zeit||null,unsicher:!!x.unsicher,hinweis:x.hinweis?String(x.hinweis).slice(0,120):null,foto:x.foto||null};});}
+/* Cockpit-Daten einmal täglich als _cockpit/cockpit-daten.json in die Ablage – so stecken sie in der ZIP-Sicherung des Hausmeisters.
+   Ohne Zugangsdaten (Token, Schlüssel) und ohne ThingCounter; nur wenn eine Sicherung eingerichtet ist. */
+var EXP_KEY="cockpit:dok:export",EXP_AREAS=["energie","auto","edelmetall","finanzen","einkaeufe","ferienwohnung","haus","steuer","dokumente","zuordnung","vertraege","training"];
+function datenExport(C,r,einst){if(!C||!r||!einst||!einst.sicherung_ziel)return;var t=0;try{t=+localStorage.getItem(EXP_KEY)||0;}catch(e){}if(Date.now()-t<20*3600e3)return;
+  try{localStorage.setItem(EXP_KEY,String(Date.now()));}catch(e){}
+  writeJSON(r,"_cockpit/cockpit-daten.json",C.makeBackup(EXP_AREAS,"cockpit")).catch(function(){try{localStorage.removeItem(EXP_KEY);}catch(e){}});}
+/* Startseite am PC: Eingang, Hausmeister und Zählerfotos frisch lesen und in „dokumente“ übernehmen (Merge registriert der Aufrufer) */
+function pcAbgleich(C){return state().then(function(s){if(s.s!=="granted")return false;var r=s.h;
+  return Promise.all([listPDFs(r).catch(function(){return null;}),readJSON(r,"_cockpit/hausmeister.json").catch(function(){return null;}),
+      readJSON(r,"_cockpit/hausmeister_einst.json").catch(function(){return null;}),readJSON(r,"_cockpit/zaehlerstaende.json").catch(function(){return null;})]).then(function(a){
+    var d=C.getLocal("dokumente",null);if(!d)return false;d=JSON.parse(JSON.stringify(dokNorm(d)));var ch=false;
+    var n=a[0]?a[0].length:null;if(n!=null&&n!==d.eingang){d.eingang=n;ch=true;}
+    var hs=hmSumme(a[1],a[2]);if(hs&&JSON.stringify(hs)!==JSON.stringify(d.hm||null)){d.hm=hs;ch=true;}
+    var zs=zstListe(a[3]);if(zs&&JSON.stringify(zs)!==JSON.stringify(d.zst||null)){d.zst=zs;ch=true;}
+    datenExport(C,r,a[2]);
+    if(ch){d.upd=Date.now();d._summary=dokSummary(d);C.save("dokumente",d);}return ch;});}).catch(function(){return false;});}
 
 /* Hauskosten: Rechnungen eines Jahres zu den Kostenarten der Nebenkostenabrechnung */
 var HAUS_KW={grundsteuer:["grundsteuer"],wasser:["wasser","trinkwasser","frischwasser"],abwasser:["abwasser","kanal","schmutzwasser","entwaesserung"],niederschlag:["niederschlag","regenwasser"],
@@ -207,6 +268,6 @@ function oeffnen(e){return root(true).then(function(r){if(!r)throw new Error("De
 
 return {listCSVs:listCSVs,verschiebe:verschiebe,kontoImport:kontoImport,supported:supported,mobil:mobil,state:state,root:root,pick:pick,forget:forget,dir:dir,file:file,exists:exists,readJSON:readJSON,writeJSON:writeJSON,listPDFs:listPDFs,blobUrl:blobUrl,
   newId:newId,start:start,poll:poll,clean:clean,fname:fname,valid:valid,isoDatum:isoDatum,stbJahr:stbJahr,index:index,zuordnung:zuordnung,txKandidaten:txKandidaten,docKandidaten:docKandidaten,zuSetzen:zuSetzen,refPasst:refPasst,abgelehnt:abgelehnt,zuZurueck:zuZurueck,absKey:absKey,titelMonat:titelMonat,paarWert:paarWert,zuBlank:zuBlank,zuNorm:zuNorm,zuMerge:zuMerge,norm:norm,titel:titel,de:de,steuerJahr:steuerJahr,stbDocs:stbDocs,
-  txMatcher:txMatcher,HAUS_KW:HAUS_KW,hausDocs:hausDocs,hausVorschlag:hausVorschlag,oeffnen:oeffnen};
+  txMatcher:txMatcher,HAUS_KW:HAUS_KW,offenePosten:offenePosten,zstOffen:zstOffen,dokBlank:dokBlank,dokNorm:dokNorm,dokSummary:dokSummary,dokMerge:dokMerge,hmSumme:hmSumme,zstListe:zstListe,datenExport:datenExport,pcAbgleich:pcAbgleich,zuErledigt:zuErledigt,isoHeute:isoHeute,hausDocs:hausDocs,hausVorschlag:hausVorschlag,oeffnen:oeffnen};
 })();
 if(typeof window!=="undefined")window.DOKS=DOKS;
