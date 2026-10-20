@@ -62,6 +62,11 @@ body.prev-on #prev{display:grid;position:fixed;inset:0;z-index:50;background:#06
 #prev iframe{width:100%;height:100%;border:0;background:#fff;min-height:55vh;}
 #prev .side{overflow:auto;padding:12px;}
 @media(min-width:900px){#prev .body{grid-template-columns:1fr 400px;}}
+.bz{display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin-top:5px !important;}
+.bzc{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;border-radius:8px;padding:2px 7px;background:#1e293b;color:#cbd5e1;text-decoration:none;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;}
+.bzc.gr{background:#22c55e1f;color:#86efac;} .bzc.warn{background:#f59e0b22;color:#fcd34d;}
+.bzc button{background:transparent;border:none;color:inherit;font-size:11px;cursor:pointer;padding:0 0 0 2px;opacity:.75;font-family:inherit;}
+.bzc button:hover{opacity:1;}
 </style>
 </head>
 <body>
@@ -74,6 +79,8 @@ body.prev-on #prev{display:grid;position:fixed;inset:0;z-index:50;background:#06
 <script src="../assets/cockpit.js"></script>
 <script src="logic.js"></script>
 <script src="../finanzen/einkauf.js"></script>
+<script src="../vertraege/logic.js"></script>
+<script src="../auto/logic.js"></script>
 <script>
 (function(){
 "use strict";
@@ -87,6 +94,7 @@ function merge(l,r){l=norm(l);r=norm(r);var n=String(l.aktualisiert||"")>=String
   o.eingang=(l.upd||0)>=(r.upd||0)?l.eingang:r.eingang;o.upd=Math.max(l.upd||0,r.upd||0);o._summary=summaryFor(o);return o;}
 C.registerMerge(AREA,merge);
 C.registerMerge("einkaeufe",EINK.merge);
+C.registerMerge("zuordnung",D.zuMerge);
 var data=norm(C.getLocal(AREA,blank));
 function persist(){data.upd=Date.now();data._summary=summaryFor(data);C.save(AREA,data);}
 function summaryFor(d){var n=(d.index||[]).length,e=d.eingang;
@@ -97,13 +105,18 @@ function summaryFor(d){var n=(d.index||[]).length,e=d.eingang;
 function loadEdits(){try{return JSON.parse(localStorage.getItem(EDIT_KEY)||"{}")||{};}catch(e){return {};}}
 function saveEdits(){try{localStorage.setItem(EDIT_KEY,JSON.stringify(st.edit));}catch(e){}}
 
-var st={tab:"eingang",perm:"…",root:null,rootName:"",pdfs:null,vor:null,edit:loadEdits(),open:{},run:null,flash:null,q:"",fy:"",fb:"alle",fst:false,limit:60,test:null,prevName:null,prevUrl:null};
+var st={tab:"eingang",perm:"…",root:null,rootName:"",pdfs:null,vor:null,edit:loadEdits(),open:{},run:null,flash:null,q:"",fy:"",fb:"alle",fst:false,fohne:false,bz:null,limit:60,test:null,prevName:null,prevUrl:null};
 function flash(t,warn){st.flash={t:t,warn:!!warn};render();clearTimeout(flash.tm);flash.tm=setTimeout(function(){st.flash=null;render();},warn?6000:3000);}
 function esc(s){return C.esc(s);}
 function konfig(){return (st.vor&&st.vor.konfig)||data.konfig||{empfaenger:{},archiv:{Privat:[],Geschaeftlich:[]},stb:{Privat:[],Geschaeftlich:[]}};}
 
 /* ---------- Ordner & Daten laden ---------- */
-function init(){D.state().then(function(s){st.perm=s.s;st.root=s.s==="granted"?s.h:null;st.rootName=s.h?s.h.name:"";render();if(st.root)reload();});}
+function init(){D.state().then(function(s){st.perm=s.s;st.root=s.s==="granted"?s.h:null;st.rootName=s.h?s.h.name:"";render();if(st.root)reload().then(laufFortsetzen);});}
+/* läuft am PC noch ein längerer Vorgang (z. B. Altbestand auslesen)? Dann Fortschritt wieder anzeigen */
+function laufFortsetzen(){if(!st.root||st.run)return;D.readJSON(st.root,"_cockpit/status.json").then(function(s){
+  if(!s||s.status!=="laeuft"||s.befehl!=="nachlesen"||!s.id||Date.now()-Date.parse(s.zeit)>10*60000)return;
+  st.run={cmd:"nachlesen",label:"Altbestand auslesen",msg:s.meldung||"läuft …",i:(s.fortschritt||{}).i||0,n:(s.fortschritt||{}).n||0};render();
+  warte("nachlesen","Altbestand auslesen",s.id,8*3600000);}).catch(function(){});}
 function reload(){if(!st.root)return Promise.resolve();
   return Promise.all([D.readJSON(st.root,"_cockpit/vorschlaege.json"),D.readJSON(st.root,"_cockpit/index.json"),D.listPDFs(st.root).catch(function(){return null;}),
       D.readJSON(st.root,"_cockpit/einkaeufe.json").catch(function(){return null;}),D.listCSVs(st.root).catch(function(){return [];}),D.readJSON(st.root,"_cockpit/laeden.json").catch(function(){return null;})]).then(function(a){
@@ -126,7 +139,14 @@ function run(cmd,label,ms){if(!st.root){flash("⚠ Zuerst den Ablage-Ordner verb
   if(st.run){flash("Es läuft bereits ein Vorgang",true);return Promise.resolve(null);}
   var id=D.newId();st.run={cmd:cmd,label:label,msg:"Wird gestartet … Chrome fragt beim ersten Mal, ob der Link geöffnet werden darf.",i:0,n:0};render();
   D.start(cmd,id);
-  var p=D.poll(st.root,id,function(s){st.run.msg=s.meldung||"läuft …";if(s.fortschritt){st.run.i=s.fortschritt.i;st.run.n=s.fortschritt.n;}render();},ms||15*60000);
+  return warte(cmd,label,id,ms);}
+/* auf das Ende eines Laufs warten (auch für einen Lauf, der vor dem Öffnen der Seite gestartet wurde) */
+function warte(cmd,label,id,ms){
+  var p=D.poll(st.root,id,function(s){if(!st.run)return;
+    /* keine Rückmeldung mehr seit 10 Minuten – Konsolenfenster vermutlich geschlossen */
+    if(cmd==="nachlesen"&&s.zeit&&Date.now()-Date.parse(s.zeit)>10*60000){st.run.p&&st.run.p.cancel();flash("Der Lauf meldet sich nicht mehr (Fenster geschlossen?). Erneut starten macht an der Stelle weiter.",true);return;}
+    st.run.msg=s.meldung||"läuft …";if(s.fortschritt){var neu=s.fortschritt.i!==st.run.i;st.run.i=s.fortschritt.i;st.run.n=s.fortschritt.n;
+      if(cmd==="nachlesen"&&neu&&st.run.i%20===0)reload();}render();},ms||15*60000);
   st.run.p=p;
   return p.then(function(s){st.run=null;
     if(s.status==="timeout")flash("⚠ Keine Rückmeldung vom PC. Ist die Einrichtung erledigt und Chrome danach neu gestartet? Details unter Einrichtung → Verbindung testen.",true);
@@ -202,24 +222,53 @@ function form(name,m){
 function archivKurz(){var n=data.index.length;return n?'<div class="note">Im Archiv sind '+n+' Dokumente verzeichnet – siehe Reiter „Archiv“.</div>':"";}
 
 /* ---------- Archiv ---------- */
+/* Altbestand: nur über den Dateinamen erfasst, noch nicht inhaltlich ausgelesen */
+function nNach(){return data.index.filter(function(e){return e.quelle==="bestand"&&!e.nachgelesen&&e.kategorie!=="Einkaeufe";}).length;}
+function nachPanel(){var n=nNach();if(!n||st.perm==="unsupported"||st.run)return "";
+  return '<div class="panel" style="border-color:#38bdf866"><b style="color:#7dd3fc">📚 '+n+' ältere Dokumente sind noch nicht ausgelesen</b><div class="note" style="margin:6px 0 10px">Sie stehen nur mit dem Dateinamen im Verzeichnis – ohne Betrag und Nummern. Einmal auslesen, dann lassen sie sich Buchungen, Verträgen und Fahrzeugen zuordnen. Läuft am PC im Konsolenfenster (etwa '+Math.max(1,Math.round(n*8/60))+' Min., verbraucht etwas API-Guthaben); Abbrechen ist jederzeit möglich, der nächste Lauf macht weiter.</div>'+
+    '<button class="btn" style="background:#0ea5e9" onclick="D2.nachlesen()"'+(st.perm!=="granted"?" disabled":"")+'>📚 Altbestand auslesen</button></div>';}
+/* Bezüge je Dokument: Buchung (Finanzen), Vertrag, Fahrzeug, Haus-Nebenkosten – einmal berechnet, nach Änderungen neu */
+var HAUS_N={grundsteuer:"Grundsteuer",wasser:"Wasser",abwasser:"Abwasser",niederschlag:"Niederschlagswasser",heizung:"Heizung/Gas",muell:"Müll",schornstein:"Kaminkehrer",gebaeudevers:"Gebäudeversicherung",haftpflicht:"Haus-Haftpflicht"};
+var HAUS_KAT={Wohnen:1,Energie_PV:1,Versicherungen:1,Steuern_Privat:1,Behoerden_Ausweise:1,Vertraege:1};
+function hatBetrag(e){return (e.betrag!=null||e.zahlbetrag!=null)&&e.zahlart!=="bar"&&e.kategorie!=="Einkaeufe";}
+function bezuege(){var key=data.index.length+"|"+(data.aktualisiert||"")+"|"+(data.upd||0);if(st.bz&&st.bzKey===key)return st.bz;st.bzKey=key;var idx=data.index,o={};function add(id,c){(o[id]=o[id]||[]).push(c);}
+  try{var fin=C.getLocal("finanzen",null);if(fin&&Array.isArray(fin.tx)){var z=D.zuordnung(idx,fin.tx,C.getLocal("zuordnung",null));
+    Object.keys(z.doc).forEach(function(id){var p=z.doc[id];add(id,{k:"tx",art:p.art,t:p.t});});}}catch(x){}
+  try{var vt=window.VERTR&&C.getLocal("vertraege",null);if(vt){vt=VERTR.norm(vt);VERTR.aktiv(vt.vertraege).forEach(function(v){VERTR.docMatch(v,idx).forEach(function(e){add(e.id,{k:"vt",v:v});});});}}catch(x){}
+  try{var au=window.AUTO&&C.getLocal("auto",null);if(au)idx.forEach(function(e){var fz=AUTO.fahrzeugVon(au,e);if(fz)add(e.id,{k:"fz",fz:fz});});}catch(x){}
+  idx.forEach(function(e){if(!HAUS_KAT[e.kategorie]||e.bereich==="Geschaeftlich")return;var h=" "+D.norm([e.absender,e.betreff,e.datei].join(" "))+" ";
+    Object.keys(D.HAUS_KW).some(function(k){if(D.HAUS_KW[k].some(function(w){return h.indexOf(" "+w)>-1;})){add(e.id,{k:"haus",n:HAUS_N[k]||k});return true;}return false;});});
+  st.bz=o;return o;}
+function bezugChips(e,bz){var l=bz[e.id]||[],did=esc(e.id);if(!l.length)return "";
+  return '<div class="bz">'+l.map(function(c){
+    if(c.k==="tx"){var tid=esc(c.t.id),txt=esc((c.t.n||c.t.p||"")+(c.t.z?" · "+String(c.t.z).slice(0,60):""));
+      return c.art==="vorschlag"?'<span class="bzc warn" title="'+txt+'">💶? Buchung '+D.de(c.t.d)+" · "+C.eur(+c.t.b)+'<button title="Passt" onclick="D2.zu(\''+tid+'\',\''+did+'\',1)">✓</button><button title="Passt nicht" onclick="D2.zu(\''+tid+'\',\''+did+'\',0)">✕</button></span>'
+        :'<span class="bzc gr" title="'+txt+'">💶 bezahlt '+D.de(c.t.d)+" · "+C.eur(+c.t.b)+'<button title="Falsche Buchung – lösen" onclick="D2.zu(\''+tid+'\',\''+did+'\',0)">✕</button></span>';}
+    if(c.k==="vt")return '<a class="bzc" href="../vertraege/index.html#v-'+esc(c.v.id)+'">📑 '+esc(c.v.name||"Vertrag")+"</a>";
+    if(c.k==="fz")return '<a class="bzc" href="../auto/index.html#fz-'+esc(c.fz)+'">🚗 '+esc((AUTO.FZ[c.fz]||{}).kurz||c.fz)+"</a>";
+    if(c.k==="haus")return '<a class="bzc" href="../haus/index.html">🏘️ '+esc(c.n)+"</a>";
+    return "";}).join("")+"</div>";}
 function vArchiv(){
   var idx=data.index,q=D.norm(st.q),ys={};idx.forEach(function(e){var y=e.jahr||(e.datum?e.datum.slice(0,4):"");if(y)ys[y]=1;});
-  var nBon=0,zeigBons=st.fbon||!!q;
-  var list=idx.filter(function(e){if(st.fb!=="alle"&&e.bereich!==st.fb)return false;if(st.fst&&!e.st)return false;
+  var nBon=0,zeigBons=st.fbon||!!q,bz=bezuege(),ohneTx=function(e){return hatBetrag(e)&&!(bz[e.id]||[]).some(function(c){return c.k==="tx";});},nOhne=idx.filter(ohneTx).length;
+  var list=idx.filter(function(e){if(st.fb!=="alle"&&e.bereich!==st.fb)return false;if(st.fst&&!e.st)return false;if(st.fohne&&!ohneTx(e))return false;
     if(e.kategorie==="Einkaeufe"&&!zeigBons){nBon++;return false;}
     if(st.fy&&String(e.jahr||(e.datum||"").slice(0,4))!==st.fy)return false;
     if(q&&D.norm([e.datei,e.absender,e.betreff,e.kategorie,e.belegart,e.empfaenger,e.betrag].join(" ")).indexOf(q)<0)return false;return true;});
   var h=st.perm!=="granted"?connectHint():"";
+  h+=nachPanel();
   h+='<input class="inp" style="margin-bottom:10px" placeholder="Suchen: Absender, Betreff, Kategorie, Betrag …" value="'+esc(st.q)+'" oninput="D2.q(this.value)">';
   h+='<div class="filt"><select class="sel" style="width:auto;padding:6px 8px;font-size:12px" onchange="D2.fy(this.value)"><option value="">alle Jahre</option>'+Object.keys(ys).sort().reverse().map(function(y){return '<option'+(st.fy===y?" selected":"")+">"+y+"</option>";}).join("")+"</select>"+
     [["alle","Alle"],["Privat","Privat"],["Geschaeftlich","Geschäft"]].map(function(b){return '<button class="pill'+(st.fb===b[0]?" on":"")+'" onclick="D2.fb(\''+b[0]+'\')">'+b[1]+"</button>";}).join("")+
     '<button class="pill'+(st.fst?" on":"")+'" onclick="D2.fst()">nur Steuer</button>'+
+    (nOhne?'<button class="pill'+(st.fohne?" on":"")+'" title="Rechnungen mit Betrag, zu denen keine Buchung gefunden wurde" onclick="D2.fohne()">💶 ohne Buchung ('+nOhne+')</button>':"")+
     (idx.some(function(e){return e.kategorie==="Einkaeufe";})?'<button class="pill'+(st.fbon?" on":"")+'" onclick="D2.fbon()">🧾 Kassenbons</button>':"")+"</div>";
+  if(st.fohne)h+='<div class="note" style="margin:-4px 0 8px">Rechnungen mit Betrag ohne passende Buchung: bar bezahlt, noch offen, über ein Konto, das nicht im Cockpit ist – oder der Kontoauszug fehlt noch. Ältere Dokumente erst „auslesen“, dann haben sie einen Betrag.</div>';
   if(nBon)h+='<div class="note" style="margin:-4px 0 8px">'+nBon+' Kassenbons ausgeblendet – die Auswertung steht unter <a class="dl" href="../finanzen/index.html#einkauf">Finanzen → Einkäufe</a>.</div>';
   h+='<div class="small muted" style="margin-bottom:8px">'+list.length+" von "+idx.length+" Dokumenten"+(data.aktualisiert?" · Stand "+D.de(data.aktualisiert)+" "+String(data.aktualisiert).slice(11,16):"")+"</div>";
   if(!idx.length)return h+'<div class="empty">Noch keine Dokumente verzeichnet.<br><span class="small">Nach dem ersten Ablegen – oder unter Einrichtung „Bestehendes Archiv aufnehmen“.</span></div>';
   h+='<div class="panel" style="padding:4px 14px">'+list.slice(0,st.limit).map(function(e){
-    return '<div class="row"><div class="l"><b>'+esc(D.titel(e))+"</b>"+(e.st?'<span class="badge k-st">ST</span>':"")+"<div>"+D.de(e.datum)+" · "+esc(e.kategorie||"")+(e.empfaenger?" · "+esc(e.empfaenger):"")+(e.st&&e.belegart?" · Steuer "+esc(D.steuerJahr(e)+": "+e.belegart):"")+"</div></div>"+
+    return '<div class="row"><div class="l"><b>'+esc(D.titel(e))+"</b>"+(e.st?'<span class="badge k-st">ST</span>':"")+"<div>"+D.de(e.datum)+" · "+esc(e.kategorie||"")+(e.empfaenger?" · "+esc(e.empfaenger):"")+(e.st&&e.belegart?" · Steuer "+esc(D.steuerJahr(e)+": "+e.belegart):"")+"</div>"+bezugChips(e,bz)+"</div>"+
       '<div class="r">'+(e.betrag!=null?C.eur(+e.betrag):"")+(st.perm==="granted"||st.perm==="prompt"?'<div><button class="mini" style="margin-top:4px" onclick="D2.open(\''+esc(e.id)+'\')">Öffnen</button></div>':"")+"</div></div>";}).join("")+"</div>";
   if(list.length>st.limit)h+='<button class="btn ghost full" onclick="D2.more()">Weitere anzeigen</button>';
   return h;
@@ -240,7 +289,8 @@ function vEinr(){
     '<div class="step"><div class="n'+(t&&t.status==="fertig"&&t.ergebnis&&t.ergebnis.api_key?" ok":"")+'">'+(t&&t.status==="fertig"&&t.ergebnis&&t.ergebnis.api_key?"✓":"4")+'</div><div class="t">Verbindung testen – startet das Skript kurz im Konsolenfenster.<div>Chrome fragt beim ersten Mal: „cockpit-ablage öffnen?“ → <b>Immer zulassen</b> anhaken und öffnen.</div>'+
       '<div style="margin-top:8px"><button class="mini" onclick="D2.test()"'+(st.perm!=="granted"||st.run?" disabled":"")+">🔌 Verbindung testen</button></div>"+testResult()+"</div></div></div>";
   h+='<div class="panel"><h3>Weitere Aktionen</h3>'+
-    '<div class="row"><div class="l"><b>Bestehendes Archiv aufnehmen</b><div>Liest die Dateinamen in 02_Archiv ein – auch Dokumente, die mit ablage.py oder auto_ablage.py abgelegt wurden. Beträge kennt das Cockpit nur bei Ablage über das Cockpit.</div></div><div class="r"><button class="mini" onclick="D2.index()"'+(st.perm!=="granted"||st.run?" disabled":"")+'>🗂 Aufnehmen</button></div></div>'+
+    '<div class="row"><div class="l"><b>Bestehendes Archiv aufnehmen</b><div>Liest die Dateinamen in 02_Archiv ein – auch Dokumente, die mit ablage.py oder auto_ablage.py abgelegt wurden. Danach „Altbestand auslesen“, damit auch ältere Dokumente Beträge und Nummern haben.</div></div><div class="r"><button class="mini" onclick="D2.index()"'+(st.perm!=="granted"||st.run?" disabled":"")+'>🗂 Aufnehmen</button></div></div>'+
+    '<div class="row"><div class="l"><b>Altbestand auslesen</b><div>Liest Dokumente, die nur über den Dateinamen erfasst sind, einmal inhaltlich aus: Betrag, Datum, Vertrags-/Kundennummern, Kfz-Angaben. Dateien bleiben, wo sie sind. '+nNach()+' offen.</div></div><div class="r"><button class="mini" onclick="D2.nachlesen()"'+(st.perm!=="granted"||st.run||!nNach()?" disabled":"")+'>📚 Auslesen</button></div></div>'+
     '<div class="row"><div class="l"><b>Klassische Ablage</b><div>Startet ablage.py mit den Rückfragen im Konsolenfenster; danach wird das Verzeichnis aktualisiert.</div></div><div class="r"><button class="mini" onclick="D2.konsole()"'+(st.perm!=="granted"||st.run?" disabled":"")+'>🖥 Starten</button></div></div>'+
     (st.perm!=="none"&&st.perm!=="unsupported"?'<div class="row"><div class="l"><b>Ordner trennen</b><div>Das Cockpit vergisst den Ordner auf diesem Gerät. Die Dateien bleiben unverändert.</div></div><div class="r"><button class="mini" style="color:#f87171" onclick="D2.forget()">Trennen</button></div></div>':"")+"</div>";
   h+='<div class="note">Datenschutz: Die PDFs bleiben in deinem Ablage-Ordner. Ins Cockpit – und damit in dein privates Daten-Repo – kommen nur Datum, Empfänger-Kürzel, Absender, Betreff, Kategorie, Betrag und Ablageort. Die Analyse übernimmt weiterhin dein Python-Skript mit deinem API-Schlüssel; die Regeln pflegst du in <code>ablage.py</code>.</div>';
@@ -274,6 +324,7 @@ window.D2={
   test:function(){st.test=null;run("test","Verbindungstest",90000).then(function(s){if(s){st.test=s;render();}});},
   analyse:function(){run("analyse","Analyse");},
   index:function(){run("index","Archiv aufnehmen");},
+  nachlesen:function(){run("nachlesen","Altbestand auslesen",8*3600000);},
   konsole:function(){run("konsole","Klassische Ablage",60*60000);},
   cancel:function(){if(st.run&&st.run.p)st.run.p.cancel();},
   toggle:function(n){st.open[n]=!st.open[n];render();},
@@ -309,12 +360,13 @@ window.D2={
         render();return reload();});})
     .catch(function(e){flash("⚠ Auftrag konnte nicht geschrieben werden: "+(e.message||e),true);});},
   q:function(v){st.q=v;var el=document.activeElement,pos=el&&el.selectionStart;render();var i=document.querySelector('#main input.inp');if(i){i.focus();try{i.setSelectionRange(pos,pos);}catch(e){}}},
-  fy:function(v){st.fy=v;render();},fb:function(v){st.fb=v;render();},fst:function(){st.fst=!st.fst;render();},fbon:function(){st.fbon=!st.fbon;render();},more:function(){st.limit+=60;render();},
+  fy:function(v){st.fy=v;render();},fb:function(v){st.fb=v;render();},fst:function(){st.fst=!st.fst;render();},fohne:function(){st.fohne=!st.fohne;render();},
+  zu:function(tid,did,ok){var z=D.zuNorm(C.getLocal("zuordnung",null));z.paare[tid+"|"+did]={ok:!!ok,t:Date.now()};C.save("zuordnung",z);st.bz=null;flash(ok?"Zuordnung bestätigt ✓":"Zuordnung gelöst – kommt nicht wieder");},fbon:function(){st.fbon=!st.fbon;render();},more:function(){st.limit+=60;render();},
   open:function(id){var e=data.index.filter(function(x){return x.id===id;})[0];if(!e)return;D.oeffnen(e).then(function(){if(st.perm==="prompt")init();},function(err){flash("⚠ "+(err.message||err),true);});}
 };
 document.addEventListener("keydown",function(e){if(e.key==="Escape"&&st.prevName)D2.closePrev();});
 render();init();
-C.autoPull([AREA,"einkaeufe"],function(a,d){if(a===AREA){data=norm(d);render();}});
+C.autoPull([AREA,"einkaeufe","zuordnung","finanzen","vertraege","auto"],function(a,d){if(a===AREA)data=norm(d);if(a!=="einkaeufe"){st.bz=null;render();}});
 })();
 </script>
 </body>

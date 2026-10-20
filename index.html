@@ -46,6 +46,7 @@
 <script src="vertraege/logic.js"></script>
 <script src="steuer/logic.js"></script>
 <script src="zaehler/logic.js"></script>
+<script src="auto/logic.js"></script>
 <script>
 (function(){
 "use strict";
@@ -69,18 +70,19 @@ var AREAS=[
 function summary(area){
   var d=C.getLocal(area.id,null);
   if(area.id==="auto"&&d)return autoSummary(d);
-  if(area.id==="vertraege"&&d&&window.VERTR)return VERTR.summary(d,C.getLocal("haus",null));
+  if(area.id==="vertraege"&&d&&window.VERTR)return VERTR.summary(d,C.getLocal("haus",null),C.getLocal("auto",null));
   if(area.id==="zaehler"&&d&&window.ZAEHLER)return ZAEHLER.summary(d,Date.now()); /* bewusst ohne Namen */
   if(d&&d._summary)return d._summary;
   return {k:"—",s:d?"Daten vorhanden":"Noch keine Daten"};
 }
 function autoSummary(d){
-  var totKm=0,totCost=0;
+  var totKm=0,totCost=0,nx=null;try{nx=window.AUTO?AUTO.naechster(d,V.heute()):null;}catch(x){}
   ["corsa","volvo"].forEach(function(k){var c=d[k];if(!c||!c.entries||!c.entries.length)return;
     var e=c.entries,start=c.startOdo!=null?c.startOdo:e[0].odo;totKm+=e[e.length-1].odo-start;
     e.forEach(function(x){if(x.price!=null)totCost+=x.fill*x.price;});});
-  if(!totKm)return {k:"—",s:"Noch keine Fahrten"};
-  return {k:C.int(totKm)+" km",s:"Kosten "+C.eur(totCost,0)};
+  var tx=nx?"🔧 "+nx.titel.replace(/^([^:]+): /,"$1 ")+" "+V.wann(nx.tage):null;
+  if(!totKm)return {k:"—",s:tx||"Noch keine Fahrten"};
+  return {k:C.int(totKm)+" km",s:tx||"Kosten "+C.eur(totCost,0)};
 }
 
 /* ---------- Heute & demnächst: was aus allen Bereichen ansteht ---------- */
@@ -95,8 +97,8 @@ function heuteListe(){
   if(vt&&fin&&Array.isArray(fin.tx)&&window.FIN){try{FIN.setPartnerMap(fin.pmap,fin.tmap,fin.zmap);fixL=FIN.fixkosten(fin).list;vt=V.norm(vt);
     if(V.preisSync(vt,fixL,t)){vt._summary=V.summary(vt,C.getLocal("haus",null));C.save("vertraege",vt);}
     V.aktiv(vt.vertraege).forEach(function(v){var p=vt.preis[v.id];if(p&&v.fixKey&&V.preisRelevant(v))belegt[v.fixKey+"|"+p.d]=1;});}catch(x){}}
-  try{V.termine(vt,{haus:C.getLocal("haus",null),t:t}).forEach(function(e){if(!e.faellig)return;
-    add(e.typ==="kuendigung"?"✂️":e.typ==="auto"?"🏘️":e.typ==="preis"?"📈":"📌",e.titel,V.wann(e.tage)+" · "+V.de(e.datum)+(e.typ==="kuendigung"&&e.ende?" (zum "+V.de(e.ende)+")":""),e.tage,e.href,e.tage<0);});}catch(x){}
+  try{V.termine(vt,{haus:C.getLocal("haus",null),kfz:C.getLocal("auto",null),t:t}).forEach(function(e){if(!e.faellig)return;
+    add(e.typ==="kuendigung"?"✂️":e.typ==="auto"?"🏘️":e.typ==="preis"?"📈":e.typ==="kfz"?"🚗":"📌",e.titel,V.wann(e.tage)+" · "+V.de(e.datum)+(e.typ==="kuendigung"&&e.ende?" (zum "+V.de(e.ende)+")":"")+(e.typ==="kfz"&&e.info?" · "+e.info:""),e.tage,e.href,e.tage<0);});}catch(x){}
   /* Bescheinigungen des Vorjahres (Februar bis Mai), je steuerlich markiertem Vertrag */
   var bJ=window.STEUER?STEUER.besFenster(t):null;
   if(bJ){try{var sd=C.getLocal("steuer",null)||{},dk=C.getLocal("dokumente",null);

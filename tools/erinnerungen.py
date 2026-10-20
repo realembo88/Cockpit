@@ -149,7 +149,7 @@ def preis_relevant(v):
                 and (v.get("gruppe") in ("Strom & Gas", "Telefon & Internet", "Versicherung") or v.get("vorlage") in ("vers", "kfz", "telko")))
 
 
-def termine(vt, haus, t):
+def termine(vt, haus, t, kfz=None):
     vt = vt or {}
     out = []
     for v in aktiv(vt.get("vertraege")):
@@ -187,7 +187,62 @@ def termine(vt, haus, t):
             continue
         n = tage(t, a["datum"])
         out.append({"typ": "auto", "titel": a["titel"], "datum": a["datum"], "tage": n, "faellig": n <= a["vorlauf"], "info": ""})
+    out.extend(kfz_termine(kfz, t))
     return sorted(out, key=lambda e: e["datum"])
+
+
+# ----------------------------------------------------------------------------- Fahrzeug-Termine (wie auto/logic.js)
+KFZ_NAMEN = {"corsa": "Corsa-e", "volvo": "Volvo V40"}
+KFZ_ARTEN = {"hu": ("HU / TÜV", 30), "reifen_w": ("Reifenwechsel auf Winterreifen", 14), "reifen_s": ("Reifenwechsel auf Sommerreifen", 14),
+             "insp": ("Inspektion", 21), "oel": ("Ölwechsel", 21), "frei": ("Eigener Termin", 14)}
+KM_VORLAUF = 1000
+
+
+def km_aktuell(a, fz):
+    c = a.get(fz) or {}
+    m = c.get("startOdo") or 0
+    for e in c.get("entries") or []:
+        if (e.get("odo") or 0) > m:
+            m = e["odo"]
+    s = (a.get("stamm") or {}).get(fz) or {}
+    try:
+        if s.get("km") and float(s["km"]) > m:
+            m = float(s["km"])
+    except (TypeError, ValueError):
+        pass
+    return m or None
+
+
+def kfz_termine(a, t):
+    """HU, Reifen, Inspektion/Ölwechsel: fällig im Vorlauf vor dem Datum oder ab 1.000 km vor dem km-Intervall."""
+    out = []
+    if not isinstance(a, dict):
+        return out
+    for v in aktiv(a.get("termine")):
+        fz = v.get("fz")
+        if v.get("aus") or fz not in KFZ_NAMEN:
+            continue
+        name, vl0 = KFZ_ARTEN.get(v.get("art"), (v.get("art") or "Termin", 14))
+        if v.get("art") == "frei" and v.get("name"):
+            name = v["name"]
+        kr = None
+        if v.get("kmInt") and v.get("kmLetzt") is not None:
+            ka = km_aktuell(a, fz)
+            if ka is not None:
+                kr = float(v["kmLetzt"]) + float(v["kmInt"]) - ka
+        n = tage(t, v["datum"]) if v.get("datum") else None
+        vl = vl0 if v.get("vorlauf") in (None, "") else int(v["vorlauf"])
+        km_f = kr is not None and kr <= KM_VORLAUF
+        dat_f = n is not None and n <= vl
+        if n is None and not km_f:
+            continue
+        info = [f"zuletzt {de(v['letzteAm'])}" if v.get("letzteAm") else ""]
+        if kr is not None:
+            info.append(f"noch {round(kr):,} km".replace(",", ".") if kr >= 0 else f"{round(-kr):,} km drüber".replace(",", "."))
+        datum = v["datum"] if (dat_f or not km_f) and v.get("datum") else t
+        out.append({"typ": "kfz", "titel": f"{KFZ_NAMEN[fz]}: {name}", "datum": datum, "tage": 0 if n is None or (not dat_f and km_f) else n,
+                    "faellig": dat_f or km_f, "info": " · ".join(x for x in info if x)})
+    return out
 
 
 # ----------------------------------------------------------------------------- Finanzen-Kategorien (wie finanzen/logic.js)
@@ -390,19 +445,19 @@ def gaeste(b):
 
 # ----------------------------------------------------------------------------- Wochenvorschau
 def woche(ordner, t):
-    vt, haus, fw, dok, fin, steuer = (lade(ordner, n) for n in ("vertraege", "haus", "ferienwohnung", "dokumente", "finanzen", "steuer"))
+    vt, haus, fw, dok, fin, steuer, kfz = (lade(ordner, n) for n in ("vertraege", "haus", "ferienwohnung", "dokumente", "finanzen", "steuer", "auto"))
     ende = plus_t(t, 6)
     kw = dt(t).isocalendar()[1]
     zeilen = [f"📅 Wochenvorschau KW {kw} ({de_kurz(t)} – {de_kurz(ende)})"]
 
-    alle = [e for e in termine(vt, haus, t) if not e.get("erledigt")]
+    alle = [e for e in termine(vt, haus, t, kfz) if not e.get("erledigt")]
     jetzt = [e for e in alle if e["faellig"] or e["tage"] <= 7]
     if jetzt:
         zeilen.append("")
         zeilen.append("⏰ Fristen")
         for e in jetzt:
-            ic = "✂️" if e["typ"] == "kuendigung" else "🏘️" if e["typ"] == "auto" else "📈" if e["typ"] == "preis" else "📌"
-            zeilen.append(f"{ic} {e['titel']} – {de_kurz(e['datum'])} ({wann(e['tage'])})" + (f", {e['info']}" if e["typ"] in ("kuendigung", "preis") else ""))
+            ic = "✂️" if e["typ"] == "kuendigung" else "🏘️" if e["typ"] == "auto" else "📈" if e["typ"] == "preis" else "🚗" if e["typ"] == "kfz" else "📌"
+            zeilen.append(f"{ic} {e['titel']} – {de_kurz(e['datum'])} ({wann(e['tage'])})" + (f", {e['info']}" if e["typ"] in ("kuendigung", "preis") or (e["typ"] == "kfz" and e["info"]) else ""))
 
     an = sorted((b for b in buchungen(fw) if t <= b["arr"] <= ende), key=lambda b: b["arr"])
     ab = sorted((b for b in buchungen(fw) if t <= b["dep"] <= ende), key=lambda b: b["dep"])
@@ -462,7 +517,7 @@ def woche(ordner, t):
 
 # ----------------------------------------------------------------------------- Monatsbericht (Vormonat)
 def monat(ordner, t):
-    vt, haus, fw, fin, ek = (lade(ordner, n) for n in ("vertraege", "haus", "ferienwohnung", "finanzen", "einkaeufe"))
+    vt, haus, fw, fin, ek, kfz = (lade(ordner, n) for n in ("vertraege", "haus", "ferienwohnung", "finanzen", "einkaeufe", "auto"))
     d = dt(t).replace(day=1) - timedelta(days=1)
     y, m = d.year, d.month
     pfx = f"{y}-{m:02d}"
@@ -531,7 +586,7 @@ def monat(ordner, t):
 
     nm_von = f"{t[:7]}-01"
     nm_bis = f"{t[:7]}-{letzter(int(t[:4]), int(t[5:7])):02d}"
-    kommend = [e for e in termine(vt, haus, t) if not e.get("erledigt") and (e["faellig"] or nm_von <= e["datum"] <= nm_bis)]
+    kommend = [e for e in termine(vt, haus, t, kfz) if not e.get("erledigt") and (e["faellig"] or nm_von <= e["datum"] <= nm_bis)]
     if kommend:
         zeilen.append("")
         zeilen.append(f"📅 Im {MONATE[int(t[5:7]) - 1]} fällig:")

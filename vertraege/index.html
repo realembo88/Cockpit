@@ -53,6 +53,7 @@ details summary{cursor:pointer;}
 <script src="../assets/cockpit.js"></script>
 <script src="../finanzen/logic.js"></script>
 <script src="../dokumente/logic.js"></script>
+<script src="../auto/logic.js"></script>
 <script src="logic.js"></script>
 <script>
 (function(){
@@ -86,7 +87,7 @@ function render(){
 
 /* ---------- Termine ---------- */
 function vTermine(){
-  var t=V.heute(),all=V.termine(data,{haus:haus(),t:t});
+  var t=V.heute(),all=V.termine(data,{haus:haus(),kfz:C.getLocal("auto",null),t:t});
   var faellig=all.filter(function(e){return e.faellig;}),bald=all.filter(function(e){return !e.faellig&&!e.erledigt&&e.tage<=90;}),spaet=all.filter(function(e){return !e.faellig&&(e.erledigt||e.tage>90);});
   var h='<div class="grid2" style="margin-bottom:14px">'+kpi("⏰","jetzt fällig",faellig.length)+kpi("📆","nächste 90 Tage",bald.length)+"</div>";
   h+='<div class="panel"><h3>⏰ Jetzt dran</h3>'+(faellig.length?faellig.map(terminRow).join(""):'<div class="note">Nichts fällig. 👍</div>')+"</div>";
@@ -95,15 +96,16 @@ function vTermine(){
   var od=V.ohneDatum(data);
   if(od.length)h+='<div class="panel" style="border-color:#f59e0b55"><h3>📝 Datum fehlt</h3>'+od.map(function(f){return '<div class="row"><div class="l"><b>'+esc(f.titel||"Frist")+'</b><div class="s">'+esc([+f.wdh?V.rhText(f.wdh):"",f.notiz||""].filter(Boolean).join(" · "))+'</div>'+(st.fOpen===f.id?fristForm(f,false):'<div class="acts"><button class="mini warn" onclick="V2.fristEdit(\''+jsq(f.id)+'\')">Datum eintragen</button></div>')+"</div></div>";}).join("")+"</div>";
   if(spaet.length)h+='<details class="panel"'+(st.spaeter?" open":"")+' ontoggle="V2.spaeter(this.open)"><summary class="small muted">Später ('+spaet.length+")</summary>"+spaet.map(terminRow).join("")+"</details>";
-  h+='<div class="note">Hier landen Kündigungstermine aus deinen Verträgen, eigene Fristen (z. B. TÜV, Kurtaxe) und automatisch die Nebenkostenabrechnungen aus „Haus“ (12 Monate nach Ende des Abrechnungsjahres). Was fällig ist, erscheint auch auf der Startseite und in der Wochenvorschau aufs Handy.</div>';
+  h+='<div class="note">Hier landen Kündigungstermine aus deinen Verträgen, eigene Fristen (z. B. Kurtaxe), die Fahrzeug-Termine aus „Auto“ (HU, Reifen, Inspektion) und automatisch die Nebenkostenabrechnungen aus „Haus“ (12 Monate nach Ende des Abrechnungsjahres). Was fällig ist, erscheint auch auf der Startseite und in der Wochenvorschau aufs Handy.</div>';
   return h;
 }
 function terminRow(e){
-  var ic=e.typ==="kuendigung"?"✂️":e.typ==="auto"?"🏘️":e.typ==="preis"?"📈":"📌",id=jsq(e.id);
+  var ic=e.typ==="kuendigung"?"✂️":e.typ==="auto"?"🏘️":e.typ==="preis"?"📈":e.typ==="kfz"?"🚗":"📌",id=jsq(e.id);
   var h='<div class="row"><div class="l"><b>'+ic+" "+esc(e.titel)+"</b>"+whenChip(e.tage,e.faellig)+'<div class="s">'+(e.typ==="preis"?"prüfen bis ":"")+V.deKurz(e.datum)+" "+e.datum.slice(0,4)+(e.info?" · "+esc(C.maskText(e.info)):"")+"</div>";
   if(e.typ==="kuendigung"&&data.vertraege[e.id])h+=nrZeile(data.vertraege[e.id]);
   if(e.typ==="kuendigung")h+='<div class="acts">'+(e.erledigt?'<span class="chip">behalten – Erinnerung erst wieder im nächsten Zeitraum</span>':'<button class="mini ok" onclick="V2.gekuendigt(\''+id+'\')">✓ gekündigt</button><button class="mini" onclick="V2.behalten(\''+id+'\')">behalten</button>')+'<button class="mini" onclick="V2.oeffne(\''+id+'\')">Vertrag</button></div>';
   else if(e.typ==="preis")h+='<div class="acts"><button class="mini ok" onclick="V2.autoOk(\''+id+'\')">✓ geprüft</button><button class="mini" onclick="V2.oeffne(\''+jsq(e.vid)+'\')">Vertrag</button></div>';
+  else if(e.typ==="kfz")h+='<div class="acts"><a class="mini ok" style="text-decoration:none" href="../'+e.href+'">🔧 im Auto erledigen</a></div>';
   else if(e.typ==="auto")h+='<div class="acts"><button class="mini ok" onclick="V2.autoOk(\''+id+'\')">✓ erledigt</button><a class="mini" style="text-decoration:none" href="../'+e.href+'">Haus öffnen</a></div>';
   else{h+='<div class="acts"><button class="mini ok" onclick="V2.fristOk(\''+id+'\')">✓ erledigt</button><button class="mini" onclick="V2.fristEdit(\''+id+'\')">✏️ ändern</button></div>';
     if(st.fOpen===e.id)h+=fristForm(data.fristen[e.id],false);}
@@ -112,7 +114,7 @@ function terminRow(e){
 function fristForm(f,neu){var id=neu?"__neu":jsq(f.id);
   var inp=function(k,v,ph){return '<input class="inp" value="'+esc(v==null?"":v)+'" placeholder="'+(ph||"")+'" onchange="V2.fSet(\''+id+'\',\''+k+'\',this.value)">';};
   var h='<div class="box">'+(neu?'<div class="lbl">Vorlagen</div><div class="chips">'+V.FRIST_VORLAGEN.map(function(x,i){return '<button onclick="V2.fVorlage('+i+')">'+esc(x.titel)+"</button>";}).join("")+"</div>":"")+
-    '<div class="lbl">Was?</div>'+inp("titel",f.titel,"z. B. HU / TÜV Volvo")+
+    '<div class="lbl">Was?</div>'+inp("titel",f.titel,"z. B. Kurtaxe melden")+
     '<div class="g2 mt"><div><div class="lbl">Datum (nächstes Mal)</div>'+inp("datum",f.datum?V.de(V.naechste(f)||f.datum):"","TT.MM.JJJJ")+'</div><div><div class="lbl">Wiederholung</div><select class="sel" onchange="V2.fSet(\''+id+'\',\'wdh\',this.value)">'+
       [[0,"einmalig"]].concat(V.RHYTHMUS).map(function(r){return '<option value="'+r[0]+'"'+(+f.wdh===r[0]?" selected":"")+">"+r[1]+"</option>";}).join("")+"</select></div></div>"+
     '<div class="g2 mt"><div><div class="lbl">Erinnern … Tage vorher</div>'+inp("vorlauf",f.vorlauf!=null?f.vorlauf:14)+'</div><div><div class="lbl">Notiz</div>'+inp("notiz",f.notiz,"optional")+"</div></div>"+
@@ -257,7 +259,7 @@ window.V2={
 function preisSync(){try{if(V.preisSync(data,fixListe()))persist();}catch(e){}}
 window.addEventListener("cockpit:priv",render);
 preisSync();render();
-C.autoPull([AREA,"finanzen","haus","dokumente","steuer"],function(a,d){if(a===AREA)data=V.norm(d);if(a===AREA||a==="finanzen")preisSync();render();});
+C.autoPull([AREA,"finanzen","haus","dokumente","steuer","auto"],function(a,d){if(a===AREA)data=V.norm(d);if(a===AREA||a==="finanzen")preisSync();render();});
 })();
 </script>
 </body>

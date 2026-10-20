@@ -113,6 +113,53 @@ function txMatcher(idx){
       if(norm(e.absender).split(" ").some(function(w){return w.length>3&&h.indexOf(w)>-1;}))sc+=100;if(!best||sc>best.sc)best={e:e,sc:sc};});
     return best?best.e:null;};
 }
+/* ---------- Zuordnung Buchung ↔ Dokument (eins zu eins) ----------
+   Bewertung je Paar: Betrag (±1 Cent, Pflicht) 40 · Absender im Buchungstext +40 · Vertrags-/Kundennummer im
+   Verwendungszweck +60 · Datum: nahe am Fälligkeitsdatum +30, sonst bis +20 je nach Abstand.
+   Sicher (automatisch zugeordnet): Betrag + Absender oder Nummer, Buchung höchstens 7 Tage vor bis 45 Tage nach dem
+   Dokument (bzw. bis 7 Tage um das Fälligkeitsdatum) und passende Richtung (Rechnung ↔ Abbuchung). Sonst Vorschlag.
+   Entscheidungen (✓/✕) liegen im Bereich „zuordnung“: paare {"tx|doc": {ok, t}}. */
+var ZU_STOP=" gmbh mbh ag kg co und der die das von fuer rechnung beitrag mitteilung zahlung lastschrift ueberweisung abschlag einkauf versicherung deutsche service online bank ";
+function absenderWorte(e){var a=e.absender||e.ki_absender||"",w=norm(a).split(" ");
+  if(!a)w=norm(e.betreff).split(" ").slice(0,3); /* Altbestand: Absender steht vorn im Betreff */
+  return w.filter(function(x){return x.length>3&&ZU_STOP.indexOf(" "+x+" ")<0;});}
+function kmp(s){return String(s||"").toLowerCase().replace(/[^a-z0-9]/g,"");}
+function paarWert(t,e){var b=Math.abs(+t.b||0);
+  var ok=[e.zahlbetrag,e.betrag].some(function(v){return v!=null&&+v&&Math.abs(Math.abs(+v)-b)<=0.011;});if(!ok)return null;
+  var ref=e.faellig||e.datum;if(!ref)return null;var dd=(d0(t.d)-d0(e.datum||ref))/DAY,df=e.faellig?Math.abs((d0(t.d)-d0(e.faellig))/DAY):null;
+  if(dd<-14||dd>90)return null;
+  var sc=40,h=" "+norm((t.p||"")+" "+(t.z||""))+" ",hz=kmp(t.z),abs=absenderWorte(e).some(function(w){return h.indexOf(w)>-1;}),
+    nr=(e.refs||[]).some(function(r){var k=kmp(r.wert);return k.length>=5&&hz.indexOf(k)>-1;});
+  if(abs)sc+=40;if(nr)sc+=60;
+  sc+=df!=null&&df<=5?30:Math.max(0,20-Math.abs(dd)/4);
+  /* Erstattung/Guthaben gehört zu einem Geldeingang, Rechnung zu einer Abbuchung */
+  var zb=e.zahlbetrag!=null?+e.zahlbetrag:null,richtung=!(zb!=null&&((zb<0&&t.b<0)||(zb>0&&t.b>0&&e.kategorie!=="Arbeit_Einkommen")));
+  if(!richtung)sc-=zb<0?30:15;
+  var zeit=df!=null?df<=7:(dd>=-7&&dd<=45);
+  return {sc:sc,sicher:(abs||nr)&&richtung&&zeit};}
+function zuordnung(idx,tx,zu){var paare=(zu&&zu.paare)||{},byT={},byD={},liste=[];
+  var docs=(idx||[]).filter(function(e){return e&&(e.betrag!=null||e.zahlbetrag!=null)&&e.zahlart!=="bar";}),by={};
+  docs.forEach(function(e){[e.zahlbetrag,e.betrag].forEach(function(v){if(v==null||!+v)return;var c=Math.round(Math.abs(+v)*100);[c-1,c,c+1].forEach(function(k){(by[k]=by[k]||[]).push(e);});});});
+  var txById={},docById={};(tx||[]).forEach(function(t){txById[t.id]=t;});docs.concat(idx||[]).forEach(function(e){if(e)docById[e.id]=e;});
+  /* 1. bestätigte Paare stehen fest */
+  Object.keys(paares(paare)).forEach(function(k){var p=paare[k];if(!p||!p.ok||p.del)return;var q=k.split("|"),t=txById[q[0]],e=docById[q[1]];if(!t||!e||byT[t.id]||byD[e.id])return;
+    var z={t:t,e:e,sc:999,art:"ok"};byT[t.id]=z;byD[e.id]=z;});
+  /* 2. Kandidaten bewerten, verworfene Paare auslassen, beste zuerst vergeben */
+  (tx||[]).forEach(function(t){if(byT[t.id])return;var l=by[Math.round(Math.abs(+t.b||0)*100)];if(!l)return;
+    var seen={};l.forEach(function(e){if(seen[e.id]||byD[e.id])return;seen[e.id]=1;var k=t.id+"|"+e.id;if(paare[k]&&paare[k].ok===false&&!paare[k].del)return;
+      var w=paarWert(t,e);if(w)liste.push({t:t,e:e,sc:w.sc+(w.sicher?100:0),sicher:w.sicher});});});
+  liste.sort(function(a,b){return b.sc-a.sc;});
+  liste.forEach(function(z){if(byT[z.t.id]||byD[z.e.id])return;z.art=z.sicher?"sicher":"vorschlag";byT[z.t.id]=z;byD[z.e.id]=z;});
+  /* bloße Betragsgleichheit ohne Absender und weit auseinander ist eher Zufall */
+  Object.keys(byT).forEach(function(k){var z=byT[k];if(z.art==="vorschlag"&&z.sc<55){delete byT[k];delete byD[z.e.id];}});
+  return {tx:byT,doc:byD,vorschlaege:Object.keys(byT).map(function(k){return byT[k];}).filter(function(z){return z.art==="vorschlag";}).sort(function(a,b){return String(b.t.d).localeCompare(String(a.t.d));})};}
+function paares(p){return p||{};}
+function zuBlank(){return {paare:{}};}
+function zuNorm(x){x=x&&typeof x==="object"?x:zuBlank();if(!x.paare||typeof x.paare!=="object")x.paare={};return x;}
+function zuMerge(l,r){l=zuNorm(JSON.parse(JSON.stringify(l)));r=zuNorm(JSON.parse(JSON.stringify(r)));var o={paare:{}};
+  Object.keys(Object.assign({},l.paare,r.paare)).forEach(function(k){var a=l.paare[k],b=r.paare[k];o.paare[k]=!a?b:!b?a:((a.t||0)>=(b.t||0)?a:b);});
+  var n=Object.keys(o.paare).filter(function(k){return o.paare[k].ok;}).length;o._summary={k:n+" bestätigt",s:"Zuordnungen"};return o;}
+
 /* Hauskosten: Rechnungen eines Jahres zu den Kostenarten der Nebenkostenabrechnung */
 var HAUS_KW={grundsteuer:["grundsteuer"],wasser:["wasser","trinkwasser","frischwasser"],abwasser:["abwasser","kanal","schmutzwasser","entwaesserung"],niederschlag:["niederschlag","regenwasser"],
   heizung:["gas","erdgas","heizung","waerme"],muell:["abfall","muell","entsorgung"],schornstein:["kaminkehrer","schornstein"],gebaeudevers:["wohngebaeude","gebaeudeversicherung","gebaeude"],haftpflicht:["haftpflicht","grundbesitzer"]};
@@ -125,7 +172,7 @@ function oeffnen(e){return root(true).then(function(r){if(!r)throw new Error("De
   return blobUrl(r,e.archiv);}).then(function(u){var w=window.open(u,"_blank");if(!w)location.href=u;setTimeout(function(){URL.revokeObjectURL(u);},60000);});}
 
 return {listCSVs:listCSVs,verschiebe:verschiebe,kontoImport:kontoImport,supported:supported,mobil:mobil,state:state,root:root,pick:pick,forget:forget,dir:dir,file:file,exists:exists,readJSON:readJSON,writeJSON:writeJSON,listPDFs:listPDFs,blobUrl:blobUrl,
-  newId:newId,start:start,poll:poll,clean:clean,fname:fname,valid:valid,isoDatum:isoDatum,stbJahr:stbJahr,index:index,norm:norm,titel:titel,de:de,steuerJahr:steuerJahr,stbDocs:stbDocs,
+  newId:newId,start:start,poll:poll,clean:clean,fname:fname,valid:valid,isoDatum:isoDatum,stbJahr:stbJahr,index:index,zuordnung:zuordnung,paarWert:paarWert,zuBlank:zuBlank,zuNorm:zuNorm,zuMerge:zuMerge,norm:norm,titel:titel,de:de,steuerJahr:steuerJahr,stbDocs:stbDocs,
   txMatcher:txMatcher,HAUS_KW:HAUS_KW,hausDocs:hausDocs,hausVorschlag:hausVorschlag,oeffnen:oeffnen};
 })();
 if(typeof window!=="undefined")window.DOKS=DOKS;

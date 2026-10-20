@@ -17,7 +17,8 @@ var VORLAGEN=[
 ];
 var RHYTHMUS=[[1,"monatlich"],[2,"alle 2 Monate"],[3,"vierteljährlich"],[6,"halbjährlich"],[12,"jährlich"],[24,"alle 2 Jahre"]];
 var FRIST_VORLAGEN=[
-  {titel:"HU / TÜV",wdh:24,vorlauf:30},{titel:"Reifenwechsel",wdh:6,vorlauf:14},{titel:"Zählerstände ablesen",wdh:12,vorlauf:7},
+  /* HU/TÜV, Reifen und Inspektion stehen jetzt im Bereich Auto (🔧 Fahrzeug) */
+  {titel:"Zählerstände ablesen",wdh:12,vorlauf:7},
   {titel:"Kurtaxe melden",wdh:1,vorlauf:5},{titel:"Steuerunterlagen an Steuerberaterin",wdh:12,vorlauf:30},{titel:"Rauchmelder prüfen",wdh:12,vorlauf:14}
 ];
 
@@ -127,9 +128,11 @@ function termine(x,ctx){x=norm(x);ctx=ctx||{};var t=ctx.t||heute(),out=[];
   preisTermine(x,t).forEach(function(e){out.push(e);});
   autoFristen(ctx.haus,t).forEach(function(a){var s=x.auto[a.id];if(s&&s.erledigt)return;var n=tage(t,a.datum);
     out.push({typ:"auto",id:a.id,titel:a.titel,datum:a.datum,tage:n,faellig:n<=a.vorlauf,info:"automatisch aus Haus",href:a.href});});
+  /* Fahrzeug-Termine (HU, Reifen, Inspektion …) aus dem Bereich Auto */
+  if(ctx.kfz&&typeof AUTO!=="undefined")try{AUTO.termine(ctx.kfz,t).forEach(function(e){out.push(e);});}catch(err){}
   return out.sort(function(a,b){return a.datum.localeCompare(b.datum);});
 }
-function summary(x,haus){var l=termine(x,{haus:haus}).filter(function(e){return e.faellig;});var nv=aktiv(norm(x).vertraege).filter(function(v){return v.status!=="beendet";}).length;
+function summary(x,haus,kfz){var l=termine(x,{haus:haus,kfz:kfz}).filter(function(e){return e.faellig;});var nv=aktiv(norm(x).vertraege).filter(function(v){return v.status!=="beendet";}).length;
   if(!l.length)return {k:nv?nv+" Verträge":"—",s:nv?"nichts fällig":"Noch keine Verträge"};
   return {k:l.length+" fällig",s:l[0].titel.replace(/^Kündigen bis: /,"Kündigen: ")+" · "+de(l[0].datum).slice(0,6)};}
 

@@ -11,6 +11,8 @@ Befehle:
                              (sicher erkannte Kassenbons werden dabei gleich abgelegt)
   cockpit-ablage://ablegen   im Cockpit freigegebene Dokumente ablegen
   cockpit-ablage://index     vorhandenes Archiv ins Dokumentenverzeichnis aufnehmen
+  cockpit-ablage://nachlesen Altbestand (nur ueber den Dateinamen erfasst) einmal inhaltlich auslesen:
+                             Betrag, Datum, Vertrags-/Kundennummern, Kfz-Angaben - die Dateien bleiben, wo sie sind
   cockpit-ablage://konsole   klassische Ablage (ablage.py) im Konsolenfenster
 
 Regeln, Kategorien, Namenskonvention und Modell kommen unveraendert aus ablage.py,
@@ -131,6 +133,7 @@ ZUSATZ = """
   archiv_kategorie "Einkaeufe", nicht steuerrelevant. Kaufbelege fuer langlebige Anschaffungen mit Garantie
   (Elektronik, Moebel, Geraete) weiter nach den Regeln oben (z.B. Quittungen_Garantien) - "kassenbon" trotzdem ausfuellen.
 
+{ZUORDNUNG}
 # Konfidenz
 - "hoch": Alle Felder eindeutig erkannt, Kategorie klar
 - "mittel": Kleinere Unsicherheiten (z.B. Datum nur geschaetzt)
@@ -147,7 +150,30 @@ KAT_EINKAUF = [
 ]
 KAT_SONST = KAT_EINKAUF.index("Non-Food & Sonstiges")
 EINKAUF_KAT = "Einkaeufe"   # zusaetzliche Archiv-Kategorie (Privat) fuer Alltags-Kassenbons
-ZUSATZ = ZUSATZ.replace("{KATEGORIEN}", ", ".join(f'"{k}"' for k in KAT_EINKAUF))
+# Angaben fuer die Zuordnung im Cockpit (Buchungen, Vertraege, Fahrzeuge) - auch beim Nachlesen des Altbestands
+ZUORDNUNG = """- "dokumentart": kurze Art des Dokuments, z.B. "Rechnung", "Beitragsrechnung", "Bescheinigung", "Bescheid",
+  "Vertrag", "Mitteilung", "Mahnung", "Angebot", "Kontoauszug", "HU-Bericht" oder null
+- "faellig": Faelligkeits- bzw. Abbuchungsdatum "YYYY-MM-DD", falls im Dokument genannt, sonst null
+- "referenzen": bis zu 5 Nummern, ueber die sich das Dokument einem Vertrag zuordnen laesst, als Liste von
+  {"art": "vertrag"|"versicherungsschein"|"kunde"|"rechnung"|"mitglied"|"zaehler"|"sonst", "wert": "..."}.
+  NIEMALS Steuer-ID, Steuernummer, IBAN, Konto-, Karten- oder Sozialversicherungsnummern aufnehmen. Keine -> []
+- "kfz": nur bei Fahrzeugbezug (Zulassung, HU-/TUEV-Bericht, Werkstatt- oder Reifenrechnung, Kfz-Steuer,
+  Kfz-Versicherung) ein Objekt {"kennzeichen": z.B. "AB-CD 123" oder null, "km": Kilometerstand als Zahl oder null,
+  "hu_datum": Datum der Hauptuntersuchung "YYYY-MM-DD" (nur bei HU-/TUEV-Bericht) oder null,
+  "hu_naechste": naechste HU "YYYY-MM" oder null}; ohne Fahrzeugbezug null
+"""
+ZUSATZ = ZUSATZ.replace("{KATEGORIEN}", ", ".join(f'"{k}"' for k in KAT_EINKAUF)).replace("{ZUORDNUNG}", ZUORDNUNG)
+# Altbestand nachlesen: nur Angaben auslesen, nichts neu einordnen oder umbenennen
+NACHLESEN_SYSTEM = """Du liest Angaben aus einem bereits abgelegten deutschen Dokument (Privat- oder Geschaeftspost).
+Antworte mit reinem JSON ohne Codefences und ohne Erklaerungen mit genau diesen Feldern:
+- "datum": Dokumentdatum "YYYY-MM-DD" oder null
+- "absender": kurzer Name des Absenders (Firma, Behoerde, Person) oder null
+- "betrag": Hauptbetrag in Euro als Zahl mit Punkt: Rechnungs-Endbetrag brutto; bei Jahres-/Verbrauchsabrechnungen die
+  Gesamtkosten; bei Bescheinigungen und Bescheiden der bescheinigte bzw. festgesetzte Betrag; kein Betrag -> null
+- "zahlbetrag": tatsaechlich ueberwiesener oder abgebuchter Betrag als Zahl, Guthaben/Erstattung NEGATIV;
+  bei normalen Rechnungen gleich "betrag"; bei Abrechnungen mit Abschlaegen die Nachzahlung bzw. das Guthaben; unklar -> null
+- "jahr": Jahr, auf das sich das Dokument inhaltlich bezieht, als Zahl; unklar -> Jahr des Dokumentdatums
+""" + ZUORDNUNG
 
 
 class Fehler(Exception):
@@ -304,6 +330,11 @@ def normalisiere(m, ref=None) -> dict:
     if not out["jahr"] and out["datum"]:
         out["jahr"] = int(out["datum"][:4])
     out["konfidenz"] = out["konfidenz"].lower()
+    da = m.get("dokumentart")
+    out["dokumentart"] = None if A.is_empty(da) else str(da).strip()[:40]
+    out["faellig"] = iso_datum(m.get("faellig")) or None
+    out["referenzen"] = norm_refs(m.get("referenzen"))
+    out["kfz"] = norm_kfz(m.get("kfz"))
     bon = normalisiere_bon(m.get("kassenbon"), out, ref, info)
     out["kassenbon"] = bon
     if bon:
@@ -327,6 +358,48 @@ def normalisiere(m, ref=None) -> dict:
             out["hinweise"] = (text + " " + out["hinweise"]).strip()
             out["datum_unsicher"] = True
     return out
+
+
+REF_ARTEN = ("vertrag", "versicherungsschein", "kunde", "rechnung", "mitglied", "zaehler", "sonst")
+
+
+def norm_refs(v) -> list:
+    """Nummern fuer die Zuordnung; Steuer-IDs, IBAN, Konto- und Kartennummern werden verworfen."""
+    out = []
+    for r in v if isinstance(v, list) else []:
+        if not isinstance(r, dict):
+            continue
+        art = str(r.get("art") or "sonst").strip().lower()
+        wert = str(r.get("wert") or "").strip()[:40]
+        kompakt = re.sub(r"[\s.-]", "", wert).upper()
+        if not wert or A.is_empty(wert) or len(re.sub(r"\D", "", wert)) < 3:
+            continue
+        if "steuer" in art or re.fullmatch(r"[A-Z]{2}\d{2}[A-Z0-9]{10,30}", kompakt) or re.fullmatch(r"\d{13,19}", kompakt):
+            continue
+        if not any(x["wert"] == wert for x in out):
+            out.append({"art": art if art in REF_ARTEN else "sonst", "wert": wert})
+    return out[:5]
+
+
+def norm_kfz(v):
+    if not isinstance(v, dict):
+        return None
+    kz = re.sub(r"\s+", " ", str(v.get("kennzeichen") or "").upper()).strip()
+    if A.is_empty(kz) or not re.fullmatch(r"[A-ZÄÖÜ]{1,3}[ -]?[A-Z]{1,2}[ -]?\d{1,4}[EH]?", kz):
+        kz = None
+    try:
+        km = int(float(str(v.get("km")).replace(".", "").replace(",", ".")))
+        km = km if 0 < km < 2_000_000 else None
+    except (TypeError, ValueError):
+        km = None
+    hu = iso_datum(v.get("hu_datum")) or None
+    m = re.search(r"(\d{4})-(\d{1,2})|(\d{1,2})[./](\d{4})", str(v.get("hu_naechste") or ""))
+    nae = None
+    if m:
+        y, mo = (int(m.group(1)), int(m.group(2))) if m.group(1) else (int(m.group(4)), int(m.group(3)))
+        nae = f"{y:04d}-{mo:02d}" if 1990 <= y <= 2100 and 1 <= mo <= 12 else None
+    o = {k: x for k, x in (("kennzeichen", kz), ("km", km), ("hu_datum", hu), ("hu_naechste", nae)) if x}
+    return o or None
 
 
 def einfach(s) -> str:
@@ -462,7 +535,15 @@ def eintrag(meta: dict, ziel: Path, stb, quelle: str) -> dict:
     }
     if meta.get("kassenbon"):
         e["zahlart"] = meta["kassenbon"].get("zahlart") or "unbekannt"
+    zusatz(e, meta)
     return e
+
+
+def zusatz(e: dict, meta: dict):
+    """Angaben fuer die Zuordnung im Cockpit (nur wenn vorhanden)."""
+    for k, q in (("art", "dokumentart"), ("faellig", "faellig"), ("refs", "referenzen"), ("kfz", "kfz")):
+        if meta.get(q):
+            e[k] = meta[q]
 
 
 def lade_index() -> dict:
@@ -761,6 +842,72 @@ def cmd_index(id_):
             "gesamt": len(gefunden), "neu": neu, "entfernt": len(weg)}
 
 
+def lies_nach(client, pdf: Path) -> dict:
+    daten = base64.standard_b64encode(pdf.read_bytes()).decode("utf-8")
+    antwort = client.messages.create(
+        model=A.MODEL,
+        max_tokens=1024,
+        system=NACHLESEN_SYSTEM,
+        messages=[{"role": "user", "content": [
+            {"type": "document", "source": {"type": "base64", "media_type": "application/pdf", "data": daten}},
+            {"type": "text", "text": "Lies die Angaben aus und antworte mit reinem JSON."},
+        ]}],
+    )
+    return normalisiere(A.extract_json(antwort.content[0].text))
+
+
+def cmd_nachlesen(id_):
+    """Altbestand (nur ueber den Dateinamen ins Verzeichnis aufgenommen) einmal inhaltlich auslesen.
+    Titel, Kategorie und Ablageort bleiben unveraendert; nach jedem Dokument wird gespeichert,
+    ein Abbruch (Fenster schliessen) ist jederzeit moeglich - der naechste Lauf macht weiter."""
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        raise Fehler("Umgebungsvariable ANTHROPIC_API_KEY ist nicht gesetzt (siehe Einrichtung).")
+    idx = lade_index()
+    offen = [e for e in idx.values() if e.get("quelle") == "bestand" and not e.get("nachgelesen") and e.get("kategorie") != EINKAUF_KAT]
+    offen.sort(key=lambda e: e.get("datum") or "", reverse=True)  # neueste zuerst - die sind fuer die Zuordnung am wichtigsten
+    if not offen:
+        return {"meldung": "Alle Dokumente sind bereits ausgelesen.", "neu": 0, "fehler": 0}
+    print(f"  {len(offen)} Dokument(e) werden ausgelesen (die Dateien bleiben, wo sie sind).")
+    print("  Abbrechen: Fenster schliessen - der naechste Lauf macht an der Stelle weiter.\n")
+    client = A.Anthropic()
+    ok = fehler = betraege = 0
+    for i, e in enumerate(offen, 1):
+        p = ROOT / e["archiv"]
+        print(f"  [{i:3}/{len(offen)}] {p.name[:56]:<56} ", end="", flush=True)
+        if not p.is_file():
+            print("FEHLT")
+            continue
+        try:
+            m = lies_nach(client, p)
+            for k in ("betrag", "zahlbetrag"):
+                if e.get(k) is None and m.get(k) is not None:
+                    e[k] = m[k]
+            if not e.get("jahr") and m.get("jahr"):
+                e["jahr"] = m["jahr"]
+            if not e.get("datum") and m.get("datum"):
+                e["datum"] = m["datum"]
+            if m.get("absender") and not e.get("absender"):
+                e["ki_absender"] = m["absender"]  # Titel bleibt wie im Dateinamen
+            zusatz(e, m)
+            e["nachgelesen"] = jetzt()
+            e.pop("nachlesen_fehler", None)
+            ok += 1
+            betraege += e.get("betrag") is not None
+            print("OK" + (f"  {e['betrag']:.2f} EUR" if e.get("betrag") is not None else ""))
+        except Exception as ex:  # noqa: BLE001 - weiter mit dem naechsten Dokument
+            fehler += 1
+            e["nachlesen_versuche"] = int(e.get("nachlesen_versuche") or 0) + 1
+            e["nachlesen_fehler"] = f"{type(ex).__name__}: {ex}"[:200]
+            if e["nachlesen_versuche"] >= 2:  # dauerhaft unlesbar -> nicht endlos wiederholen
+                e["nachgelesen"] = jetzt()
+            print("FEHLER")
+        speichere_index(idx)
+        status(id_, "nachlesen", "laeuft", f"{i} von {len(offen)} ausgelesen", fortschritt={"i": i, "n": len(offen)})
+    protokoll([f"--- Altbestand ausgelesen {jetzt()}: {ok} OK, {betraege} mit Betrag, {fehler} Fehler ---"])
+    return {"meldung": f"{ok} Dokument(e) ausgelesen, davon {betraege} mit Betrag" + (f", {fehler} Fehler" if fehler else "") + ".",
+            "neu": ok, "betraege": betraege, "fehler": fehler}
+
+
 def cmd_konsole(id_):
     A.main()  # klassische Ablage mit Rueckfragen im Konsolenfenster
     print("\nVerzeichnis fuer das Cockpit wird aktualisiert ...")
@@ -769,7 +916,7 @@ def cmd_konsole(id_):
     return erg
 
 
-BEFEHLE = {"test": cmd_test, "analyse": cmd_analyse, "ablegen": cmd_ablegen, "index": cmd_index, "konsole": cmd_konsole}
+BEFEHLE = {"test": cmd_test, "analyse": cmd_analyse, "ablegen": cmd_ablegen, "index": cmd_index, "nachlesen": cmd_nachlesen, "konsole": cmd_konsole}
 
 
 def lies_aufruf(argv):
