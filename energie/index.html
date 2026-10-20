@@ -511,9 +511,72 @@ function prevProfile(y,startKey,monthKey){
   return months=>months.map(k=>ex[k]);
 }
 
+/* ===== Gas: geschätzte Monate nach Außentemperatur verteilen =====
+   Fehlen Gas-Zählerstände, wird die Differenz bis zum nächsten Stand nicht gleichmäßig nach Tagen verteilt, sondern
+   – Lastprofil (Standard): BDEW-Standardlastprofil Gas h(T) = A/(1+(B/(T−θ0))^C)+D, bei SigLinDe-Profilen zusätzlich
+     max(mH·T+bH, mW·T+bW); T = gewichtete Tagesmitteltemperatur (heute + ½ gestern + ¼ vorgestern + ⅛ vor 3 Tagen)/1,875;
+     × Wochentagsfaktor. Voreinstellung: BDEW-Profile Mehr-/Einfamilienhaus (Bundesdurchschnitt, nicht windexponiert).
+   – Heizgradtage 20/15: ein Warmwasser-Anteil gleichmäßig über das Jahr, der Rest nach Heizgradtagen.
+   Tagesmittel: Open-Meteo am Ort aus Haus → Technik (oder hier eingestellt), je Gerät zwischengespeichert.
+   Ohne Tageswerte: Monatsmittel und Heizgradtage aus Haus → Technik. Gespeichert in fixed.gasVert. */
+const SLP_PROFILE={MFH:{n:'Mehrfamilienhaus (BDEW)',a:2.3877618,b:-34.7213605,c:5.8164304,d:0.1460936,t0:40},
+  EFH:{n:'Einfamilienhaus (BDEW)',a:3.0469695,b:-37.1833141,c:5.6727847,d:0.1163157,t0:40}};
+const WKEY='cockpit:energie:wetter';
+let WT={t:null,laeuft:false,fehler:null,key:null};
+function gasVert(){const v=Object.assign({modus:'slp',profil:'MFH',ww:15},S.fixed.gasVert||{});v.p=Object.assign({},v.p||{});v.wt=Array.isArray(v.wt)&&v.wt.length===7?v.wt:[1,1,1,1,1,1,1];return v;}
+function slpPar(v){if(v.profil==='eigen'){const p={};['a','b','c','d','t0','mh','bh','mw','bw'].forEach(k=>p[k]=toN(v.p[k]));if(p.t0===null)p.t0=40;return p.a!==null&&p.b!==null&&p.c!==null&&p.d!==null?p:null;}
+  return SLP_PROFILE[v.profil]||SLP_PROFILE.MFH;}
+function slpH(T,p){let h=p.a/(1+Math.pow(p.b/(T-p.t0),p.c))+p.d;
+  if(p.mh!=null&&p.bh!=null&&p.mw!=null&&p.bw!=null)h+=Math.max(p.mh*T+p.bh,p.mw*T+p.bw);return h>0?h:0;}
+function wOrt(){const f=S.fixed.ort;if(f&&f.lat!=null)return Object.assign({quelle:'energie'},f);
+  const h=Cockpit.getLocal('haus',null),o=h&&h.technik&&h.technik.ort;return o&&o.lat!=null?Object.assign({quelle:'haus'},o):null;}
+function wKey(o){return (+o.lat).toFixed(3)+','+(+o.lon).toFixed(3);}
+function isoD(y,k,t){return y+'-'+String(k+1).padStart(2,'0')+'-'+String(t).padStart(2,'0');}
+function minusTag(ds,n){const x=new Date(ds+'T12:00:00');x.setDate(x.getDate()-n);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0');}
+/* Monatswerte aus Haus → Technik (synchronisiert), falls keine Tageswerte da sind */
+function wMonat(ym){const h=Cockpit.getLocal('haus',null),w=h&&h.technik&&h.technik.wetter;return w&&w[ym]&&w[ym].voll?w[ym]:null;}
+function tTag(ds){const o=wOrt();if(WT.t&&o&&WT.key===wKey(o)&&WT.t[ds]!=null)return WT.t[ds];const m=wMonat(ds.slice(0,7));return m&&m.tm!=null?m.tm:null;}
+function tGeo(ds){let s=0,n=0;const g=[1,.5,.25,.125];for(let i=0;i<4;i++){const v=tTag(minusTag(ds,i));if(v==null){if(!i)return null;continue;}s+=g[i]*v;n+=g[i];}return s/n;}
+function hgtMonat(y,k){let s=0;const n=DIM(y,k);for(let t=1;t<=n;t++){const T=tTag(isoD(y,k,t));if(T==null){const m=wMonat(y+'-'+String(k+1).padStart(2,'0'));return m?m.hgt:null;}if(T<15)s+=20-T;}return s;}
+function hgtJahr(){const l=[];Object.keys(S.data).map(Number).forEach(y=>{let s=0,ok=true;for(let k=0;k<12&&ok;k++){const h=hgtMonat(y,k);if(h==null)ok=false;else s+=h;}if(ok&&s>0)l.push(s);});
+  return l.length?l.reduce((a,b)=>a+b,0)/l.length:3500;}
+/* Gewicht eines Monats für die Verteilung (null = keine Temperaturen → bisherige Verteilung) */
+function gasGewicht(y,k,v,p,hj){const n=DIM(y,k);let s=0;
+  if(v.modus==='hgt'){const h=hgtMonat(y,k);if(h==null)return null;const ww=Math.min(90,Math.max(0,+v.ww||0))/100;return ww*n/365+(1-ww)*h/hj;}
+  for(let t=1;t<=n;t++){const ds=isoD(y,k,t),T=tGeo(ds);if(T==null)return null;s+=slpH(T,p)*(+v.wt[(new Date(ds+'T12:00:00').getDay()+6)%7]||1);}return s;}
+function gasWf(y){const v=gasVert(),prev=prevProfile(y,'gas_s','g');
+  return months=>{if(v.modus!=='tage'){const p=slpPar(v),hj=v.modus==='hgt'?hgtJahr():0;
+      if(v.modus==='hgt'||p){const w=months.map(k=>gasGewicht(y,k,v,p,hj));if(w.every(x=>x>0))return w;}}
+    return prev?prev(months):null;};}
+function gasVertText(){const v=gasVert(),o=wOrt();if(v.modus==='tage')return 'gleichmäßig nach Tagen';
+  const wo=o?' (Außentemperatur '+(o.name||'Ort')+')':'';
+  if(v.modus==='hgt')return 'nach Heizgradtagen 20/15, '+(+v.ww||0)+' % Warmwasser'+wo;
+  return 'nach Lastprofil '+(v.profil==='eigen'?(v.name||'eigene Parameter'):(SLP_PROFILE[v.profil]||SLP_PROFILE.MFH).n)+wo;}
+/* Tagesmittel laden: Open-Meteo-Archiv (bis ca. 5 Tage zurück) + Vorhersage-Dienst mit vergangenen Tagen */
+function wLaden(force){const o=wOrt();if(!o||WT.laeuft)return;const key=wKey(o);let c=null;try{c=JSON.parse(localStorage.getItem(WKEY));}catch(e){}
+  const ys=Object.keys(S.data).map(Number).filter(y=>{const d=S.data[y];return d&&(toN(d.gas_s)!==null||(d.m||[]).some(m=>toN(m.g)!==null));});
+  const von=(ys.length?Math.min(...ys):new Date().getFullYear())-1+'-12-25',heute=new Date().toISOString().slice(0,10);
+  if(c&&c.key===key){WT.t=c.t;WT.key=key;if(!force&&Date.now()-(c.abruf||0)<12*36e5&&c.von<=von)return;}
+  const bis=minusTag(heute,6),q='latitude='+(+o.lat).toFixed(3)+'&longitude='+(+o.lon).toFixed(3)+'&daily=temperature_2m_mean&timezone=Europe%2FBerlin';
+  WT.laeuft=true;
+  Promise.all(['https://archive-api.open-meteo.com/v1/archive?'+q+'&start_date='+von+'&end_date='+bis,'https://api.open-meteo.com/v1/forecast?'+q+'&past_days=60&forecast_days=1']
+    .map(u=>fetch(u).then(r=>{if(!r.ok)throw new Error('Wetterdienst '+r.status);return r.json();}))).then(res=>{
+    const t={};res.forEach(j=>{const d=j&&j.daily;if(!d)return;(d.time||[]).forEach((ds,i)=>{const x=(d.temperature_2m_mean||[])[i];if(x!=null&&ds<heute)t[ds]=Math.round(x*10)/10;});});
+    WT.t=t;WT.key=key;WT.laeuft=false;WT.fehler=null;try{localStorage.setItem(WKEY,JSON.stringify({key:key,von:von,abruf:Date.now(),t:t}));}catch(e){}rApp();})
+  .catch(e=>{WT.laeuft=false;WT.fehler=String(e.message||e);if(S.tab==='preise')rApp();});}
+function gvSet(k,v){const g=Object.assign({},S.fixed.gasVert||{});if(k.indexOf('p.')===0){g.p=Object.assign({},g.p||{});g.p[k.slice(2)]=v;}
+  else if(k.indexOf('wt.')===0){g.wt=gasVert().wt.slice();g.wt[+k.slice(3)]=toN(String(v).replace(',','.'))||1;}else g[k]=v;
+  S.fixed.gasVert=g;clearTimeout(autoTimer);saveState(false);rApp();}
+function ortSuchen(){const el=document.getElementById('ort_q'),q=el?el.value.trim():'';if(q.length<3){showFeedback('PLZ oder Ort eingeben');return;}
+  fetch('https://geocoding-api.open-meteo.com/v1/search?count=1&language=de&countryCode=DE&name='+encodeURIComponent(q)).then(r=>r.json()).then(j=>{
+    const x=j&&j.results&&j.results[0];if(!x){showFeedback('⚠ Ort nicht gefunden');return;}
+    S.fixed.ort={name:x.name+(x.postcodes&&x.postcodes[0]?' ('+x.postcodes[0]+')':''),lat:Math.round(x.latitude*1000)/1000,lon:Math.round(x.longitude*1000)/1000};
+    clearTimeout(autoTimer);saveState(false);wLaden(true);rApp();showFeedback('✓ Ort: '+S.fixed.ort.name);}).catch(e=>showFeedback('⚠ Ortssuche nicht erreichbar'));}
+function ortHaus(){delete S.fixed.ort;clearTimeout(autoTimer);saveState(false);wLaden(true);rApp();}
+
 function cG(y){
   const d=yd(y),z=toN(S.fixed.gas_z)||0.95;
-  const vols=series(startVal(y,'gas_s'),d.m.map(m=>m.g),y,prevProfile(y,'gas_s','g'));
+  const vols=series(startVal(y,'gas_s'),d.m.map(m=>m.g),y,gasWf(y));
   return vols.map((vm3,i)=>{
     const t=tariffAt('gas',y,i);
     const ap=t?toN(t.ap)/100:null,gp=t?toN(t.gp):null,bw=t?(toN(t.bw)||11.0):null;
@@ -833,29 +896,52 @@ function rPreise(){
         <span style="font-size:11px;color:#999;margin-left:8px">Typisch 0,95–1,00 · finden Sie auf der Gasrechnung · gilt für alle Perioden</span>
       </div>
     </div>
+    ${rGasVert()}
     <div class="efn"><b>Formel Gas:</b> m³ × Brennwert (aus aktiver Periode) × Zustandszahl = kWh · dann × Arbeitspreis = Kosten.<br>Alle Preise jeweils in der angegebenen Einheit eintragen (z.B. Arbeitspreis 8,5 ct/kWh → „8.5", Grundpreis 12,90 € → „12.90").</div>
     ${savebar()}</div>`;
 }
 
-function rGas(){const d=yd(S.year),c=cG(S.year),yr=S.year;
+function rGasVert(){const v=gasVert(),o=wOrt(),p=v.profil==='eigen'?v.p:(SLP_PROFILE[v.profil]||SLP_PROFILE.MFH),nT=WT.t?Object.keys(WT.t).length:0;
+  const opt=(k,l,cur)=>`<option value="${k}"${k===cur?' selected':''}>${l}</option>`,inp=(k,val,w)=>`<input type="text" inputmode="decimal" value="${val==null?'':Cockpit.esc(String(val))}" style="width:${w||80}px;background:var(--field);border:1px solid var(--border);color:#fff;padding:6px 7px;border-radius:8px;font-size:12px" onchange="gvSet('${k}',this.value.replace(',','.'))">`;
+  return `<div class="tariff-block"><div class="tariff-block-t"><span>${dot(C.gas)} Gas — geschätzte Monate verteilen</span></div>
+  <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:10px">Fehlen Zählerstände, wird der Verbrauch bis zum nächsten Stand auf die Lückenmonate verteilt – nach der Außentemperatur: kalte Monate bekommen mehr, Sommermonate fast nur Warmwasser.</div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+    <select onchange="gvSet('modus',this.value)" style="background:var(--field);border:1px solid var(--border);color:#fff;padding:7px;border-radius:8px;font-size:12px">
+      ${opt('slp','Standardlastprofil (temperaturabhängig)',v.modus)}${opt('hgt','Heizgradtage 20/15 + Warmwasser',v.modus)}${opt('tage','gleichmäßig nach Tagen',v.modus)}</select>
+    ${v.modus==='slp'?`<select onchange="gvSet('profil',this.value)" style="background:var(--field);border:1px solid var(--border);color:#fff;padding:7px;border-radius:8px;font-size:12px">${opt('MFH',SLP_PROFILE.MFH.n,v.profil)}${opt('EFH',SLP_PROFILE.EFH.n,v.profil)}${opt('eigen','eigenes Profil (Parameter)',v.profil)}</select>`:''}
+    ${v.modus==='hgt'?`<label style="font-size:12px;color:#888">Warmwasser-Anteil am Jahresverbrauch</label>${inp('ww',v.ww,50)}<span class="epunit">%</span>`:''}
+  </div>
+  ${v.modus==='slp'&&v.profil==='eigen'?`<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12px;color:#888;margin-bottom:8px">Name ${inp('name',v.name,110)} A ${inp('p.a',v.p.a)} B ${inp('p.b',v.p.b)} C ${inp('p.c',v.p.c)} D ${inp('p.d',v.p.d)} θ0 ${inp('p.t0',v.p.t0==null?40:v.p.t0,50)}</div>
+   <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12px;color:#888;margin-bottom:8px">SigLinDe (optional): mH ${inp('p.mh',v.p.mh)} bH ${inp('p.bh',v.p.bh)} mW ${inp('p.mw',v.p.mw)} bW ${inp('p.bw',v.p.bw)}</div>
+   <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12px;color:#888;margin-bottom:8px">Wochentagsfaktoren ${['Mo','Di','Mi','Do','Fr','Sa','So'].map((t,i)=>t+' '+inp('wt.'+i,v.wt[i],46)).join(' ')}</div>
+   ${slpPar(v)?'':'<div style="font-size:11px;color:#ffcc80;margin-bottom:8px">⚠ A, B, C und D eintragen – bis dahin wird nach dem Vorjahr bzw. nach Tagen verteilt.</div>'}`:''}
+  ${v.modus==='slp'&&v.profil!=='eigen'?`<div style="font-size:11px;color:#888;margin-bottom:8px">h(T) = A/(1+(B/(T−θ0))^C)+D · A ${p.a} · B ${p.b} · C ${p.c} · D ${p.d} · θ0 ${p.t0}</div>`:''}
+  <div style="font-size:12px;color:#888;line-height:1.6">📍 Außentemperatur: ${o?'<b style="color:#ddd">'+Cockpit.esc(o.name||(o.lat+', '+o.lon))+'</b>'+(o.quelle==='haus'?' (aus Haus → Technik)':'')+(nT?' · '+nT+' Tageswerte geladen':WT.laeuft?' · lädt …':WT.fehler?' · <span style="color:#ffcc80">'+Cockpit.esc(WT.fehler)+' – nutze Monatswerte aus Haus</span>':''):'noch kein Ort'}
+    · Quelle Open-Meteo (Wettermodell, Tagesmittel)</div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px"><input id="ort_q" type="text" placeholder="PLZ oder Ort" style="width:130px;background:var(--field);border:1px solid var(--border);color:#fff;padding:6px 7px;border-radius:8px;font-size:12px">
+    <button class="btn btn-sm" onclick="ortSuchen()">Ort setzen</button>${S.fixed.ort?'<button class="btn btn-sm" onclick="ortHaus()">Ort aus Haus verwenden</button>':''}<button class="btn btn-sm" onclick="wLaden(true)">↻ Temperaturen neu laden</button></div>
+  </div>`;}
+
+function rGas(){const d=yd(S.year),c=cG(S.year),yr=S.year,now=new Date(),hg=MO.map((_,i)=>(yr>now.getFullYear()||(yr===now.getFullYear()&&i>now.getMonth()))?null:hgtMonat(yr,i));
   const periods=[...new Set(c.map(ci=>ci.tariff?ci.tariff.from:null).filter(Boolean))];
   return`<div class="ecard">
 <div class="ecard-t">${dot(C.gas)} Gas · ${yr}</div>
 <div class="einits"><span class="eil">Anfangszählerstand</span>
 <div class="eif"><label>1. Jan. ${yr}:</label>${ni('i_gas',d.gas_s,'0.001',95)}<span class="epunit">m³</span></div>
 <div class="eif" style="margin-left:auto;color:#999;font-size:11px">${periods.length>1?'⚡ '+periods.length+' Tarifperioden in '+yr:periods.length?'1 Tarifperiode':'⚠ Keine Tarifperiode für '+yr}</div></div>
-<div class="etw"><table><thead><tr><th>Monat</th><th>Tarif</th><th>Zählerstand Ende (m³)</th><th>Verbrauch m³</th><th>Verbrauch kWh</th><th>Arbeitskosten</th><th>Grundpreis</th><th>Gesamt</th></tr></thead>
+<div class="etw"><table><thead><tr><th>Monat</th><th>Tarif</th><th>Zählerstand Ende (m³)</th><th>Verbrauch m³</th><th>Verbrauch kWh</th><th title="Heizgradtage 20/15 am Ort (Außentemperatur)">Heizgradtage</th><th>Arbeitskosten</th><th>Grundpreis</th><th>Gesamt</th></tr></thead>
 <tbody>${c.map((ci,i)=>`<tr><td>${MO[i]}</td>
 <td id="gtr${i}" style="font-size:10px;color:#888;font-family:inherit">${ci.tariff?fromLabel(ci.tariff.from):'–'}</td>
 <td>${ni('mg_'+i,d.m[i].g,'0.001',95)}</td>
 <td id="gvm${i}" class="${ci.vm3===null?'evm':''}">${fM(ci.vm3)}</td>
 <td id="gv${i}" class="${ci.v===null?'evm':''}">${fK(ci.v)}</td>
+<td style="color:#8fa6cc">${hg[i]===null?'–':fN(hg[i],0)}</td>
 <td id="ga${i}" class="${ci.ak===null?'evm':''}">${fE(ci.ak)}</td>
 <td id="gg${i}" class="${ci.gk===null?'evm':''}">${fE(ci.gk)}</td>
 <td id="gt${i}" class="${ci.tot===null?'evm':''}">${fE(ci.tot)}</td></tr>`).join('')}</tbody>
-<tfoot><tr class="etot"><td>Gesamt ${yr}</td><td>–</td><td>–</td><td id="gvmt">${fM(sm(c.map(x=>x.vm3)))}</td><td id="gvt">${fK(sm(c.map(x=>x.v)))}</td><td id="gat">${fE(sm(c.map(x=>x.ak)))}</td><td id="ggt">${fE(sm(c.map(x=>x.gk)))}</td><td id="gtt">${fE(sm(c.map(x=>x.tot)))}</td></tr></tfoot>
+<tfoot><tr class="etot"><td>Gesamt ${yr}</td><td>–</td><td>–</td><td id="gvmt">${fM(sm(c.map(x=>x.vm3)))}</td><td id="gvt">${fK(sm(c.map(x=>x.v)))}</td><td>${hg.every(x=>x===null)?'–':fN(hg.reduce((a,x)=>a+(x||0),0),0)}</td><td id="gat">${fE(sm(c.map(x=>x.ak)))}</td><td id="ggt">${fE(sm(c.map(x=>x.gk)))}</td><td id="gtt">${fE(sm(c.map(x=>x.tot)))}</td></tr></tfoot>
 </table></div>
-<div class="efn">Zählerstand des Gaszählers jeweils zum Monatsende in m³ eintragen. Die Spalte „Tarif" zeigt, welche Tarifperiode für den jeweiligen Monat angewendet wurde. Die kWh-Umrechnung nutzt den Brennwert der aktiven Periode × Zustandszahl.</div>
+<div class="efn">≈ Geschätzte Monate: ${gasVertText()} – einstellbar unter ⚙️ Tarife.<br>Zählerstand des Gaszählers jeweils zum Monatsende in m³ eintragen. Die Spalte „Tarif" zeigt, welche Tarifperiode für den jeweiligen Monat angewendet wurde. Die kWh-Umrechnung nutzt den Brennwert der aktiven Periode × Zustandszahl.</div>
 ${savebar()}</div>`;}
 
 function rWas(){const d=yd(S.year),c=cW(S.year),yr=S.year;
@@ -1160,11 +1246,11 @@ Cockpit.registerMerge('energie',mergeEnergie);
 
 if(typeof Chart!=='undefined'){Chart.defaults.color='#5c7aaa';Chart.defaults.borderColor='rgba(255,255,255,.06)';Chart.defaults.font.family="'DM Sans','Segoe UI',system-ui,sans-serif";}
 S.tab='uebersicht';
-loadState();rApp();zfLaden();
+loadState();rApp();zfLaden();wLaden(false);
 if(location.hash==='#fotos')setTimeout(()=>{const el=document.getElementById('fotos');if(el)el.scrollIntoView({behavior:'smooth',block:'start'});},300);
 try{const _p=Cockpit.getLocal('energie',null);if(_p&&_p._summary&&/•••/.test(JSON.stringify(_p._summary)))saveState(false);}catch(e){}
 window.addEventListener('cockpit:priv',()=>rApp());
-Cockpit.autoPull(['energie','dokumente'],function(a,d){if(a==='energie'&&d)applyData(d);rApp();});
+Cockpit.autoPull(['energie','dokumente','haus'],function(a,d){if(a==='energie'&&d)applyData(d);rApp();});
 
 </script>
 </body>
