@@ -22,9 +22,15 @@ var FELDER=[
   {k:"schnellaufheizung",n:"Schnellaufheizung",typ:"text"},
   {k:"heizen",n:"Raumsoll Heizen",u:"°C",typ:"zahl"},
   {k:"absenken",n:"Raumsoll Absenken",u:"°C",typ:"zahl"},
+  {k:"absenkart",n:"Absenkart",typ:"text",hint:"z. B. Außen / Reduziert / Abschalt"},
+  {k:"reduziertUnter",n:"Reduzierter Betrieb unter",u:"°C",typ:"zahl",hint:"Außentemperatur"},
+  {k:"durchheizenUnter",n:"Durchheizen unter",typ:"text",hint:"Aus oder Temperatur"},
   {k:"zeitprogramm",n:"Zeitprogramm",typ:"text",hint:"z. B. 04:30 Heizen · 22:00 Absenken"},
   {k:"sommerAb",n:"Sommerbetrieb ab",u:"°C",typ:"zahl",hint:"Außentemperatur"},
-  {k:"sommerModus",n:"Sommer/Winter",typ:"text",hint:"z. B. Sommerbetrieb ab / ständig Winter"}
+  {k:"sommerModus",n:"Sommer/Winter",typ:"text",hint:"z. B. Sommerbetrieb ab / ständig Winter"},
+  {k:"frostschutz",n:"Frostschutz",typ:"text",hint:"z. B. Außen / Raum"},
+  {k:"frostschutzGrenze",n:"Frostschutz-Grenztemperatur",u:"°C",typ:"zahl"},
+  {k:"mischer",n:"Mischer",typ:"text",hint:"Ja / Nein (laut Regler)"}
 ];
 function feld(k){return FELDER.filter(function(f){return f.k===k;})[0]||{k:k,n:k,typ:"text"};}
 function wert(f,v){if(v==null||v==="")return "–";if(f.typ==="zahl"){var n=+v;return isNaN(n)?String(v):String(n).replace(".",",")+(f.u?" "+f.u:"");}return String(v);}
@@ -58,6 +64,8 @@ function ausStart(t,o){t=norm(t);var now=Date.now(),s=o&&o.heizung?o.heizung:o;i
     var rs=x.raumsoll||{};if(rs.heizen_c!=null)e.heizen=rs.heizen_c;if(rs.absenken_c!=null)e.absenken=rs.absenken_c;
     var zp=x.zeitprogramm||{};if(zp.schaltzeiten)e.zeitprogramm=zp.schaltzeiten.map(function(z){return z.ab+" "+z.modus;}).join(" · ")+(zp.aktiv?" ("+zp.aktiv+")":"");
     var sw=x.sommer_winter||{};if(sw.schwelle_c!=null)e.sommerAb=sw.schwelle_c;if(sw.modus)e.sommerModus=sw.modus;
+    var ab=x.absenkung||{};if(ab.art)e.absenkart=ab.art;if(ab.reduziert_unter_c!=null)e.reduziertUnter=ab.reduziert_unter_c;if(ab.durchheizen_unter!=null)e.durchheizenUnter=String(ab.durchheizen_unter);
+    var fs=x.frostschutz||{};if(fs.art)e.frostschutz=fs.art;if(fs.grenze_c!=null)e.frostschutzGrenze=fs.grenze_c;if(x.mischer!=null)e.mischer=x.mischer;
     var alt=t.heizkreise.filter(function(y){return y.id===h.id;})[0];
     var neu={id:h.id,name:h.name||h.id,heizsystem:h.heizsystem||"",e:Object.assign({},alt?alt.e:{},e),hinweis:h.hinweis||"",upd:now};
     t.heizkreise=t.heizkreise.filter(function(y){return y.id!==h.id;}).concat([neu]);});
