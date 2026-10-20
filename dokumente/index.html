@@ -260,7 +260,7 @@ function archivKurz(){var n=data.index.length;return n?'<div class="note">Im Arc
 /* wie braucht_nachlesen() im Skript: Altbestand und früher abgelegte Dokumente ohne Rechnungsnummer/Fälligkeit */
 function nNach(){return data.index.filter(function(e){if(e.nachgelesen||e.kategorie==="Einkaeufe")return false;return e.quelle==="bestand"||(e.quelle==="cockpit"&&!("art" in e)&&!("refs" in e)&&!("faellig" in e));}).length;}
 function nachPanel(){var n=nNach();if(!n||st.perm==="unsupported"||st.run)return "";
-  return '<div class="panel" style="border-color:#38bdf866"><b style="color:#7dd3fc">📚 '+n+' ältere Dokumente sind noch nicht vollständig ausgelesen</b><div class="note" style="margin:6px 0 10px">Sie stehen nur mit dem Dateinamen oder ohne Rechnungs- und Kundennummern im Verzeichnis. Einmal auslesen, dann lassen sie sich Buchungen, Verträgen und Fahrzeugen zuordnen. Läuft am PC im Konsolenfenster (etwa '+Math.max(1,Math.round(n*8/60))+' Min., verbraucht etwas API-Guthaben); Abbrechen ist jederzeit möglich, der nächste Lauf macht weiter.</div>'+
+  return '<div class="panel" style="border-color:#38bdf866"><b style="color:#7dd3fc">📚 '+(n===1?"1 älteres Dokument ist":n+" ältere Dokumente sind")+' noch nicht vollständig ausgelesen</b><div class="note" style="margin:6px 0 10px">Sie stehen nur mit dem Dateinamen oder ohne Rechnungs- und Kundennummern im Verzeichnis. Einmal auslesen, dann lassen sie sich Buchungen, Verträgen und Fahrzeugen zuordnen. Läuft am PC im Konsolenfenster (etwa '+Math.max(1,Math.round(n*8/60))+' Min., verbraucht etwas API-Guthaben); Abbrechen ist jederzeit möglich, der nächste Lauf macht weiter.</div>'+
     '<button class="btn" style="background:#0ea5e9" onclick="D2.nachlesen()"'+(st.perm!=="granted"?" disabled":"")+'>📚 Altbestand auslesen</button></div>';}
 /* Bezüge je Dokument: Buchung (Finanzen), Vertrag, Fahrzeug, Haus-Nebenkosten – einmal berechnet, nach Änderungen neu */
 /* Beleg mit Betrag, der in den Zeitraum der importierten Kontoauszüge fällt (ältere können keine Buchung haben) */
@@ -279,7 +279,7 @@ function bezuege(){var key=data.index.length+"|"+(data.aktualisiert||"")+"|"+(da
 /* Zahlungsüberwachung (DOKS.offenePosten) */
 function offen(){var key=data.index.length+"|"+(data.aktualisiert||"")+"|"+(data.upd||0)+"|"+st.offenV;if(st.op&&st.opKey===key)return st.op;st.opKey=key;
   try{st.op=D.offenePosten(data.index,C.getLocal("finanzen",null),C.getLocal("zuordnung",null));}catch(x){st.op=[];}return st.op;}
-function offenZeile(x){var did=esc(x.e.id);return '<div class="bz"><span class="bzc warn">⏰ fällig seit '+D.de(x.e.faellig)+" ("+x.tage+" Tage) · "+C.eur(x.b)+' – keine Abbuchung gefunden<button title="Bar, Karte oder anderes Konto" onclick="D2.erledigt(\''+did+'\',1)">✓ anders bezahlt</button></span></div>';}
+function offenZeile(x){var did=esc(x.e.id);return '<div class="bz"><span class="bzc warn" style="white-space:normal;flex-wrap:wrap">⏰ fällig seit '+D.de(x.e.faellig)+" ("+x.tage+" Tage)"+' – keine Abbuchung gefunden<button title="Bar, Karte oder anderes Konto" onclick="D2.erledigt(\''+did+'\',1)">✓ anders bezahlt</button></span></div>';}
 function bezugChips(e,bz){var l=bz[e.id]||[],did=esc(e.id),ohne=hatBetrag(e)&&st.tx.length&&!l.some(function(c){return c.k==="tx";});
   if(!l.length&&!ohne)return st.zuWahl===e.id?buchWahl(e):"";
   return '<div class="bz">'+(ohne?'<a class="bzc" style="cursor:pointer;border:1px dashed #334155;background:transparent" onclick="D2.zuWahl(\''+did+'\')">💶 Buchung zuordnen</a>':"")+l.map(function(c){
