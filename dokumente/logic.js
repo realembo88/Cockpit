@@ -50,14 +50,14 @@ function verschiebe(r,von,nachDir,nachName){return file(r,von).then(function(f){
       for(;;){try{await d.getFileHandle(n);n=nachName.replace(/(\.[^.]+)$/,"_"+(i++)+"$1");}catch(e){break;}}
       var fh=await d.getFileHandle(n,{create:true}),w=await fh.createWritable();await w.write(buf);await w.close();return n;});})
   .then(function(n){var s=split(von);return dir(r,s.dirs,false).then(function(d){return d.removeEntry(s.name);}).then(function(){return nachDir.join("/")+"/"+n;});});}
-/* Kontoauszüge (CSV von ING/N26) aus dem Eingang in die Finanzdaten fin übernehmen und archivieren.
+/* Kontoauszüge (CSV von ING/Commerzbank/N26) aus dem Eingang in die Finanzdaten fin übernehmen und archivieren.
    Braucht FIN (finanzen/logic.js). → Promise<null | {dateien, neu, dup, unbekannt, fehler}> */
 function kontoImport(r,fin){if(!window.FIN)return Promise.resolve(null);
   return listCSVs(r).catch(function(){return [];}).then(async function(list){if(!list.length)return null;
     var res={dateien:[],neu:0,dup:0,unbekannt:[],fehler:[]};
     for(var i=0;i<list.length;i++){var x=list[i];
       try{var f=await x.h.getFile(),blocks=window.FIN.parseFile(await f.arrayBuffer(),x.name);
-        if(!blocks){res.fehler.push(x.name+": kein ING- oder N26-Export");continue;}
+        if(!blocks){res.fehler.push(x.name+": kein ING-, Commerzbank- oder N26-Export");continue;}
         blocks.forEach(function(b){b.file=x.name;});
         var r1=window.FIN.autoImport(fin,blocks,x.name);res.neu+=r1.neu;res.dup+=r1.dup;
         if(r1.unbekannt.length){res.unbekannt.push(x.name);continue;} /* bleibt im Eingang, bis das Konto einmal zugeordnet ist */

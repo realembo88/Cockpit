@@ -889,7 +889,7 @@ window.F2={
   files:function(inp){var fs=[].slice.call(inp.files||[]);inp.value="";if(!fs.length)return;
     var blocks=[],info=[];
     Promise.all(fs.map(function(f){return f.arrayBuffer().then(function(buf){var r=F.parseFile(buf,f.name);
-      if(!r){info.push(f.name+": Format nicht erkannt (weder ING- noch N26-CSV).");return;}
+      if(!r){info.push(f.name+": Format nicht erkannt (weder ING, Commerzbank noch N26).");return;}
       r.forEach(function(b){b.file=f.name;F.assignIds(b,b.key);blocks.push(b);});});})).then(function(){
       /* gleiche Konten aus mehreren Dateien zusammenfassen */
       var by={};blocks.forEach(function(b){if(by[b.key]){var seen={};by[b.key].txs.forEach(function(t){seen[t.id]=1;});b.txs.forEach(function(t){if(!seen[t.id])by[b.key].txs.push(t);});by[b.key].file+=", "+b.file;if(b.saldo&&(!by[b.key].saldo||b.saldo.d>by[b.key].saldo.d))by[b.key].saldo=b.saldo;}else by[b.key]=b;});
@@ -905,7 +905,7 @@ window.F2={
     st.pending.forEach(function(b,i){var name=document.getElementById("pn"+i).value.trim()||b.name,ber=document.getElementById("pb"+i).value;
       var sel=document.getElementById("pt"+i);if(sel&&sel.value&&sel.value!==b.key){b.key=sel.value;b.bank=(data.konten[b.key]||{}).bank||b.bank;F.assignIds(b,b.key);}
       var ko=data.konten[b.key]||{};ko.name=name;ko.bank=b.bank;ko.bereich=ber;if(b.saldo&&(!ko.saldo||b.saldo.d>=ko.saldo.d))ko.saldo=b.saldo;data.konten[b.key]=ko;
-      var neu=0;b.txs.forEach(function(t){if(ids[t.id]){dup++;return;}if(del[t.id]){delete del[t.id];}ids[t.id]=1;data.tx.push(t);neu++;});total+=neu;
+      var neu=0;b.txs.forEach(function(t){if(ids[t.id]){dup++;return;}if(del[t.id]){delete del[t.id];}ids[t.id]=1;delete t.raw;data.tx.push(t);neu++;});total+=neu;
       data.imports.push({ts:Date.now(),file:b.file,konto:name,neu:neu,dup:b.txs.length-neu});});
     data.deleted=Object.keys(del);
     data.tx.sort(function(a,b){return a.d.localeCompare(b.d);});

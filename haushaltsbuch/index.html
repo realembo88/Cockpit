@@ -266,7 +266,7 @@ function willkommen(){
 
 /* ---------- Leerer Zustand ---------- */
 function leer(){return '<div class="empty"><div class="big">📥</div><h2>Lade deinen ersten Kontoauszug</h2>'+
-  '<p class="small">Die CSV-Datei aus dem Online-Banking der ING. Commerzbank folgt in Kürze. Mehrere Dateien auf einmal gehen auch.</p>'+
+  '<p class="small">Die CSV-Datei aus dem Online-Banking der ING oder der Commerzbank. Mehrere Dateien auf einmal gehen auch.</p>'+
   '<button class="btn full grad" onclick="H.laden()">Kontoauszug laden</button>'+
   '<button class="lnk" onclick="H.hilfe()">So bekommst du die CSV-Datei</button>'+
   '<p class="small" style="margin-top:18px">Du hast eine Sicherungsdatei? <button class="lnk" style="padding:0" onclick="H.einlesen()">Sicherung einlesen</button></p></div>';}
@@ -367,6 +367,7 @@ function sheet(){var el=document.getElementById("sheet");
   var h='<div class="sh" onclick="event.stopPropagation()"><div class="shk"><div><b>'+E(t.p||t.t||"Buchung")+'</b><span>'+tagKopf(t.d)+' · '+E(ko.name||t.k)+'</span></div><div class="tb '+(t.b>0?"plus":"")+'">'+vz(t.b)+'</div></div>';
   if(t.t&&t.p)h+='<div class="small muted">'+E(t.t)+'</div>';
   if(t.z)h+='<div class="zw">'+E(t.z)+'</div>';
+  if(t.kb)h+='<div class="small muted" style="margin:-4px 0 10px">Kategorie laut Bank: '+E(t.kb)+'</div>';
   if(c===HB.UMB)h+='<p class="note">🔁 Erkannt als Umbuchung zwischen deinen Konten – zählt weder als Einnahme noch als Ausgabe. Wählst du eine Kategorie, zählt die Buchung wieder mit.</p>';
   h+='<div class="lbl">Gilt für</div><div class="seg">'+
     '<button class="'+(st.art==="eine"?"on":"")+'" onclick="H.art(\'eine\')">nur diese Buchung</button>'+
@@ -447,8 +448,8 @@ function vMehr(){
     '<button class="btn ghost full" style="margin-top:8px" onclick="Cockpit.lockNow()">Jetzt sperren</button></div>';
   /* Hilfe */
   h+='<div class="panel help" id="hilfe"><h3>❔ Anleitung</h3>'+
-    '<details'+(st.hilfe?" open":"")+'><summary>Kontoauszug von der ING holen (CSV)</summary><div><ol><li>In Safari das Online-Banking der ING öffnen und anmelden (die Banking-App bietet den Export nicht an).</li><li>Girokonto öffnen, bei den Umsätzen auf <b>Export</b> bzw. das Download-Symbol tippen.</li><li>Format <b>CSV</b> und den Zeitraum wählen (beim ersten Mal ruhig 12 Monate).</li><li>Die Datei landet in „Dateien“ → „Downloads“.</li><li>Hier auf <b>Kontoauszug laden</b> tippen und die Datei auswählen.</li></ol>Findest du den Export am iPhone nicht: in Safari über „aA“ die Desktop-Website anfordern oder am Computer exportieren und per AirDrop schicken. Überschneidende Zeiträume sind kein Problem – doppelte Buchungen werden erkannt.</div></details>'+
-    '<details><summary>Commerzbank</summary><div>Kommt in Kürze. Im Online-Banking geht es dann über die Umsatzübersicht → „PDF / CSV“ → „Umsätze exportieren“ → CSV.</div></details>'+
+    '<details'+(st.hilfe?" open":"")+'><summary>Kontoauszug von der ING holen (CSV)</summary><div><ol><li>In Safari das Online-Banking der ING öffnen und anmelden.</li><li>Girokonto öffnen, bei den Umsätzen auf <b>Export</b> bzw. das Download-Symbol tippen.</li><li>Format <b>CSV</b> und den Zeitraum wählen (beim ersten Mal ruhig 12 Monate).</li><li>Die Datei landet in „Dateien“ → „Downloads“.</li><li>Hier auf <b>Kontoauszug laden</b> tippen und die Datei auswählen.</li></ol>Findest du den Export am iPhone nicht: in Safari über „aA“ die Desktop-Website anfordern oder am Computer exportieren und per AirDrop schicken. Überschneidende Zeiträume sind kein Problem – doppelte Buchungen werden erkannt.</div></details>'+
+    '<details><summary>Kontoauszug von der Commerzbank holen (CSV)</summary><div><ol><li>In Safari das Online-Banking der Commerzbank öffnen und anmelden.</li><li>Umsatzübersicht öffnen und das Girokonto wählen.</li><li>Oberhalb der Umsätze auf <b>PDF / CSV</b> tippen, dann <b>Umsätze exportieren</b>.</li><li>Format <b>CSV</b> wählen und <b>Exportieren</b> – die Datei landet in „Dateien“ → „Downloads“.</li><li>Hier auf <b>Kontoauszug laden</b> tippen und die Datei auswählen.</li></ol>Hast du Konten bei beiden Banken, lade einfach beide Dateien. Überweisungen zwischen deinen Konten erkennt die App und zählt sie nicht mit.</div></details>'+
     '<details><summary>So wird gerechnet</summary><div><ul><li><b>Einnahmen</b>: Gehalt und andere Gutschriften.</li><li><b>Ausgaben</b>: alle Abbuchungen. Erstattungen (z. B. Retouren) mindern die Ausgaben ihrer Kategorie.</li><li><b>Übrig</b> = Einnahmen − Ausgaben, <b>Sparquote</b> = Übrig ÷ Einnahmen.</li><li>Überweisungen aufs eigene Sparkonto sind keine Ausgaben – sie stecken im „Übrig“ und werden extra gezeigt.</li><li>Umbuchungen zwischen zwei Konten, die du hier geladen hast, zählen gar nicht.</li></ul></div></details>'+
     '<details><summary>Kategorie ändern und lernen</summary><div>Tipp auf eine Buchung und wähle die Kategorie. Mit „alle von …“ merkt sich die App den Empfänger und ordnet künftige Buchungen selbst zu. Bei PayPal oder Klarna steht der Händler im Verwendungszweck – dort ein Stichwort wählen (z. B. „spotify“).</div></details>'+
     '<details><summary>Wo liegen meine Daten?</summary><div>Nur im Speicher dieser App auf deinem Gerät. Es gibt kein Konto und keinen Server; die App kennt deine Bank-Zugangsdaten nicht. Aus dem Internet kommt nur das Programm selbst. Deine Buchungen verlassen das Gerät nur, wenn du selbst eine Sicherung speicherst oder teilst. Der Augen-Knopf oben blendet alle Beträge aus.</div></details></div>';
@@ -494,7 +495,7 @@ window.H={
     Promise.all(fs.map(function(f){
       if(/\.pdf$/i.test(f.name)){info.push("„"+f.name+"“ ist ein PDF – bitte den Umsatz-Export als CSV-Datei nehmen.");return null;}
       return f.arrayBuffer().then(function(buf){var r=null;try{r=F.parseFile(buf,f.name);}catch(e){}
-        if(!r){info.push("„"+f.name+"“: Format nicht erkannt. Gelesen werden im Moment CSV-Dateien der ING, Commerzbank folgt in Kürze.");return;}
+        if(!r){info.push("„"+f.name+"“: Format nicht erkannt. Gelesen werden CSV-Exporte der ING und der Commerzbank.");return;}
         names.push(f.name);r.forEach(function(b){blocks.push(b);});});
     })).then(function(){
       if(!blocks.length){flash("⚠ "+(info.join(" ")||"Keine Buchungen gefunden."),true);return;}

@@ -65,7 +65,8 @@ function zweckVorschlag(z){z=String(z||"");var m=/\/\.\s*([^,]+)/.exec(z),src=m?
 function partnerKey(p){return String(p||"").toLowerCase().replace(/\s+/g," ").trim();}
 /* Allgemeine Buchungsarten taugen nicht als Regel – sie kommen bei ganz unterschiedlichen Zahlungen vor */
 var GENERIC_TYPES=/^(lastschrift|überweisung|ueberweisung|gutschrift|dauerauftrag|dauerauftrag\/terminueberweisung|kartenzahlung|abbuchung|einzahlung|auszahlung|entgelt|zinsen|debit transfer|credit transfer|presentment|direct debit|mastercard payment|income|outgoing transfer|incoming transfer|gutschrift\/dauerauftrag)$/;
-function typeKey(t){var k=partnerKey(t);return k&&!GENERIC_TYPES.test(k)?k:"";}
+/* Zusätze in Klammern zählen nicht: „Überweisung (Echtzeit)“ ist so allgemein wie „Überweisung“ (Commerzbank) */
+function typeKey(t){var k=partnerKey(t),g=k.replace(/\s*\([^)]*\)\s*$/,"");return k&&!GENERIC_TYPES.test(g)&&!/^(zinsen\/entgelt|sepa[- ].*|echtzeit.*)$/.test(g)?k:"";}
 function category(t,rules){var zr;return t.cat||((zr=zweckRegel(t))&&zr.c)||(t.p&&PMAP[partnerKey(t.p)])||(!t.p&&t.t&&TMAP[partnerKey(t.t)])||matchRule(t,rules);}
 
 /* ---------- Hilfen ---------- */
@@ -149,10 +150,39 @@ function parseN26(text){
   return out.length?out:null;
 }
 
+/* ---------- Commerzbank ----------
+   Kopf: Buchungstag;Wertstellung;Umsatzart;Buchungstext;Betrag;Währung;IBAN Kontoinhaber;Kategorie[;Sender;Empfänger;Verwendungszweck]
+   Neues Format: Gegenseite in Sender (Eingang) bzw. Empfänger (Ausgang), Text im Verwendungszweck.
+   Älteres Format ohne diese Spalten: alles steht im Buchungstext. Die Kategorie der Bank wird als Hinweis (kb) mitgenommen.
+   raw: Originalfelder für die Buchungs-ID – so bleibt sie stabil, auch wenn die Aufbereitung von p/z später verbessert wird. */
+function parseCB(text,fname){
+  var rows=parseCSV(text,";"),h=-1;
+  for(var i=0;i<Math.min(rows.length,15);i++){var l=rows[i].map(function(x){return clean(x).toLowerCase();});
+    if(l.indexOf("buchungstag")>-1&&l.indexOf("umsatzart")>-1&&l.indexOf("betrag")>-1){h=i;break;}}
+  if(h<0)return null;
+  var hdr=rows[h].map(function(x){return clean(x).toLowerCase();});
+  function col(){for(var j=0;j<arguments.length;j++){var k=hdr.indexOf(arguments[j]);if(k>-1)return k;}return -1;}
+  var cD=col("buchungstag"),cW=col("wertstellung"),cA=col("umsatzart"),cT=col("buchungstext"),cB=col("betrag"),cI=col("iban kontoinhaber","iban auftraggeberkonto"),
+      cK=col("kategorie"),cS=col("sender"),cE=col("empfänger","empfaenger"),cZ=col("verwendungszweck");
+  var fnIban=(/(DE\d{20})/.exec(fname||"")||[])[1]||"",groups={},order=[];
+  function f(x,c){return c>=0?clean(x[c]):"";}
+  for(var r=h+1;r<rows.length;r++){var x=rows[r];if(x.length<5)continue;
+    var d=dateDE(x[cD]),b=numDE(x[cB]);if(!d||b==null)continue;
+    var iban=f(x,cI).replace(/\s/g,"").toUpperCase();if(!/^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(iban))iban=fnIban;
+    var bt=f(x,cT),snd=f(x,cS),emp=f(x,cE),vz=f(x,cZ);
+    var t={d:d,b:b,p:b<0?(emp||snd):(snd||emp),z:vz||bt,t:f(x,cA),raw:[f(x,cW),f(x,cA),bt,snd,emp,vz].join("|")};
+    var kb=f(x,cK);if(kb)t.kb=kb;
+    var key=iban||"?";if(!groups[key]){groups[key]=[];order.push(key);}groups[key].push(t);}
+  if(!order.length)return null;
+  return order.map(function(k){var l4=k!=="?"?k.slice(-4):"";
+    return {bank:"Commerzbank",key:l4?"CB-"+l4:"CB-Konto",name:l4?"Commerzbank Girokonto …"+l4:"Commerzbank-Konto",bereich:"privat",txs:groups[k],saldo:null};});
+}
+
 /* Datei erkennen → Liste von Konten-Blöcken */
 function parseFile(buf,fname){
   var text=decode(buf);
   var ing=parseING(text,fname);if(ing)return [ing];
+  var cb=parseCB(text,fname);if(cb)return cb;
   var n26=parseN26(text);if(n26)return n26;
   return null;
 }
@@ -161,7 +191,7 @@ function parseFile(buf,fname){
    echte Doppel (zweimal derselbe Betrag am selben Tag) bleiben über einen Zähler getrennt */
 function assignIds(block,konto){
   var seen={};
-  block.txs.forEach(function(t){var base=konto+"|"+t.d+"|"+t.b.toFixed(2)+"|"+t.p+"|"+t.z;var n=(seen[base]=(seen[base]||0)+1);t.id=hash(base+"#"+n);t.k=konto;});
+  block.txs.forEach(function(t){var base=konto+"|"+t.d+"|"+t.b.toFixed(2)+"|"+(t.raw!=null?t.raw:t.p+"|"+t.z);var n=(seen[base]=(seen[base]||0)+1);t.id=hash(base+"#"+n);t.k=konto;});
   return block.txs;
 }
 
@@ -248,7 +278,7 @@ function autoImport(d,blocks,file){
     if(!target){res.unbekannt.push(b);return;}
     if(target!==b.key)assignIds(b,target);
     var ko=d.konten[target];if(b.saldo&&(!ko.saldo||b.saldo.d>=ko.saldo.d))ko.saldo=b.saldo;
-    var neu=0;b.txs.forEach(function(t){if(ids[t.id]||del[t.id]){res.dup++;return;}ids[t.id]=1;d.tx.push(t);neu++;});
+    var neu=0;b.txs.forEach(function(t){if(ids[t.id]||del[t.id]){res.dup++;return;}ids[t.id]=1;delete t.raw;d.tx.push(t);neu++;});
     res.neu+=neu;res.konten.push(ko.name||target);if(!res.bereich)res.bereich=ko.bereich||"privat";
     d.imports.push({ts:Date.now(),file:file,konto:ko.name||target,neu:neu,dup:b.txs.length-neu,auto:true});});
   if(res.neu)d.tx.sort(function(a,b){return a.d.localeCompare(b.d);});
@@ -282,6 +312,6 @@ function report(txs,rules,opt){
 }
 function sum(a){return a.reduce(function(s,v){return s+v;},0);}
 
-return {MON:MON,UNKAT:UNKAT,DEFAULT_RULES:DEFAULT_RULES,kwRe:kwRe,matchRule:matchRule,category:category,parseFile:parseFile,parseCSV:parseCSV,
+return {MON:MON,UNKAT:UNKAT,DEFAULT_RULES:DEFAULT_RULES,kwRe:kwRe,matchRule:matchRule,category:category,parseFile:parseFile,parseCSV:parseCSV,parseCB:parseCB,
   decode:decode,assignIds:assignIds,recurring:recurring,addMonths:addMonths,dDiff:dDiff,RHY:RHY,setPartnerMap:setPartnerMap,partnerKey:partnerKey,typeKey:typeKey,report:report,sum:sum,isNeutral:isNeutral,hash:hash,zweckRegel:zweckRegel,zweckVorschlag:zweckVorschlag,kompakt:kompakt,fixkosten:fixkosten,autoImport:autoImport,fp:fp,importStand:importStand,importLuecken:importLuecken};
 })();
