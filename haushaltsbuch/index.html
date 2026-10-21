@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0e1a">
+<title>Haushaltsbuch</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Haushaltsbuch">
+<meta name="format-detection" content="telephone=no">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png" type="image/png">
+<link rel="stylesheet" href="../assets/style.css">
+<style>
+:root{--gruen:#22c55e;--gelb:#f59e0b;--rot:#ef4444;--ein:#22c55e;--aus:#fb923c;}
+body{padding-bottom:calc(86px + env(safe-area-inset-bottom,0px));}
+.content{padding:16px 16px 8px;}
+.field input,.field select,.field textarea,input.in,select.in{font-size:16px;} /* iOS zoomt sonst beim Antippen */
+input.in,select.in{width:100%;background:var(--field);border:1px solid var(--border);border-radius:10px;padding:11px 12px;color:#fff;outline:none;-webkit-appearance:none;appearance:none;}
+input.in:focus,select.in:focus{border-color:var(--accent);}
+select.in{background-image:linear-gradient(45deg,transparent 50%,#5c7aaa 50%),linear-gradient(135deg,#5c7aaa 50%,transparent 50%);background-position:calc(100% - 17px) 50%,calc(100% - 12px) 50%;background-size:5px 5px;background-repeat:no-repeat;padding-right:30px;}
+.pos{color:#4ade80!important;} .neg{color:#f87171!important;} .plus{color:#4ade80;}
+.err{color:#f87171;font-size:13px;min-height:18px;margin:-4px 0 10px;}
+.lbl{font-size:12px;color:var(--muted);margin:4px 0 6px;}
+.note{font-size:12px;color:#cbd5e1;background:#0f2a22;border:1px solid #10b98155;border-radius:10px;padding:9px 11px;line-height:1.5;}
+.lnk{background:none;border:none;color:var(--muted);text-decoration:underline;font-size:13px;padding:10px 0;cursor:pointer;}
+.btn{-webkit-tap-highlight-color:transparent;}
+.btn.ghost{color:#cbd5e1;}
+.stack>*+*{margin-top:8px;}
+
+/* Navigation unten (Daumen) */
+.nav{position:fixed;left:0;right:0;bottom:0;z-index:20;display:flex;justify-content:center;background:rgba(10,14,26,.94);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border-top:1px solid var(--border);padding:6px 4px calc(6px + env(safe-area-inset-bottom,0px));}
+.nav[hidden]{display:none;}
+.nav button{flex:1;max-width:140px;background:none;border:none;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10.5px;padding:4px 0;cursor:pointer;-webkit-tap-highlight-color:transparent;}
+.nav button b{font-size:21px;line-height:1;font-weight:400;filter:grayscale(1);opacity:.65;}
+.nav button.on{color:var(--accent);font-weight:700;}
+.nav button.on b{filter:none;opacity:1;}
+
+/* Monat */
+.mon{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px;}
+.mon button{width:44px;height:44px;border-radius:12px;border:1px solid var(--border);background:var(--panel);color:#fff;font-size:22px;cursor:pointer;flex:0 0 auto;}
+.mon button:disabled{opacity:.2;cursor:default;}
+.mon .mt{text-align:center;min-width:0;} .mon .mt b{font-size:19px;color:#fff;display:block;} .mon .mt span{font-size:11px;color:var(--muted);}
+.hero2{background:radial-gradient(120% 140% at 0% 0%,#10b98126 0%,transparent 60%),var(--panel);border:1px solid var(--border);border-radius:16px;padding:16px 18px;margin-bottom:12px;}
+.hero2 .hl{font-size:12px;color:var(--muted);}
+.hero2 .hv{font-size:34px;font-weight:800;color:#fff;letter-spacing:-.5px;margin:2px 0 4px;font-variant-numeric:tabular-nums;}
+.hero2 .hs{font-size:13px;color:#cbd5e1;} .hero2 .hs b{color:#fff;}
+.hero2 .hs+.hs{margin-top:4px;}
+.kpi .val{font-variant-numeric:tabular-nums;}
+.qbar{height:6px;border-radius:4px;background:#1a2540;margin-top:10px;overflow:hidden;}
+.qbar i{display:block;height:100%;border-radius:4px;background:var(--gruen);}
+.hint{display:block;width:100%;text-align:left;background:#1a1405;border:1px solid #f59e0b66;color:#fcd34d;border-radius:12px;padding:11px 13px;font-size:13px;margin:0 0 10px;cursor:pointer;}
+.hint.blau{background:#06182a;border-color:#38bdf866;color:#bae6fd;}
+.sub{font-size:12px;color:var(--muted);margin:10px 2px 14px;line-height:1.5;}
+
+/* Budget-Ampel */
+.amp{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:-4px 0 6px;}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;}
+.dot.gruen{background:var(--gruen);} .dot.gelb{background:var(--gelb);} .dot.rot{background:var(--rot);}
+.bud{padding:11px 0;border-bottom:1px solid #152038;}
+.bud:last-child{border-bottom:none;}
+.bud .bh{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:14px;}
+.bud .bh span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.bud .bh b{color:#fff;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums;}
+.bar{position:relative;height:10px;border-radius:6px;background:#1a2540;margin:7px 0 5px;}
+.bar i{position:absolute;left:0;top:0;bottom:0;border-radius:6px;}
+.bar i.gruen{background:var(--gruen);} .bar i.gelb{background:var(--gelb);} .bar i.rot{background:var(--rot);}
+.bar s{position:absolute;top:-4px;bottom:-4px;width:2px;margin-left:-1px;background:#e2e8f0;border-radius:1px;opacity:.85;}
+.bud .bs{font-size:12px;color:var(--muted);}
+.bud .bs.gelb{color:#fcd34d;} .bud .bs.rot{color:#fca5a5;}
+.bfoot{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);border-top:1px solid var(--border);padding-top:10px;margin-top:4px;}
+
+/* Kategorien */
+.kat{display:flex;align-items:center;gap:10px;padding:9px 0;width:100%;background:none;border:none;border-bottom:1px solid #152038;color:inherit;text-align:left;cursor:pointer;font-size:14px;}
+.kat:last-child{border-bottom:none;}
+.kat .ki{width:28px;text-align:center;font-size:18px;flex:0 0 auto;}
+.kat .km{flex:1;min-width:0;display:block;}
+.kat .kn{display:flex;justify-content:space-between;gap:8px;}
+.kat .kn span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.kat .kn b{color:#fff;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums;}
+.kat .kb{display:block;height:5px;background:#1a2540;border-radius:3px;margin-top:6px;}
+.kat .kb i{display:block;height:100%;border-radius:3px;background:#38bdf8;}
+.kat .kx{display:block;font-size:11px;color:var(--muted);margin-top:3px;}
+
+/* Verlauf */
+.avg{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;}
+.avg div{background:var(--field);border-radius:10px;padding:9px 11px;}
+.avg span{display:block;font-size:11px;color:var(--muted);}
+.avg b{font-size:15px;color:#fff;font-variant-numeric:tabular-nums;}
+.vm{display:grid;grid-template-columns:70px 1fr 92px;align-items:center;gap:10px;width:100%;padding:8px 6px;background:none;border:none;border-radius:10px;color:inherit;text-align:left;cursor:pointer;font-size:13px;}
+.vm.on{background:#10b9811f;}
+.vm .vn{color:#cbd5e1;white-space:nowrap;}
+.vm .vb{display:flex;flex-direction:column;gap:3px;}
+.vm .vb i{display:block;height:6px;border-radius:3px;min-width:2px;}
+.vm .vb i.e{background:var(--ein);} .vm .vb i.a{background:var(--aus);}
+.vm .vu{text-align:right;font-weight:700;color:#fff;font-variant-numeric:tabular-nums;line-height:1.2;}
+.vm .vu small{display:block;font-weight:400;font-size:11px;color:var(--muted);}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--muted);margin-top:8px;}
+.legend i{display:inline-block;width:10px;height:6px;border-radius:3px;margin-right:5px;vertical-align:1px;}
+
+/* Buchungen */
+.filt{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0 6px;}
+.filt .w{grid-column:1/-1;}
+.sum{font-size:12px;color:var(--muted);margin:8px 2px 2px;}
+.day{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin:16px 2px 6px;}
+.tx{display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--panel);border:1px solid var(--border);border-radius:12px;margin-bottom:6px;width:100%;color:inherit;text-align:left;cursor:pointer;font-size:14px;-webkit-tap-highlight-color:transparent;}
+.tx .ti{font-size:20px;width:28px;text-align:center;flex:0 0 auto;}
+.tx .tm{flex:1;min-width:0;display:block;}
+.tx .tn{display:block;color:#fff;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.tx .tz{display:block;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px;}
+.tx .tz em{font-style:normal;color:#fcd34d;}
+.tx .tb{font-weight:700;white-space:nowrap;color:#fff;font-variant-numeric:tabular-nums;}
+.tx .tb.plus{color:#4ade80;}
+.tx.unk{border-color:#f59e0b66;}
+.tx.umb{opacity:.6;}
+
+/* Blatt zum Bearbeiten */
+#sheet{position:fixed;inset:0;z-index:40;background:rgba(0,0,0,.6);display:flex;align-items:flex-end;justify-content:center;}
+#sheet[hidden]{display:none;}
+#sheet .sh{background:#0f1729;border-top:1px solid var(--border);border-radius:18px 18px 0 0;width:100%;max-width:760px;max-height:90vh;overflow:auto;-webkit-overflow-scrolling:touch;padding:16px 16px 0;}
+.shk{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:8px;}
+.shk b{display:block;color:#fff;font-size:16px;overflow-wrap:anywhere;}
+.shk span{font-size:12px;color:var(--muted);}
+.shk .tb{font-size:18px;font-weight:800;white-space:nowrap;color:#fff;}
+.zw{font-size:13px;color:#cbd5e1;background:var(--field);border-radius:10px;padding:9px 11px;margin:6px 0 10px;overflow-wrap:anywhere;line-height:1.45;}
+.cg{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 14px;}
+.cg button{border:1px solid var(--border);background:var(--field);color:#cbd5e1;border-radius:18px;padding:7px 10px;font-size:13px;cursor:pointer;}
+.cg button.on{background:var(--accent);border-color:var(--accent);color:#03140d;font-weight:700;}
+.seg{flex-wrap:wrap;}
+.shf{position:sticky;bottom:0;background:#0f1729;margin:0 -16px;padding:10px 16px calc(14px + env(safe-area-inset-bottom,0px));border-top:1px solid var(--border);}
+.seg button{min-width:30%;}
+
+/* Budgets */
+.brow{display:grid;grid-template-columns:28px 1fr 104px;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid #152038;}
+.brow:last-child{border-bottom:none;}
+.brow .ki{text-align:center;font-size:18px;}
+.brow .bn{min-width:0;font-size:14px;}
+.brow .bn small{display:block;font-size:11px;color:var(--muted);margin-top:2px;}
+.brow input{text-align:right;padding:9px 10px;}
+details.more summary{cursor:pointer;color:var(--muted);font-size:13px;padding:10px 0;list-style:none;}
+details.more summary::-webkit-details-marker{display:none;}
+details.more summary:before{content:"▸ ";} details.more[open] summary:before{content:"▾ ";}
+
+/* Fixkosten */
+.fx{display:flex;gap:10px;align-items:flex-start;padding:11px 0;border-bottom:1px solid #152038;}
+.fx:last-child{border-bottom:none;}
+.fx .ki{font-size:18px;width:28px;text-align:center;flex:0 0 auto;}
+.fx .fm{flex:1;min-width:0;}
+.fx .fm b{display:block;color:#fff;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.fx .fm span{display:block;font-size:12px;color:var(--muted);margin-top:2px;}
+.fx .fm .chg{color:#fcd34d;}
+.fx .fb{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;}
+.fx .fb b{color:#fff;} .fx .fb small{display:block;font-size:11px;color:var(--muted);}
+.fx .x{background:none;border:none;color:#475569;font-size:16px;padding:2px 0 2px 6px;cursor:pointer;}
+
+/* Einstellungen */
+.ko{border-bottom:1px solid #152038;padding:10px 0;}
+.ko:last-child{border-bottom:none;}
+.ko .kr{display:flex;gap:8px;align-items:center;}
+.ko .kr input{flex:1;}
+.ko small{display:block;color:var(--muted);font-size:12px;margin-top:5px;}
+.rg{display:flex;justify-content:space-between;gap:8px;align-items:center;font-size:13px;padding:7px 0;border-bottom:1px solid #152038;}
+.rg:last-child{border-bottom:none;}
+.rg span{min-width:0;overflow-wrap:anywhere;}
+.rg button{background:none;border:none;color:#64748b;font-size:15px;cursor:pointer;padding:4px 6px;}
+.help summary{cursor:pointer;color:#e2e8f0;font-size:14px;padding:11px 0;border-bottom:1px solid #152038;}
+.help div{font-size:13px;color:#cbd5e1;line-height:1.6;padding:8px 0 12px;}
+.help ol,.help ul{margin:6px 0;padding-left:20px;}
+
+/* Willkommen */
+.ob{max-width:440px;margin:18px auto 0;}
+.ob .obi{font-size:52px;text-align:center;margin-bottom:8px;}
+.ob h2{text-align:center;color:#fff;margin:0 0 10px;font-size:22px;}
+.ob p{color:#cbd5e1;font-size:14px;line-height:1.55;}
+.ob ol,.ob ul{color:#cbd5e1;font-size:14px;line-height:1.7;padding-left:22px;}
+.ob .pin input{text-align:center;letter-spacing:8px;font-size:22px;}
+.empty h2{color:#fff;font-size:19px;margin:0 0 8px;}
+.empty p{line-height:1.55;}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div id="top"></div>
+<div class="content" id="main"></div>
+</div>
+<nav class="nav" id="nav" hidden></nav>
+<div id="sheet" hidden onclick="H.zu()"></div>
+<input type="file" id="fileIn" accept=".csv,text/csv,text/comma-separated-values,text/plain,application/vnd.ms-excel" multiple hidden onchange="H.files(this)">
+<input type="file" id="bkIn" accept=".json,application/json" hidden onchange="H.restore(this)">
+<script>window.COCKPIT_NS="haushaltsbuch";window.COCKPIT_LOCAL_ONLY=true;window.COCKPIT_PIN=true;window.COCKPIT_TITLE="Haushaltsbuch";window.COCKPIT_PRIV_DEFAULT=false;</script>
+<script src="../assets/cockpit.js"></script>
+<script src="../finanzen/logic.js"></script>
+<script src="logic.js"></script>
+<script>
+/* Haushaltsbuch – eigenständige, rein lokale App (iPhone). Keine Synchronisierung, keine persönlichen Daten im Code. */
+(function(){
+"use strict";
+var C=window.Cockpit,F=window.FIN,HB=window.HB,E=C.esc,AREA="daten",APP="haushaltsbuch";
+var data=HB.norm(C.getLocal(AREA,HB.blank));
+var st={tab:"monat",ym:null,q:"",fm:"",fc:"",fk:"",n:120,edit:null,sel:null,art:null,wort:null,msg:null};
+try{var s0=JSON.parse(sessionStorage.getItem(APP+":ui")||"{}");if(s0.tab)st.tab=s0.tab;if(s0.ym)st.ym=s0.ym;}catch(e){}
+function merkUI(){try{sessionStorage.setItem(APP+":ui",JSON.stringify({tab:st.tab,ym:st.ym}));}catch(e){}}
+
+var ICON={"Gehalt & Einnahmen":"💶","Sonstige Einnahmen":"➕","Wohnen & Miete":"🏠","Strom & Energie":"⚡","Lebensmittel":"🛒","Drogerie & Haushalt":"🧴",
+  "Restaurant & Café":"🍽️","Telefon & Internet":"📱","Abos & Streaming":"📺","Versicherungen":"🛡️","Mobilität":"🚗","Gesundheit":"💊","Sport & Freizeit":"🎾",
+  "Urlaub & Reisen":"✈️","Kinder & Familie":"🧸","Kleidung":"👗","Bildung & Bücher":"📚","Geschenke & Spenden":"🎁","Steuern & Gebühren":"🏛️","Online-Shopping":"📦",
+  "Bank & Gebühren":"🏦","Bargeld":"💵","Sparen & Umbuchung":"🐷","Unkategorisiert":"❓","Umbuchung eigene Konten":"🔁"};
+var TABS=[["monat","📊","Monat"],["buchungen","🧾","Buchungen"],["budgets","🎯","Budgets"],["fix","🔁","Fixkosten"],["mehr","⚙️","Mehr"]];
+var MIN_TAG=864e5;
+
+/* ---------- kleine Helfer ---------- */
+function ic(c){return ICON[c]||"🏷️";}
+function js(v){return E(JSON.stringify(v));}
+function eur(n){return C.eur(n);}
+function eur0(n){return C.eur(n,0);}
+function vz(n,d){if(n==null||isNaN(n))return "–";return (n>0.004?"+":n<-0.004?"−":"")+C.eur(Math.abs(n),d);}
+function pct(q){return q==null||isNaN(q)?"–":Math.round(q*100)+" %";}
+function dDE(s,jahr){return s?s.slice(8,10)+"."+s.slice(5,7)+"."+(jahr?s.slice(0,4):""):"";}
+var WT=["So","Mo","Di","Mi","Do","Fr","Sa"];
+function tagKopf(s){var x=new Date(s+"T12:00:00");return WT[x.getDay()]+", "+dDE(s,true);}
+function val(id){var el=document.getElementById(id);return el?String(el.value||"").trim():"";}
+function persist(){C.save(AREA,data);}
+function flash(t,warn){st.msg={t:t,warn:!!warn};render();try{window.scrollTo(0,0);}catch(e){}}
+function dauerhaft(){try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();}catch(e){}}
+function istIOS(){return /iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);}
+function istApp(){return window.navigator.standalone===true||!!(window.matchMedia&&matchMedia("(display-mode: standalone)").matches);}
+function txById(id){for(var i=0;i<data.tx.length;i++)if(data.tx[i].id===id)return data.tx[i];return null;}
+function lastImport(){var m=0;data.imports.forEach(function(i){if(i&&i.ts>m)m=i.ts;});return m;}
+function tageSeit(ts){return Math.floor((Date.now()-ts)/MIN_TAG);}
+function ymRange(){var br=HB.bereich(data),h=HB.heuteYm();if(!br.von)return {min:h,max:h};var b=HB.ymVon(br.bis);return {min:HB.ymVon(br.von),max:b>h?b:h};}
+function aktYm(){var r=ymRange(),br=HB.bereich(data);if(!st.ym)st.ym=br.bis?HB.ymVon(br.bis):HB.heuteYm();if(st.ym<r.min)st.ym=r.min;if(st.ym>r.max)st.ym=r.max;return st.ym;}
+function ausgabeKats(){return HB.rules(data).filter(function(r){return !r.ein&&!r.neutral;}).map(function(r){return r.name;});}
+function monatsName(ym){return HB.ymName(ym).split(" ")[0];}
+
+/* ---------- Grundgerüst ---------- */
+function render(){
+  document.getElementById("top").innerHTML=C.topbar({title:"Haushaltsbuch",sub:"Privat · nur auf diesem Gerät",icon:"💶",accent:"#10b981",accent2:"#22c55e",home:false,sync:false});
+  var nav=document.getElementById("nav"),main=document.getElementById("main");
+  if(!C.pinCfg()){nav.hidden=true;main.innerHTML=willkommen();return;}
+  nav.hidden=false;
+  nav.innerHTML=TABS.map(function(t){return '<button class="'+(st.tab===t[0]?"on":"")+'" onclick="H.tab(\''+t[0]+'\')"><b>'+t[1]+'</b>'+t[2]+'</button>';}).join("");
+  var h=st.msg?'<div class="flash'+(st.msg.warn?" warn":"")+'">'+E(st.msg.t)+'</div>':"";
+  var v={monat:vMonat,buchungen:vBuchungen,budgets:vBudgets,fix:vFix,mehr:vMehr}[st.tab]||vMonat;
+  main.innerHTML=h+v();merkUI();sheet();
+}
+
+/* ---------- Willkommen: Home-Bildschirm, PIN ---------- */
+function willkommen(){
+  var browserOk=false;try{browserOk=sessionStorage.getItem(APP+":browser")==="1";}catch(e){}
+  if(istIOS()&&!istApp()&&!browserOk)return '<div class="ob"><div class="obi">📲</div><h2>Zuerst auf den Home-Bildschirm</h2>'+
+    '<p>So startet das Haushaltsbuch wie eine App, und deine Daten bleiben dauerhaft auf dem iPhone:</p>'+
+    '<ol><li>Unten in Safari auf <b>Teilen</b> tippen (Quadrat mit Pfeil nach oben)</li><li><b>Zum Home-Bildschirm</b> wählen (evtl. etwas nach unten wischen)</li><li>Oben rechts <b>Hinzufügen</b> tippen</li><li>Safari schließen und das Haushaltsbuch über das neue Symbol öffnen</li></ol>'+
+    '<p class="small muted">Wichtig: Die App auf dem Home-Bildschirm hat ihren eigenen Speicher. Was du hier in Safari eingibst, sieht sie nicht.</p>'+
+    '<button class="btn ghost full" onclick="H.browser()">Nur ausprobieren (hier im Browser weiter)</button></div>';
+  return '<div class="ob"><div class="obi">🔐</div><h2>Willkommen</h2>'+
+    '<p>Du lädst die Kontoauszüge deiner Bank als Datei und siehst, wofür dein Geld draufgeht – mit Budgets, Ampel und Sparquote.</p>'+
+    '<ul><li>Alles bleibt auf diesem Gerät: kein Konto, kein Server, keine Bank-Zugangsdaten.</li><li>Eine PIN schützt die App beim Öffnen.</li></ul>'+
+    '<div class="field pin"><label>Neue PIN (4 bis 8 Ziffern)</label><input id="p1" class="in" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="new-password"></div>'+
+    '<div class="field pin"><label>PIN wiederholen</label><input id="p2" class="in" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="new-password" onkeydown="if(event.key===\'Enter\')H.pinNeu()"></div>'+
+    '<div class="err" id="perr"></div><button class="btn full grad" onclick="H.pinNeu()">PIN festlegen und loslegen</button>'+
+    '<p class="small muted" style="margin-top:14px">Merk dir die PIN gut. Zurücksetzen lässt sie sich nicht – dann hilft nur, die App neu zu installieren und deine letzte Sicherung einzulesen.</p></div>';
+}
+
+/* ---------- Leerer Zustand ---------- */
+function leer(){return '<div class="empty"><div class="big">📥</div><h2>Lade deinen ersten Kontoauszug</h2>'+
+  '<p class="small">Die CSV-Datei aus dem Online-Banking der ING. Commerzbank folgt in Kürze. Mehrere Dateien auf einmal gehen auch.</p>'+
+  '<button class="btn full grad" onclick="H.laden()">Kontoauszug laden</button>'+
+  '<button class="lnk" onclick="H.hilfe()">So bekommst du die CSV-Datei</button>'+
+  '<p class="small" style="margin-top:18px">Du hast eine Sicherungsdatei? <button class="lnk" style="padding:0" onclick="H.einlesen()">Sicherung einlesen</button></p></div>';}
+
+/* ---------- Hinweise (Import, Sicherung) ---------- */
+function hinweise(){var h="",li=lastImport(),lb=C.lastBackup();
+  if(li&&tageSeit(li)>=30)h+='<button class="hint blau" onclick="H.laden()">📥 Letzter Import vor '+tageSeit(li)+' Tagen – neue Kontoauszüge laden ›</button>';
+  if(data.tx.length&&(!lb||tageSeit(lb)>=30))h+='<button class="hint" onclick="H.sichern()">💾 '+(lb?"Letzte Sicherung vor "+tageSeit(lb)+" Tagen":"Noch keine Sicherung")+' – jetzt sichern ›</button>';
+  return h;}
+
+/* ---------- Monat ---------- */
+function vMonat(){
+  if(!data.tx.length)return leer();
+  var ym=aktYm(),r=ymRange(),br=HB.bereich(data),m=HB.monat(data,ym),voll=HB.voll(data,ym,br),cur=HB.heuteYm();
+  var laeuft=ym===HB.ymVon(br.bis)&&!voll,erster=ym===HB.ymVon(br.von)&&!voll&&!laeuft;
+  var h=hinweise();
+  h+='<div class="mon"><button onclick="H.ym(-1)" '+(ym<=r.min?"disabled":"")+' aria-label="Vormonat">‹</button><div class="mt"><b>'+E(HB.ymName(ym))+'</b><span>'+
+    (laeuft?"läuft noch · Buchungen bis "+dDE(br.bis):erster?"Daten erst ab "+dDE(br.von):m.n+" Buchungen")+'</span></div><button onclick="H.ym(1)" '+(ym>=r.max?"disabled":"")+' aria-label="Nächster Monat">›</button></div>';
+  if(!m.n)return h+'<div class="empty"><div class="big">🗓️</div><p>Für '+E(HB.ymName(ym))+' sind keine Buchungen da.</p><button class="btn ghost" onclick="H.laden()">Kontoauszug laden</button></div>';
+  var ziel=+data.einst.sparziel||0,sch=laeuft?HB.schnitt(data,3):null;
+  h+='<div class="hero2"><div class="hl">'+(laeuft?"Bisher im "+E(monatsName(ym)):"Übrig im "+E(monatsName(ym)))+'</div><div class="hv '+(m.ueb>=0?"pos":"neg")+'">'+vz(m.ueb)+'</div>'+
+    '<div class="hs">Sparquote <b>'+pct(m.quote)+'</b>'+(ziel&&!laeuft?' · Ziel '+eur0(ziel)+(m.ueb>=ziel?' ✓ erreicht':' – fehlen '+eur0(ziel-m.ueb)):'')+'</div>'+
+    (laeuft&&sch&&sch.n&&m.ein<sch.ein*0.5?'<div class="hs small muted">Einnahmen (Ø '+eur0(sch.ein)+') sind noch nicht eingegangen.</div>':'')+
+    (m.quote!=null&&m.quote>0?'<div class="qbar"><i style="width:'+Math.min(100,Math.round(m.quote*100))+'%"></i></div>':'')+'</div>';
+  h+='<div class="grid2"><div class="kpi"><div class="lab">Einnahmen</div><div class="val plus">'+eur(m.ein)+'</div></div><div class="kpi"><div class="lab">Ausgaben</div><div class="val">'+eur(m.aus)+'</div></div></div>';
+  var ex=[];if(m.spar>0.004)ex.push("davon "+eur(m.spar)+" aufs Sparkonto überwiesen");else if(m.spar<-0.004)ex.push(eur(-m.spar)+" vom Sparkonto zurückgeholt");
+  if(m.intern>0.004)ex.push(eur(m.intern)+" zwischen deinen Konten umgebucht (zählt nicht mit)");
+  h+=ex.length?'<p class="sub">'+ex.map(E).join(" · ")+'</p>':'<div style="height:12px"></div>';
+  if(m.unkat)h+='<button class="hint" onclick="H.zeigUnkat()">❓ '+m.unkat+(m.unkat===1?" Buchung":" Buchungen")+' ohne Kategorie – jetzt zuordnen ›</button>';
+  h+=budgetPanel(ym,m,laeuft);
+  var l=HB.ausgabenListe(m),mx=l.length?l[0].v:1;
+  h+='<div class="panel"><h3>Ausgaben nach Kategorie</h3>'+(l.length?l.map(function(x){var b=+data.budgets[x.c]||0;
+    return '<button class="kat" onclick="H.filterKat('+js(x.c)+')"><span class="ki">'+ic(x.c)+'</span><span class="km"><span class="kn"><span>'+E(x.c)+'</span><b>'+eur(x.v)+'</b></span>'+
+      '<span class="kb"><i style="width:'+Math.max(2,Math.round(x.v/mx*100))+'%"></i></span>'+(m.aus>0?'<span class="kx">'+pct(x.v/m.aus)+' der Ausgaben'+(b?' · Budget '+eur0(b):'')+'</span>':'')+'</span></button>';}).join(""):'<p class="small muted">Keine Ausgaben in diesem Monat.</p>')+'</div>';
+  h+=verlaufPanel(ym);
+  return h;
+}
+function budgetPanel(ym,m,laeuft){var l=HB.budgetStand(data,ym,m);
+  if(!l.length)return '<div class="panel"><h3>Budget-Ampel</h3><p class="small muted" style="margin-top:0">Lege fest, wie viel du je Kategorie im Monat ausgeben willst. Die Ampel zeigt dir dann, wo du stehst.</p><button class="btn ghost full" onclick="H.tab(\'budgets\')">Budgets festlegen</button></div>';
+  var n={gruen:0,gelb:0,rot:0},sb=0,sa=0,rest=laeuft?Math.max(0,HB.tageIm(ym)-(+HB.bereich(data).bis.slice(8,10))):0;
+  l.forEach(function(x){n[x.ampel]++;sb+=x.budget;sa+=x.aus;});
+  var h='<div class="panel"><h3>Budget-Ampel</h3><div class="amp"><span><i class="dot gruen"></i>'+n.gruen+' im Rahmen</span><span><i class="dot gelb"></i>'+n.gelb+' knapp</span><span><i class="dot rot"></i>'+n.rot+' überzogen</span></div>';
+  h+=l.map(function(x){var w=Math.min(100,Math.round(x.p*100)),t;
+    if(x.ampel==="rot")t="✕ "+eur(x.aus-x.budget)+" drüber";
+    else if(!laeuft)t=(x.ampel==="gelb"?"⚠ knapp eingehalten · ":"✓ eingehalten · ")+eur(x.rest)+" übrig";
+    else t=(x.ampel==="gelb"?"⚠ knapp – noch ":"✓ noch ")+eur(x.rest)+(rest>0&&x.rest>0?" · ≈ "+eur(x.rest/rest)+" pro Tag":"");
+    return '<div class="bud"><div class="bh"><span>'+ic(x.c)+' '+E(x.c)+'</span><b>'+eur0(x.aus)+' / '+eur0(x.budget)+'</b></div>'+
+      '<div class="bar"><i class="'+x.ampel+'" style="width:'+Math.max(w,1)+'%"></i>'+(x.tempo>0&&x.tempo<1?'<s style="left:'+Math.round(x.tempo*100)+'%"></s>':'')+'</div>'+
+      '<div class="bs '+x.ampel+'">'+t+'</div></div>';}).join("");
+  h+='<div class="bfoot"><span>Zusammen '+eur0(sa)+' von '+eur0(sb)+'</span><span>'+(laeuft?"Strich = heute":"")+'</span></div></div>';
+  return h;}
+function verlaufPanel(ym){var v=HB.verlauf(data,12).reverse();if(v.length<2)return "";
+  var vo=v.filter(function(m){return m.voll&&m.n;}),mx=1;v.forEach(function(m){mx=Math.max(mx,m.ein,m.aus);});
+  var s=function(k){return vo.reduce(function(a,m){return a+m[k];},0);},ae=vo.length?s("ein")/vo.length:0,aa=vo.length?s("aus")/vo.length:0,au=ae-aa;
+  var jahr=HB.heuteYm().slice(0,4),jj=v.filter(function(m){return m.ym.slice(0,4)===jahr&&m.voll&&m.n;}).sort(function(a,b){return a.ym.localeCompare(b.ym);}),js_=jj.reduce(function(a,m){return a+m.ueb;},0);
+  var h='<div class="panel"><h3>Letzte 12 Monate</h3>';
+  if(vo.length)h+='<div class="avg"><div><span>Ø Einnahmen</span><b>'+eur0(ae)+'</b></div><div><span>Ø Ausgaben</span><b>'+eur0(aa)+'</b></div><div><span>Ø übrig pro Monat</span><b class="'+(au>=0?"pos":"neg")+'">'+vz(au,0)+'</b></div><div><span>Ø Sparquote</span><b>'+pct(ae>0?au/ae:null)+'</b></div></div>';
+  h+=v.map(function(m){return '<button class="vm'+(m.ym===ym?" on":"")+'" onclick="H.zuMonat(\''+m.ym+'\')"><span class="vn">'+E(HB.ymName(m.ym,true))+(m.voll?"":" *")+'</span>'+
+    '<span class="vb"><i class="e" style="width:'+Math.round(m.ein/mx*100)+'%"></i><i class="a" style="width:'+Math.round(m.aus/mx*100)+'%"></i></span>'+
+    '<span class="vu '+(m.ueb>=0?"":"neg")+'">'+vz(m.ueb,0)+'<small>'+(m.n?pct(m.quote):"keine Daten")+'</small></span></button>';}).join("");
+  h+='<div class="legend"><span><i style="background:var(--ein)"></i>Einnahmen</span><span><i style="background:var(--aus)"></i>Ausgaben</span><span>* Monat unvollständig, zählt nicht im Durchschnitt</span></div>';
+  if(jj.length)h+='<p class="sub" style="margin-bottom:0">'+E(jj.length>1?monatsName(jj[0].ym)+" bis "+monatsName(jj[jj.length-1].ym)+" "+jahr:HB.ymName(jj[0].ym))+' zusammen übrig: <b style="color:#fff">'+vz(js_)+'</b></p>';
+  return h+'</div>';}
+
+/* ---------- Buchungen ---------- */
+function vBuchungen(){
+  if(!data.tx.length)return leer();
+  var mon={},kat={};data.tx.forEach(function(t){mon[t.d.slice(0,7)]=1;});
+  var R=HB.prep(data),I=HB.intern(data);data.tx.forEach(function(t){kat[HB.katAnzeige(t,R,I)]=1;});
+  var ks=Object.keys(data.konten);
+  var h='<button class="btn ghost full" onclick="H.laden()">📥 Kontoauszug laden</button>';
+  h+='<div class="filt"><input class="in w" type="search" placeholder="Suchen: Name, Text, Betrag" value="'+E(st.q)+'" oninput="H.suche(this.value)" autocomplete="off">'+
+    '<select class="in" onchange="H.f(\'fm\',this.value)"><option value="">Alle Monate</option>'+Object.keys(mon).sort().reverse().map(function(x){return '<option value="'+x+'"'+(st.fm===x?" selected":"")+'>'+E(HB.ymName(x))+'</option>';}).join("")+'</select>'+
+    '<select class="in" onchange="H.f(\'fc\',this.value)"><option value="">Alle Kategorien</option>'+Object.keys(kat).sort(function(a,b){return a===F.UNKAT?-1:b===F.UNKAT?1:a.localeCompare(b);}).map(function(x){return '<option value="'+E(x)+'"'+(st.fc===x?" selected":"")+'>'+E(x)+'</option>';}).join("")+'</select>'+
+    (ks.length>1?'<select class="in w" onchange="H.f(\'fk\',this.value)"><option value="">Alle Konten</option>'+ks.map(function(k){return '<option value="'+E(k)+'"'+(st.fk===k?" selected":"")+'>'+E(data.konten[k].name||k)+'</option>';}).join("")+'</select>':'')+'</div>';
+  return h+'<div id="txl">'+txListe()+'</div>';
+}
+function txListe(){var R=HB.prep(data),I=HB.intern(data),l=HB.suche(data,{q:st.q,ym:st.fm,c:st.fc,k:st.fk}),ein=0,aus=0;
+  l.forEach(function(t){if(!t.cat&&I[t.id])return;if(t.b>0)ein+=t.b;else aus-=t.b;});
+  var h='<div class="sum">'+l.length+(l.length===1?" Buchung":" Buchungen")+(l.length?' · rein '+eur(ein)+' · raus '+eur(aus):'')+(st.q||st.fm||st.fc||st.fk?' · <button class="lnk" style="padding:0" onclick="H.filterWeg()">Filter löschen</button>':'')+'</div>';
+  if(!l.length)return h+'<div class="empty"><div class="big">🔎</div><p>Nichts gefunden.</p></div>';
+  var tag="";l.slice(0,st.n).forEach(function(t){if(t.d!==tag){tag=t.d;h+='<div class="day">'+tagKopf(t.d)+'</div>';}h+=txZeile(t,R,I);});
+  if(l.length>st.n)h+='<button class="btn ghost full" onclick="H.mehrTx()">Weitere '+Math.min(200,l.length-st.n)+' anzeigen</button>';
+  return h;}
+function txZeile(t,R,I){var c=HB.katAnzeige(t,R,I),unk=c===F.UNKAT,umb=c===HB.UMB;
+  return '<button class="tx'+(unk?" unk":"")+(umb?" umb":"")+'" onclick="H.edit(\''+t.id+'\')"><span class="ti">'+ic(c)+'</span><span class="tm"><span class="tn">'+E(t.p||t.t||"Buchung")+'</span>'+
+    '<span class="tz">'+(unk?'<em>Kategorie wählen</em>':E(c))+(t.z?' · '+E(t.z):'')+'</span></span><span class="tb'+(t.b>0?" plus":"")+'">'+vz(t.b)+'</span></button>';}
+
+/* ---------- Blatt: Kategorie ändern ---------- */
+function sheet(){var el=document.getElementById("sheet");
+  if(!st.edit){el.hidden=true;el.innerHTML="";document.body.style.overflow="";return;}
+  var t=txById(st.edit);if(!t){st.edit=null;return sheet();}
+  var R=HB.prep(data),I=HB.intern(data),c=HB.katAnzeige(t,R,I),ko=data.konten[t.k]||{},dienst=HB.istDienst(t);
+  var partnerOk=(t.p&&!dienst)||(!t.p&&F.typeKey(t.t)),zweckOk=!!t.z;
+  if(st.wort==null)st.wort=zweckOk?F.zweckVorschlag(t.z):"";
+  if(!st.art)st.art=partnerOk?"partner":(dienst&&zweckOk&&st.wort?"zweck":"eine");
+  var sel=st.sel||(c===F.UNKAT||c===HB.UMB?"":c),kats=HB.rules(data).map(function(r){return r.name;});
+  var h='<div class="sh" onclick="event.stopPropagation()"><div class="shk"><div><b>'+E(t.p||t.t||"Buchung")+'</b><span>'+tagKopf(t.d)+' · '+E(ko.name||t.k)+'</span></div><div class="tb '+(t.b>0?"plus":"")+'">'+vz(t.b)+'</div></div>';
+  if(t.t&&t.p)h+='<div class="small muted">'+E(t.t)+'</div>';
+  if(t.z)h+='<div class="zw">'+E(t.z)+'</div>';
+  if(c===HB.UMB)h+='<p class="note">🔁 Erkannt als Umbuchung zwischen deinen Konten – zählt weder als Einnahme noch als Ausgabe. Wählst du eine Kategorie, zählt die Buchung wieder mit.</p>';
+  h+='<div class="lbl">Gilt für</div><div class="seg">'+
+    '<button class="'+(st.art==="eine"?"on":"")+'" onclick="H.art(\'eine\')">nur diese Buchung</button>'+
+    (partnerOk?'<button class="'+(st.art==="partner"?"on":"")+'" onclick="H.art(\'partner\')">alle von „'+E(String(t.p||t.t).slice(0,22))+'“</button>':'')+
+    (zweckOk?'<button class="'+(st.art==="zweck"?"on":"")+'" onclick="H.art(\'zweck\')">Stichwort im Text</button>':'')+'</div>';
+  if(st.art==="zweck")h+='<div class="field"><label>Alle Buchungen, in deren Verwendungszweck dieses Wort steht</label><input id="zw" class="in" value="'+E(st.wort)+'" oninput="H.wort(this.value)" autocomplete="off" autocapitalize="off"></div>';
+  if(dienst)h+='<p class="small muted" style="margin-top:-4px">'+E(t.p||"Das")+' ist ein Zahlungsdienst – der eigentliche Händler steht im Verwendungszweck. Wähle darum besser ein Stichwort wie „'+E(st.wort||"spotify")+'“.</p>';
+  h+='<div class="lbl">Kategorie'+(t.cat?' (von dir gesetzt)':'')+'</div><div class="cg">'+kats.map(function(k){return '<button class="'+(k===sel?"on":"")+'" onclick="H.sel('+js(k)+')">'+ic(k)+' '+E(k)+'</button>';}).join("")+'</div>';
+  h+='<div style="text-align:center"><button class="lnk" onclick="H.del()">Buchung löschen</button></div>';
+  h+='<div class="shf"><div class="err" id="serr" style="margin:0 0 6px;min-height:0"></div><div class="row2"><button class="btn ghost" onclick="H.zu()">Abbrechen</button><button class="btn" onclick="H.ok()">Speichern</button></div></div></div>';
+  el.innerHTML=h;el.hidden=false;document.body.style.overflow="hidden";
+}
+
+/* ---------- Budgets ---------- */
+function vBudgets(){
+  var s=HB.schnitt(data,3),vor=HB.budgetVorschlag(data),cats=ausgabeKats();
+  var mit=cats.filter(function(c){return +data.budgets[c]>0;}),aktiv=cats.filter(function(c){return !(+data.budgets[c]>0)&&s.cats[c]>=5&&!HB.FIXKAT[c];}).sort(function(a,b){return s.cats[b]-s.cats[a];}),
+    fixk=cats.filter(function(c){return !(+data.budgets[c]>0)&&HB.FIXKAT[c]&&s.cats[c]>=5;}),rest=cats.filter(function(c){return mit.indexOf(c)<0&&aktiv.indexOf(c)<0&&fixk.indexOf(c)<0;});
+  mit.sort(function(a,b){return (s.cats[b]||0)-(s.cats[a]||0);});
+  function zeile(c){var b=+data.budgets[c]||0;
+    return '<div class="brow"><span class="ki">'+ic(c)+'</span><span class="bn">'+E(c)+'<small>'+(s.n&&s.cats[c]?"Ø "+eur0(s.cats[c])+" pro Monat":"bisher keine Ausgaben")+'</small></span>'+
+      '<input class="in" inputmode="decimal" placeholder="'+(vor[c]?String(vor[c]):"–")+'" value="'+(b?String(b).replace(".",","):"")+'" onchange="H.budget('+js(c)+',this.value)" aria-label="Budget '+E(c)+' in Euro"></div>';}
+  var h='<div class="panel"><h3>Was soll im Monat übrig bleiben?</h3><div class="brow" style="border:none;padding-top:0"><span class="ki">🐷</span><span class="bn">Sparziel pro Monat<small>'+(s.n?"bisher Ø "+vz(s.ueb,0)+" übrig ("+pct(s.quote)+")":"zeigt dir die Übersicht")+'</small></span>'+
+    '<input class="in" inputmode="decimal" placeholder="z. B. 300" value="'+(+data.einst.sparziel?String(data.einst.sparziel).replace(".",","):"")+'" onchange="H.sparziel(this.value)" aria-label="Sparziel in Euro"></div></div>';
+  h+='<div class="panel"><h3>Budgets je Kategorie (Euro pro Monat)</h3><p class="small muted" style="margin-top:0">Grün bis 80 %, gelb bis 100 %, rot darüber. Der graue Wert im Feld ist ein Vorschlag aus deinen letzten '+(s.n||3)+' vollen Monaten.</p>';
+  if(Object.keys(vor).length)h+='<button class="btn ghost full" onclick="H.vorschlag()" style="margin-bottom:8px">Vorschläge in leere Felder übernehmen</button>';
+  h+=(mit.length?mit.map(zeile).join(""):"")+(aktiv.length?(mit.length?'<div class="lbl" style="margin-top:14px">Weitere Kategorien mit Ausgaben</div>':'')+aktiv.map(zeile).join(""):"");
+  if(fixk.length)h+='<details class="more"><summary>Feste Kosten ('+fixk.length+') – Budget meist nicht nötig</summary>'+fixk.map(zeile).join("")+'</details>';
+  if(rest.length)h+='<details class="more"'+(mit.length||aktiv.length?'':' open')+'><summary>Übrige Kategorien ('+rest.length+')</summary>'+rest.map(zeile).join("")+'</details>';
+  h+='<div class="bfoot" id="bsum">'+budSumme(s)+'</div></div>';
+  if(mit.length)h+='<div style="text-align:center"><button class="lnk" onclick="H.budgetsWeg()">Alle Budgets löschen</button></div>';
+  return h;}
+function budSumme(s){s=s||HB.schnitt(data,3);var sum=0;Object.keys(data.budgets).forEach(function(c){sum+=+data.budgets[c]||0;});
+  return '<span>Budgets zusammen '+eur0(sum)+'</span><span>'+(s.n?"Ø Einnahmen "+eur0(s.ein):"")+'</span>';}
+
+/* ---------- Fixkosten ---------- */
+function vFix(){
+  if(!data.tx.length)return leer();
+  var l=HB.fixkosten(data),alle=HB.fixkosten(data,true),aus=alle.filter(function(x){return data.fixAus[x.key];}),sum=0,abo=0,s=HB.schnitt(data,3);
+  l.forEach(function(x){sum+=x.monthly;if(x.cat==="Abos & Streaming")abo+=x.monthly;});
+  var h='<div class="hero2"><div class="hl">Fixkosten & Abos pro Monat</div><div class="hv">'+eur(sum)+'</div><div class="hs">'+l.length+' regelmäßige Zahlungen'+(s.n&&s.ein>0?' · '+pct(sum/s.ein)+' deiner Ø Einnahmen':'')+'</div>'+
+    (abo>0?'<div class="hs">davon Abos & Streaming '+eur(abo)+' im Monat · '+eur0(abo*12)+' im Jahr</div>':'')+'</div>';
+  h+='<div class="panel"><h3>Erkannt aus deinen Buchungen</h3>'+(l.length?l.map(function(x){
+    var rh=x.rh>1?eur(x.amount)+" "+x.rhName:x.rhName;
+    return '<div class="fx"><span class="ki">'+ic(x.cat)+'</span><div class="fm"><b>'+E(x.name)+'</b><span>'+E(x.cat)+' · '+E(rh)+(x.variable?" (schwankt)":"")+' · nächste ca. '+dDE(x.next)+'</span>'+
+      (x.change?'<span class="chg">'+(x.change.to>x.change.from?"↑ teurer":"↓ günstiger")+' seit '+dDE(x.change.d,true)+': '+eur(x.change.from)+' → '+eur(x.change.to)+'</span>':'')+'</div>'+
+      '<div class="fb"><b>'+eur(x.monthly)+'</b><small>pro Monat</small></div><button class="x" onclick="H.fixAus('+js(x.key)+')" title="Ist keine Fixkosten" aria-label="ausblenden">✕</button></div>';}).join(""):'<p class="small muted" style="margin:0">Noch nichts erkannt. Dafür braucht es mindestens drei gleichartige Abbuchungen (bei jährlichen zwei).</p>')+'</div>';
+  if(aus.length)h+='<details class="more"><summary>Ausgeblendet ('+aus.length+')</summary>'+aus.map(function(x){return '<div class="rg"><span>'+ic(x.cat)+' '+E(x.name)+' · '+eur(x.monthly)+' pro Monat</span><button onclick="H.fixEin('+js(x.key)+')">wieder zeigen</button></div>';}).join("")+'</details>';
+  h+='<p class="sub">Erkannt wird, was regelmäßig an denselben Empfänger geht (monatlich bis jährlich). Die nächste Abbuchung ist geschätzt. Tipp: Prüf ab und zu, ob du jedes Abo noch nutzt.</p>';
+  return h;}
+
+/* ---------- Mehr: Konten, Kategorien, Sicherung, PIN, Hilfe ---------- */
+function vMehr(){
+  var h='',ks=HB.kontoStand(data),lb=C.lastBackup(),p=C.pinCfg()||{};
+  h+='<div class="panel"><h3>📥 Konten & Kontoauszüge</h3><button class="btn full grad" onclick="H.laden()">Kontoauszug laden (CSV)</button>';
+  h+=ks.length?ks.map(function(k){return '<div class="ko"><div class="kr"><input class="in" value="'+E(k.name||k.k)+'" onchange="H.kontoName('+js(k.k)+',this.value)" aria-label="Kontoname"><button class="btn ghost" style="padding:10px 12px" onclick="H.kontoWeg('+js(k.k)+')" aria-label="Konto löschen">🗑</button></div>'+
+    '<small>'+k.n+' Buchungen'+(k.von?' · '+dDE(k.von,true)+' bis '+dDE(k.bis,true):'')+(k.saldo?' · Kontostand '+eur(k.saldo.v)+' am '+dDE(k.saldo.d):'')+'</small></div>';}).join(""):'<p class="small muted">Noch keine Konten. Sie entstehen beim ersten Import automatisch.</p>';
+  var imp=data.imports.slice(-4).reverse();if(imp.length)h+='<div class="lbl" style="margin-top:12px">Letzte Importe</div>'+imp.map(function(i){var x=new Date(i.ts);return '<div class="rg"><span>'+x.toLocaleDateString("de-DE")+' · '+E(i.konto)+'</span><span class="muted">'+i.neu+' neu'+(i.dup?' · '+i.dup+' schon da':'')+'</span></div>';}).join("");
+  h+='</div>';
+  /* Kategorien */
+  var eig=data.eigeneKat.filter(function(k){return k&&!k.del;}),rg=HB.regeln(data);
+  h+='<div class="panel"><h3>🏷️ Kategorien</h3><div class="field"><label>Eigene Kategorie anlegen</label><input id="kn" class="in" placeholder="z. B. Haustier" autocomplete="off"></div>'+
+    '<div class="field"><label>Stichwörter (optional, durch Komma getrennt)</label><input id="kw" class="in" placeholder="z. B. fressnapf, tierarzt" autocomplete="off" autocapitalize="off"></div>'+
+    '<div class="seg" id="kart"><button class="on" onclick="H.kart(this,0)">Ausgabe</button><button onclick="H.kart(this,1)">Einnahme</button></div><button class="btn ghost full" onclick="H.katNeu()">Anlegen</button>';
+  if(eig.length)h+='<div class="lbl" style="margin-top:12px">Deine Kategorien</div>'+eig.map(function(k){return '<div class="rg"><span>'+ic(k.name)+' '+E(k.name)+(k.ein?' (Einnahme)':'')+(k.words&&k.words.length?' · '+E(k.words.join(", ")):'')+'</span><button onclick="H.katWeg('+js(k.name)+')" aria-label="löschen">✕</button></div>';}).join("");
+  h+='<details class="more"><summary>Gelernte Zuordnungen ('+rg.length+')</summary>'+(rg.length?rg.map(function(r){return '<div class="rg"><span>'+(r.art==="zweck"?"Text enthält ":"")+'„'+E(r.k)+'“ → '+E(r.c)+'</span><button onclick="H.regelWeg('+js(r.art)+','+js(r.k)+')" aria-label="löschen">✕</button></div>';}).join(""):'<p class="small muted">Entstehen, wenn du bei einer Buchung die Kategorie änderst und „alle von …“ oder „Stichwort“ wählst.</p>')+'</details></div>';
+  /* Sicherung */
+  h+='<div class="panel"><h3>💾 Sicherung</h3><p class="small muted" style="margin-top:0">Deine Daten liegen nur in dieser App. Löschst du sie vom Home-Bildschirm, sind sie weg. Speichere darum ab und zu eine Sicherung, z. B. in „Dateien“. Die Datei ist nicht verschlüsselt – leg sie nur dort ab, wo nur du hinkommst.</p>'+
+    '<div class="kv"><span>Letzte Sicherung</span><span>'+(lb?new Date(lb).toLocaleDateString("de-DE"):"noch nie")+'</span></div>'+
+    '<div class="stack" style="margin-top:8px"><button class="btn full" onclick="H.sichern()">Sicherung speichern</button><button class="btn ghost full" onclick="H.einlesen()">Sicherung einlesen</button></div></div>';
+  /* PIN */
+  h+='<div class="panel"><h3>🔒 PIN & Sperre</h3><div class="field"><label>Automatisch sperren nach</label><select class="in" onchange="H.sperre(this.value)">'+
+    [1,2,5,10,15,30].map(function(n){return '<option value="'+n+'"'+((+p.min||5)===n?" selected":"")+'>'+n+(n===1?" Minute":" Minuten")+'</option>';}).join("")+'</select></div>'+
+    '<details class="more"><summary>PIN ändern</summary><div class="field"><label>Bisherige PIN</label><input id="pa" class="in" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="current-password"></div>'+
+    '<div class="field"><label>Neue PIN (4 bis 8 Ziffern)</label><input id="pn1" class="in" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="new-password"></div>'+
+    '<div class="field"><label>Neue PIN wiederholen</label><input id="pn2" class="in" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="new-password"></div>'+
+    '<div class="err" id="pinerr"></div><button class="btn full" onclick="H.pinAendern()">PIN ändern</button></details>'+
+    '<button class="btn ghost full" style="margin-top:8px" onclick="Cockpit.lockNow()">Jetzt sperren</button></div>';
+  /* Hilfe */
+  h+='<div class="panel help" id="hilfe"><h3>❔ Anleitung</h3>'+
+    '<details'+(st.hilfe?" open":"")+'><summary>Kontoauszug von der ING holen (CSV)</summary><div><ol><li>In Safari das Online-Banking der ING öffnen und anmelden (die Banking-App bietet den Export nicht an).</li><li>Girokonto öffnen, bei den Umsätzen auf <b>Export</b> bzw. das Download-Symbol tippen.</li><li>Format <b>CSV</b> und den Zeitraum wählen (beim ersten Mal ruhig 12 Monate).</li><li>Die Datei landet in „Dateien“ → „Downloads“.</li><li>Hier auf <b>Kontoauszug laden</b> tippen und die Datei auswählen.</li></ol>Findest du den Export am iPhone nicht: in Safari über „aA“ die Desktop-Website anfordern oder am Computer exportieren und per AirDrop schicken. Überschneidende Zeiträume sind kein Problem – doppelte Buchungen werden erkannt.</div></details>'+
+    '<details><summary>Commerzbank</summary><div>Kommt in Kürze. Im Online-Banking geht es dann über die Umsatzübersicht → „PDF / CSV“ → „Umsätze exportieren“ → CSV.</div></details>'+
+    '<details><summary>So wird gerechnet</summary><div><ul><li><b>Einnahmen</b>: Gehalt und andere Gutschriften.</li><li><b>Ausgaben</b>: alle Abbuchungen. Erstattungen (z. B. Retouren) mindern die Ausgaben ihrer Kategorie.</li><li><b>Übrig</b> = Einnahmen − Ausgaben, <b>Sparquote</b> = Übrig ÷ Einnahmen.</li><li>Überweisungen aufs eigene Sparkonto sind keine Ausgaben – sie stecken im „Übrig“ und werden extra gezeigt.</li><li>Umbuchungen zwischen zwei Konten, die du hier geladen hast, zählen gar nicht.</li></ul></div></details>'+
+    '<details><summary>Kategorie ändern und lernen</summary><div>Tipp auf eine Buchung und wähle die Kategorie. Mit „alle von …“ merkt sich die App den Empfänger und ordnet künftige Buchungen selbst zu. Bei PayPal oder Klarna steht der Händler im Verwendungszweck – dort ein Stichwort wählen (z. B. „spotify“).</div></details>'+
+    '<details><summary>Wo liegen meine Daten?</summary><div>Nur im Speicher dieser App auf deinem Gerät. Es gibt kein Konto und keinen Server; die App kennt deine Bank-Zugangsdaten nicht. Aus dem Internet kommt nur das Programm selbst. Deine Buchungen verlassen das Gerät nur, wenn du selbst eine Sicherung speicherst oder teilst. Der Augen-Knopf oben blendet alle Beträge aus.</div></details></div>';
+  h+='<div style="text-align:center;margin-bottom:10px"><button class="lnk" onclick="H.allesWeg()">Alle Buchungen und Einstellungen löschen</button></div>';
+  return h;}
+
+/* ---------- Aktionen ---------- */
+var sucheT=null;
+window.H={
+  tab:function(t){st.tab=t;st.msg=null;st.hilfe=false;render();try{window.scrollTo(0,0);}catch(e){}},
+  browser:function(){try{sessionStorage.setItem(APP+":browser","1");}catch(e){}render();},
+  pinNeu:function(){var a=val("p1"),b=val("p2"),err=document.getElementById("perr");
+    if(!C.pinOk(a)){err.textContent="Die PIN muss aus 4 bis 8 Ziffern bestehen.";return;}
+    if(a!==b){err.textContent="Die beiden Eingaben stimmen nicht überein.";return;}
+    if(/^(\d)\1+$/.test(a)||"01234567890".indexOf(a)>-1||"09876543210".indexOf(a)>-1){err.textContent="Bitte keine ganz einfache PIN wie 1111 oder 1234.";return;}
+    C.pinSet(a,5).then(function(){dauerhaft();st.tab="monat";flash("✓ PIN gespeichert. Jetzt den ersten Kontoauszug laden.");}).catch(function(e){err.textContent=(e&&e.message)||String(e);});},
+  ym:function(n){st.ym=HB.ymPlus(aktYm(),n);render();},
+  zuMonat:function(ym){st.ym=ym;render();try{window.scrollTo({top:0,behavior:"smooth"});}catch(e){window.scrollTo(0,0);}},
+  filterKat:function(c){st.fc=c;st.fm=aktYm();st.q="";st.fk="";st.n=120;H.tab("buchungen");},
+  zeigUnkat:function(){H.filterKat(F.UNKAT);},
+  filterWeg:function(){st.q="";st.fm="";st.fc="";st.fk="";st.n=120;render();},
+  f:function(k,v){st[k]=v;st.n=120;render();},
+  suche:function(v){st.q=v;st.n=120;clearTimeout(sucheT);sucheT=setTimeout(function(){var el=document.getElementById("txl");if(el)el.innerHTML=txListe();},180);},
+  mehrTx:function(){st.n+=200;var el=document.getElementById("txl");if(el)el.innerHTML=txListe();},
+  /* Kategorie-Blatt */
+  edit:function(id){st.edit=id;st.sel=null;st.art=null;st.wort=null;sheet();},
+  sel:function(c){st.sel=c;sheet();},
+  art:function(a){st.art=a;sheet();if(a==="zweck"){var el=document.getElementById("zw");if(el)el.focus();}},
+  wort:function(v){st.wort=v;},
+  zu:function(){st.edit=null;sheet();},
+  ok:function(){var t=txById(st.edit),err=document.getElementById("serr");if(!t)return H.zu();
+    var c=st.sel;if(!c){err.textContent="Bitte eine Kategorie wählen.";return;}
+    if(st.art==="zweck"){var w=HB.wortOk(t,st.wort);if(w){err.textContent=w;return;}}
+    var n=HB.setzeKat(data,t.id,c,st.art,st.wort),art=st.art,wort=st.wort,name=t.p||t.t;
+    persist();st.edit=null;
+    flash("✓ "+(art==="partner"?"Alle Buchungen von „"+name+"“ ("+n+")":art==="zweck"?"Alle Buchungen mit „"+String(wort).trim()+"“ im Text ("+n+")":"Buchung")+" → "+c);},
+  del:function(){var t=txById(st.edit);if(!t)return;if(!confirm("Diese Buchung löschen? Beim nächsten Import wird sie nicht wieder angelegt."))return;
+    data.tx=data.tx.filter(function(x){return x.id!==t.id;});if(data.deleted.indexOf(t.id)<0)data.deleted.push(t.id);persist();st.edit=null;flash("✓ Buchung gelöscht");},
+  /* Import */
+  laden:function(){document.getElementById("fileIn").click();},
+  files:function(inp){var fs=[].slice.call(inp.files||[]);inp.value="";if(!fs.length)return;
+    var blocks=[],info=[],names=[];
+    Promise.all(fs.map(function(f){
+      if(/\.pdf$/i.test(f.name)){info.push("„"+f.name+"“ ist ein PDF – bitte den Umsatz-Export als CSV-Datei nehmen.");return null;}
+      return f.arrayBuffer().then(function(buf){var r=null;try{r=F.parseFile(buf,f.name);}catch(e){}
+        if(!r){info.push("„"+f.name+"“: Format nicht erkannt. Gelesen werden im Moment CSV-Dateien der ING, Commerzbank folgt in Kürze.");return;}
+        names.push(f.name);r.forEach(function(b){blocks.push(b);});});
+    })).then(function(){
+      if(!blocks.length){flash("⚠ "+(info.join(" ")||"Keine Buchungen gefunden."),true);return;}
+      var res=HB.importieren(data,blocks,names.join(", "));persist();dauerhaft();
+      var br=HB.bereich(data);st.ym=br.bis?HB.ymVon(br.bis):null;st.tab="monat";
+      var zr=res.zeitraum.map(function(z){return z.konto+": "+dDE(z.von)+"–"+dDE(z.bis,true);}).join(" · ");
+      var t=res.neu?"✓ "+res.neu+" neue Buchungen übernommen ("+zr+")"+(res.dup?" · "+res.dup+" waren schon da":""):"Keine neuen Buchungen – alle "+res.dup+" waren schon da.";
+      flash(t+(info.length?" ⚠ "+info.join(" "):""),!res.neu&&!!info.length);
+    }).catch(function(e){flash("⚠ Datei konnte nicht gelesen werden: "+((e&&e.message)||e),true);});},
+  /* Budgets */
+  budget:function(c,v){var n=C.parseNum(v);if(!String(v).trim()||!(n>0))delete data.budgets[c];else data.budgets[c]=Math.round(n*100)/100;persist();var el=document.getElementById("bsum");if(el)el.innerHTML=budSumme();},
+  sparziel:function(v){var n=C.parseNum(v);if(!String(v).trim()||!(n>0))delete data.einst.sparziel;else data.einst.sparziel=Math.round(n);persist();},
+  vorschlag:function(){var vor=HB.budgetVorschlag(data),n=0;Object.keys(vor).forEach(function(c){if(!(+data.budgets[c]>0)){data.budgets[c]=vor[c];n++;}});persist();flash(n?"✓ "+n+" Budgets aus deinem Durchschnitt übernommen – passe sie gern an.":"Alle Felder mit Vorschlag sind schon ausgefüllt.");},
+  budgetsWeg:function(){if(!confirm("Alle Budgets löschen?"))return;data.budgets={};persist();flash("✓ Budgets gelöscht");},
+  /* Fixkosten */
+  fixAus:function(k){data.fixAus[k]=1;persist();render();},
+  fixEin:function(k){delete data.fixAus[k];persist();render();},
+  /* Konten & Kategorien */
+  kontoName:function(k,v){v=String(v||"").trim();if(!v||!data.konten[k])return;data.konten[k].name=v;persist();},
+  kontoWeg:function(k){var ko=data.konten[k]||{};if(!confirm("Konto „"+(ko.name||k)+"“ mit allen Buchungen löschen?"))return;HB.kontoLoeschen(data,k);persist();flash("✓ Konto gelöscht");},
+  kart:function(b,i){var s=document.getElementById("kart");[].forEach.call(s.children,function(x,j){x.className=j===i?"on":"";});},
+  katNeu:function(){var n=val("kn").replace(/\s+/g," "),w=val("kw").toLowerCase().split(/[,;]+/).map(function(x){return x.trim();}).filter(Boolean),ein=document.querySelector("#kart button.on")===document.querySelector("#kart button:last-child");
+    if(!n){flash("⚠ Bitte einen Namen eingeben.",true);return;}
+    if(HB.kategorien(data).some(function(k){return k.toLowerCase()===n.toLowerCase();})){flash("⚠ Diese Kategorie gibt es schon.",true);return;}
+    data.eigeneKat=data.eigeneKat.filter(function(k){return k&&k.name!==n;});data.eigeneKat.push({name:n,words:w,ein:ein});persist();flash("✓ Kategorie „"+n+"“ angelegt");},
+  katWeg:function(n){if(!confirm("Kategorie „"+n+"“ löschen? Zugeordnete Buchungen werden wieder automatisch eingeordnet."))return;
+    data.eigeneKat=data.eigeneKat.filter(function(k){return k&&k.name!==n;});delete data.budgets[n];
+    data.tx.forEach(function(t){if(t.cat===n)delete t.cat;});Object.keys(data.pmap).forEach(function(k){if(data.pmap[k]===n)delete data.pmap[k];});
+    Object.keys(data.tmap).forEach(function(k){if(data.tmap[k]===n)delete data.tmap[k];});Object.keys(data.zmap).forEach(function(k){var z=data.zmap[k];if(z&&z.c===n)data.zmap[k]={del:true,t:Date.now()};});
+    persist();flash("✓ Kategorie gelöscht");},
+  regelWeg:function(a,k){HB.regelLoeschen(data,a,k);persist();render();},
+  /* Sicherung */
+  sichern:function(){if(!data.tx.length&&!Object.keys(data.budgets).length){flash("Noch nichts zu sichern.",true);return;}
+    var o=C.makeBackup([AREA],APP);
+    C.saveBackup(o,APP,true).then(function(ok){if(ok)flash("✓ Sicherung gespeichert");else flash("⚠ Speichern nicht möglich",true);})
+      .catch(function(e){if(e&&e.name==="AbortError")return;flash("⚠ Sicherung nicht möglich: "+((e&&e.message)||e),true);});},
+  einlesen:function(){document.getElementById("bkIn").click();},
+  restore:function(inp){var f=inp.files&&inp.files[0];inp.value="";if(!f)return;
+    C.readFile(f).then(function(text){var o=C.parseBackup(text);
+      if(o.app&&o.app!==APP)throw new Error("Das ist keine Sicherung des Haushaltsbuchs.");
+      var rec=o.areas&&o.areas[AREA];if(!rec||!rec.data)throw new Error("In der Datei sind keine Haushaltsbuch-Daten.");
+      var n=(rec.data.tx||[]).length,wann=o.created?new Date(o.created).toLocaleDateString("de-DE"):"unbekannt";
+      if(!confirm("Sicherung vom "+wann+" mit "+n+" Buchungen einlesen?"+(data.tx.length?" Der jetzige Stand ("+data.tx.length+" Buchungen) wird ersetzt.":"")))return;
+      C.restoreArea(AREA,rec,"replace");data=HB.norm(C.getLocal(AREA,HB.blank));st.ym=null;st.tab="monat";dauerhaft();flash("✓ Sicherung eingelesen: "+n+" Buchungen");
+    }).catch(function(e){flash("⚠ "+((e&&e.message)||e),true);});},
+  /* PIN */
+  sperre:function(v){C.pinMinuten(+v||5);flash("✓ Sperrt nach "+v+(+v===1?" Minute":" Minuten")+" ohne Bedienung");},
+  pinAendern:function(){var a=val("pa"),n1=val("pn1"),n2=val("pn2"),err=document.getElementById("pinerr");
+    if(!C.pinOk(n1)){err.textContent="Die neue PIN muss aus 4 bis 8 Ziffern bestehen.";return;}
+    if(n1!==n2){err.textContent="Die neuen Eingaben stimmen nicht überein.";return;}
+    if(/^(\d)\1+$/.test(n1)||"01234567890".indexOf(n1)>-1||"09876543210".indexOf(n1)>-1){err.textContent="Bitte keine ganz einfache PIN wie 1111 oder 1234.";return;}
+    C.pinCheck(a).then(function(ok){if(!ok){err.textContent="Die bisherige PIN stimmt nicht.";return;}return C.pinSet(n1).then(function(){flash("✓ PIN geändert");});}).catch(function(e){err.textContent=(e&&e.message)||String(e);});},
+  hilfe:function(){st.tab="mehr";st.msg=null;st.hilfe=true;render();var el=document.getElementById("hilfe");if(el)el.scrollIntoView();},
+  allesWeg:function(){if(!confirm("Wirklich alle Buchungen, Budgets und Kategorien löschen?"))return;if(!confirm("Letzte Frage: Hast du eine Sicherung? Gelöschtes lässt sich sonst nicht zurückholen."))return;
+    data=HB.blank();persist();st.ym=null;st.tab="monat";flash("✓ Alles gelöscht. Die PIN bleibt bestehen.");}
+};
+window.addEventListener("cockpit:priv",function(){render();});
+render();
+})();
+</script>
+</body>
+</html>

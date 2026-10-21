@@ -7,6 +7,8 @@
    eigener Speicherbereich, kein Sync – alles bleibt auf dem Gerät. */
 var NS = window.COCKPIT_NS || "cockpit";
 var LOCAL_ONLY = !!window.COCKPIT_LOCAL_ONLY;
+/* lokale Apps mit PIN-Sperre (z. B. haushaltsbuch/): COCKPIT_PIN = true; Titel für den Sperrbildschirm: COCKPIT_TITLE */
+var LOCAL_PIN = !!window.COCKPIT_PIN, APP_TITLE = window.COCKPIT_TITLE || "Cockpit";
 var CFG_KEY = "cockpit:config";
 var LOCAL_PREFIX = NS+":data:";
 var SHA_PREFIX = NS+":sha:";
@@ -27,7 +29,8 @@ function eurRaw(n,d){if(n==null||isNaN(n))return "–";return Number(n).toLocale
 /* ---------- Diskretionsmodus: Geldbeträge ausblenden (Standard), pro Gerät gemerkt ---------- */
 var PRIV_KEY="cockpit:privacy",MASK="•••";
 /* gilt nur für die laufende Sitzung – bei jedem Start ist der Modus wieder aktiv */
-function priv(){try{var v=sessionStorage.getItem(PRIV_KEY);return v===null?true:v==="1";}catch(e){return true;}}
+var PRIV_DEFAULT = window.COCKPIT_PRIV_DEFAULT!==false;
+function priv(){try{var v=sessionStorage.getItem(PRIV_KEY);return v===null?PRIV_DEFAULT:v==="1";}catch(e){return PRIV_DEFAULT;}}
 function setPriv(b){try{sessionStorage.setItem(PRIV_KEY,b?"1":"0");localStorage.removeItem(PRIV_KEY);}catch(e){}
   document.documentElement.classList.toggle("priv",!!b);
   var el=document.getElementById("cp-eye");if(el){el.textContent=b?"🙈":"👁";el.title=b?"Beträge anzeigen":"Beträge ausblenden";}
@@ -45,10 +48,10 @@ try{document.documentElement.classList.toggle("priv",priv());}catch(e){}
    b) alternativ Gerätesperre per WebAuthn (PIN/Fingerabdruck des Geräts).
    Entsperrt gilt je Browser-Sitzung; automatisch wieder gesperrt nach X Minuten ohne Bedienung oder im Hintergrund.
    Eigenständige Apps ohne Sync (sport/) bleiben ohne Sperre. */
-var lockKeys=null,LOCK_KEY="cockpit:lock",PIN_KEY="cockpit:pin",FAIL_KEY="cockpit:pinFail",UNL_KEY="cockpit:unlocked",HID_KEY="cockpit:hiddenAt",ACT_KEY="cockpit:aktiv";
+var lockKeys=null,LOCK_KEY=NS+":lock",PIN_KEY=NS+":pin",FAIL_KEY=NS+":pinFail",UNL_KEY=NS+":unlocked",HID_KEY=NS+":hiddenAt",ACT_KEY=NS+":aktiv";
 function lockCfg(){try{return JSON.parse(localStorage.getItem(LOCK_KEY))||null;}catch(e){return null;}}
 function pinCfg(){try{return JSON.parse(localStorage.getItem(PIN_KEY))||null;}catch(e){return null;}}
-function lockAktiv(){return !LOCAL_ONLY&&!!(pinCfg()||lockCfg());}
+function lockAktiv(){return (!LOCAL_ONLY||LOCAL_PIN)&&!!(pinCfg()||lockCfg());}
 function relockMs(){var p=pinCfg();return ((p&&+p.min)||5)*60000;}
 function lockSupported(){return !!(window.PublicKeyCredential&&navigator.credentials&&window.isSecureContext);}
 function pinSupported(){return !!(window.crypto&&crypto.subtle&&window.isSecureContext);}
@@ -93,11 +96,11 @@ function showLock(){
   if(!ov){ov=document.createElement("div");ov.id="cp-lock";(document.body||document.documentElement).appendChild(ov);}
   var p=pinCfg();
   if(p){
-    ov.innerHTML='<div class="lk"><div class="lk-ic">🔒</div><h2>Cockpit gesperrt</h2><p>PIN eingeben</p>'+
+    ov.innerHTML='<div class="lk"><div class="lk-ic">🔒</div><h2>'+esc(APP_TITLE)+' gesperrt</h2><p>PIN eingeben</p>'+
       '<div class="lk-dots" id="cp-dots">'+new Array(p.n+1).join("<i></i>")+'</div>'+
       '<div class="lk-pad">'+[1,2,3,4,5,6,7,8,9,"",0,"⌫"].map(function(k){return k===""?"<span></span>":'<button type="button" data-k="'+k+'">'+k+"</button>";}).join("")+"</div>"+
       '<div class="lk-err" id="cp-lock-err"></div>'+
-      '<p class="lk-help">PIN vergessen? Website-Daten des Cockpits im Browser löschen und die Sync neu einrichten – deine Daten liegen weiter im privaten Daten-Repo.</p></div>';
+      '<p class="lk-help">'+(LOCAL_ONLY?"PIN vergessen? Dann bleibt nur, die App vom Home-Bildschirm zu löschen, neu zu installieren und die letzte Sicherungsdatei einzulesen.":"PIN vergessen? Website-Daten des Cockpits im Browser löschen und die Sync neu einrichten – deine Daten liegen weiter im privaten Daten-Repo.")+'</p></div>';
     var inp={value:""},busy=false;
     var paint=function(){var d=document.querySelectorAll("#cp-dots i");for(var i=0;i<d.length;i++)d[i].className=i<inp.value.length?"on":"";};
     var go=function(){var f=failState(),err=document.getElementById("cp-lock-err");if(busy)return;
@@ -116,7 +119,7 @@ function showLock(){
     document.addEventListener("keydown",lockKeys,true);
     return;
   }
-  ov.innerHTML='<div class="lk"><div class="lk-ic">🔒</div><h2>Cockpit gesperrt</h2><p>Bestätige mit PIN, Fingerabdruck oder Gesicht deines Geräts.</p>'+
+  ov.innerHTML='<div class="lk"><div class="lk-ic">🔒</div><h2>'+esc(APP_TITLE)+' gesperrt</h2><p>Bestätige mit PIN, Fingerabdruck oder Gesicht deines Geräts.</p>'+
     '<button class="btn" id="cp-unlock">Entsperren</button><div class="lk-err" id="cp-lock-err"></div>'+
     '<p class="lk-help">Gerät neu oder Entsperren klappt dauerhaft nicht? Website-Daten des Cockpits im Browser löschen und die Sync neu einrichten.</p></div>';
   document.getElementById("cp-unlock").onclick=tryUnlock;
@@ -343,7 +346,7 @@ function topbar(o){
   return '<header class="topbar">'+
     (o.home===false?'':'<a class="home" href="'+base+'index.html" aria-label="Zur Startseite">⌂</a>')+
     '<div class="ttl"><b>'+(o.icon?o.icon+" ":"")+esc(o.title)+'</b>'+(o.sub?'<span>'+esc(o.sub)+'</span>':'')+'</div>'+
-    '<div class="right">'+(lockAktiv()?'<button class="eye" onclick="Cockpit.lockNow()" title="Jetzt sperren" aria-label="Cockpit jetzt sperren">🔒</button>':"")+(o.eye===false?"":eyeButton())+'<a id="cp-sync" class="sync" href="'+(o.syncHref||base+"einstellungen.html")+'"><i></i></a></div></header>';
+    '<div class="right">'+(lockAktiv()?'<button class="eye" onclick="Cockpit.lockNow()" title="Jetzt sperren" aria-label="Cockpit jetzt sperren">🔒</button>':"")+(o.eye===false?"":eyeButton())+(o.sync===false?"":'<a id="cp-sync" class="sync" href="'+(o.syncHref||base+"einstellungen.html")+'"><i></i></a>')+'</div></header>';
 }
 
 /* ---------------- Diagramme (SVG, ohne Bibliothek) ---------------- */
