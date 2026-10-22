@@ -1,7 +1,7 @@
 /* Cockpit · HIIT – Übungskatalog, Trainingsgenerator, Timer mit Tonsignalen
    Gruppen: c Cardio · b Beine & Po · k Core · a Arme & Oberkörper · r Rücken (erste = Hauptgruppe)
    Flags:   s je Seite · x Kombi-Station
-   Gerät:   Bank, Medizinball, Gymnastikball, Kettlebell, Springseil, Treppe – dazu eigene Geräte (setGear) */
+   Gerät:   Bank, Kurzhantel, Medizinball, Gymnastikball, Kettlebell, Springseil, Treppe – dazu eigene Geräte (setGear) */
 (function(){
 "use strict";
 var RAW=[
@@ -52,7 +52,13 @@ var RAW=[
 ["Kettlebell Swings","br","","Kettlebell"],["Kettlebell Goblet Squat","b","","Kettlebell"],["Kettlebell Rudern","ra","s","Kettlebell"],
 ["Gymnastikball Y-Fly","ra","","Gymnastikball"],["Gymnastikball Crunches","k","","Gymnastikball"],["Gymnastikball Beinbeuger","b","","Gymnastikball"],["Planke mit Füßen auf dem Gymnastikball","k","","Gymnastikball"],
 ["Medizinball Sit-ups","k","","Medizinball"],["Russian Twist mit Medizinball","k","","Medizinball"],["Wandsitz mit Medizinball","ba","","Medizinball"],
-["Seilspringen","c","","Springseil"],["Treppensteigen","cb","","Treppe"]
+["Seilspringen","c","","Springseil"],["Treppensteigen","cb","","Treppe"],
+/* Kurzhanteln */
+["Kurzhantel-Drücken am Boden","a","","Kurzhantel"],["Fliegende am Boden mit Kurzhanteln","a","","Kurzhantel"],["Schulterdrücken mit Kurzhanteln","a","","Kurzhantel"],
+["Seitheben mit Kurzhanteln","a","","Kurzhantel"],["Frontheben mit Kurzhanteln","a","","Kurzhantel"],["Bizeps-Curls mit Kurzhanteln","a","","Kurzhantel"],
+["Hammer Curls","a","","Kurzhantel"],["Trizeps-Kickbacks","ar","","Kurzhantel"],["Vorgebeugtes Rudern mit Kurzhanteln","ra","","Kurzhantel"],
+["Kniebeugen mit Kurzhanteln","b","","Kurzhantel"],["Kreuzheben mit Kurzhanteln","br","","Kurzhantel"],["Bulgarian Split Squats mit Kurzhanteln","b","s","Kurzhantel"],
+["Step-ups mit Kurzhanteln","bc","","Kurzhantel"],["Ausfallschritte mit Kurzhanteln","b","","Kurzhantel"],["Hüftheben mit Kurzhantel","bk","","Kurzhantel"]
 ];
 var CAT=RAW.map(function(r){var f=r[2]||"";return {n:r[0],g:r[1],m:r[1][0],s:f.indexOf("s")>-1,x:f.indexOf("x")>-1,gear:r[3]||null};});
 var BASE=CAT.slice(),BY={};CAT.forEach(function(e){BY[e.n.toLowerCase()]=e;});
@@ -60,14 +66,17 @@ var BASE=CAT.slice(),BY={};CAT.forEach(function(e){BY[e.n.toLowerCase()]=e;});
 function setCustom(list){CAT=BASE.slice();BY={};BASE.forEach(function(e){BY[e.n.toLowerCase()]=e;});
   (list||[]).forEach(function(c){if(!c||!c.n||BY[c.n.toLowerCase()])return;var e={n:c.n,g:c.g||"k",m:(c.g||"k")[0],s:!!c.s,x:!!c.x,gear:c.gear||null,own:true};CAT.push(e);BY[e.n.toLowerCase()]=e;});
   if(window.HIIT)window.HIIT.CAT=CAT;}
-var BASE_GEARS=["Bank","Medizinball","Gymnastikball","Kettlebell","Springseil","Treppe"],GEARS=BASE_GEARS.slice();
-var BASE_ICON={Bank:"🪑",Medizinball:"🏐",Gymnastikball:"🔵",Kettlebell:"🏋️",Springseil:"➰",Treppe:"🪜"},GEAR_ICON=Object.assign({},BASE_ICON);
-/* Eigene Geräte ergänzen die Liste: [{n, icon}] – stehen dann bei eigenen Übungen und bei „Stationen“ zur Auswahl */
+var BASE_GEARS=["Bank","Kurzhantel","Medizinball","Gymnastikball","Kettlebell","Springseil","Treppe"],GEARS=BASE_GEARS.slice();
+var BASE_ICON={Bank:"🪑",Kurzhantel:"💪",Medizinball:"🏐",Gymnastikball:"🔵",Kettlebell:"🏋️",Springseil:"➰",Treppe:"🪜"},GEAR_ICON=Object.assign({},BASE_ICON);
+function baseName(n){var k=String(n||"").toLowerCase();for(var i=0;i<BASE_GEARS.length;i++)if(BASE_GEARS[i].toLowerCase()===k)return BASE_GEARS[i];return null;}
+function isBaseGear(n){return !!baseName(n);}
+/* Eigene Geräte ergänzen die Liste: [{n, icon}] – stehen dann bei eigenen Übungen und bei „Stationen“ zur Auswahl.
+   Heißt ein eigenes Gerät wie eines aus dem Katalog (z. B. früher selbst angelegte „Kurzhantel“), zählt nur sein Symbol. */
 function setGear(list){var seen={};GEARS=BASE_GEARS.slice();BASE_GEARS.forEach(function(g){seen[g.toLowerCase()]=1;});
-  Object.keys(GEAR_ICON).forEach(function(k){if(!BASE_ICON[k])delete GEAR_ICON[k];});
-  (list||[]).forEach(function(g){if(!g||!g.n||seen[g.n.toLowerCase()])return;seen[g.n.toLowerCase()]=1;GEARS.push(g.n);GEAR_ICON[g.n]=g.icon||"🧰";});
+  Object.keys(GEAR_ICON).forEach(function(k){if(!BASE_ICON[k])delete GEAR_ICON[k];else GEAR_ICON[k]=BASE_ICON[k];});
+  (list||[]).forEach(function(g){if(!g||!g.n)return;var b=baseName(g.n);if(b){if(g.icon)GEAR_ICON[b]=g.icon;return;}
+    if(seen[g.n.toLowerCase()])return;seen[g.n.toLowerCase()]=1;GEARS.push(g.n);GEAR_ICON[g.n]=g.icon||"🧰";});
   if(window.HIIT)window.HIIT.GEARS=GEARS;}
-function isBaseGear(n){return BASE_GEARS.some(function(g){return g.toLowerCase()===String(n||"").toLowerCase();});}
 var GROUPS={c:"Cardio",b:"Beine & Po",k:"Core",a:"Arme & Oberkörper",r:"Rücken"};
 var GCOL={c:"#f59e0b",b:"#a78bfa",k:"#34d399",a:"#f43f5e",r:"#38bdf8"};
 var FOCI=[["gesamt","Gesamt"],["a","Arme"],["b","Beine"],["r","Rücken"],["k","Core"],["zufall","Zufall"]];

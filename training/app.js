@@ -253,7 +253,7 @@ function gearForm(quick){var f=st.hg||(st.hg={n:"",icon:GEAR_ICONS[0]});
   return '<div class="field" style="margin-top:8px"><label>'+(quick?"Neues Gerät":"Name des Geräts")+'</label><input id="hgN" value="'+C.esc(f.n)+'" placeholder="z. B. Sandsack, Hantelscheibe" oninput="T.hgV(\'n\',this.value)" onkeydown="if(event.key===\'Enter\')T.hgAdd('+(quick?1:0)+')"></div>'+
     '<div class="chips">'+GEAR_ICONS.map(function(ic){return '<button class="chip amb'+(f.icon===ic?" on":"")+'" onclick="T.hgV(\'icon\',\''+ic+'\')" aria-label="Symbol '+ic+'">'+ic+"</button>";}).join("")+"</div>"+
     '<button class="btn '+(quick?"ghost":"amb")+' full" onclick="T.hgAdd('+(quick?1:0)+')">＋ Gerät anlegen</button>';}
-function vGear(){var gl=gearList(),used={};customList().forEach(function(c){if(c.gear)used[c.gear]=(used[c.gear]||0)+1;});
+function vGear(){var gl=gearList().filter(function(g){return !H.isBaseGear(g.n);}),used={};customList().forEach(function(c){if(c.gear)used[c.gear]=(used[c.gear]||0)+1;});
   var h='<div class="panel"><h3 style="color:#f59e0b">🧰 HIIT: Geräte &amp; Gegenstände</h3><div class="note" style="margin-bottom:8px">Eigene Geräte anlegen, z. B. Sandsack oder Hantelscheibe. Sie stehen danach bei „Eigene Übungen“ (HIIT) und bei „Stationen → Vorhandene Geräte“ zur Auswahl. In einem Stationen-Training kommt ein Gerät dran, sobald es mindestens eine Übung dafür gibt.</div>';
   h+='<div class="lbl">Im Katalog</div><div class="chips">'+H.BASE_GEARS.map(function(g){return '<span class="chip">'+H.GEAR_ICON[g]+" "+C.esc(g)+"</span>";}).join("")+"</div>";
   if(gl.length)h+='<div class="lbl" style="margin-top:8px">Deine Geräte</div>'+gl.map(function(g){var n=used[g.n]||0;
