@@ -226,7 +226,24 @@ function persist(){C.save(AREA,data);}
 function flash(t,warn){st.msg={t:t,warn:!!warn};render();try{window.scrollTo(0,0);}catch(e){}}
 function dauerhaft(){try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();}catch(e){}}
 function istIOS(){return /iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);}
+function istAndroid(){return !istIOS()&&/Android/i.test(navigator.userAgent);}
 function istApp(){return window.navigator.standalone===true||!!(window.matchMedia&&matchMedia("(display-mode: standalone)").matches);}
+/* Texte je Gerät: iPhone (Safari, „Dateien“, Teilen) – Android (Chrome, Download-Ordner) – sonst allgemein */
+function je(ios,android,sonst){return istIOS()?ios:istAndroid()?android:sonst;}
+function browserName(){return je("Safari","Chrome","deinem Browser");}
+function dlOrt(){return je("„Dateien“ → „Downloads“","im Ordner „Downloads“","im Download-Ordner");}
+function pinWeg(){return je("die App vom Home-Bildschirm zu löschen, neu hinzuzufügen und deine letzte Sicherung einzulesen",
+  "in Chrome die Daten dieser Website zu löschen (⋮ → Einstellungen → Website-Einstellungen → Alle Websites) und deine letzte Sicherung einzulesen",
+  "die Website-Daten im Browser zu löschen und deine letzte Sicherung einzulesen");}
+function teilenZumSichern(){return !istAndroid()&&C.canShareFiles();}
+/* Android/Chrome: Installieren mit einem Tipp, sobald Chrome es anbietet */
+var installEvt=null;
+window.addEventListener("beforeinstallprompt",function(e){e.preventDefault();installEvt=e;if(document.getElementById("main"))render();});
+window.addEventListener("appinstalled",function(){installEvt=null;st.installiert=true;render();});
+function anleitungInstallieren(){return je(
+  '<ol><li>Unten in Safari auf <b>Teilen</b> tippen (Quadrat mit Pfeil nach oben)</li><li><b>Zum Home-Bildschirm</b> wählen (evtl. etwas nach unten wischen)</li><li>Oben rechts <b>Hinzufügen</b> tippen</li><li>Safari schließen und das Haushaltsbuch über das neue Symbol öffnen</li></ol>',
+  '<ol><li>In Chrome oben rechts auf <b>⋮</b> tippen</li><li><b>App installieren</b> bzw. <b>Zum Startbildschirm hinzufügen</b> wählen</li><li>Mit <b>Installieren</b> bestätigen</li><li>Das Haushaltsbuch über das neue Symbol öffnen</li></ol>',
+  '<p>Im Browser-Menü „App installieren“ bzw. „Zum Startbildschirm hinzufügen“ wählen.</p>');}
 function txById(id){for(var i=0;i<data.tx.length;i++)if(data.tx[i].id===id)return data.tx[i];return null;}
 function lastImport(){var m=0;data.imports.forEach(function(i){if(i&&i.ts>m)m=i.ts;});return m;}
 function tageSeit(ts){return Math.floor((Date.now()-ts)/MIN_TAG);}
@@ -251,17 +268,24 @@ function render(){
 function willkommen(){
   var browserOk=false;try{browserOk=sessionStorage.getItem(APP+":browser")==="1";}catch(e){}
   if(istIOS()&&!istApp()&&!browserOk)return '<div class="ob"><div class="obi">📲</div><h2>Zuerst auf den Home-Bildschirm</h2>'+
-    '<p>So startet das Haushaltsbuch wie eine App, und deine Daten bleiben dauerhaft auf dem iPhone:</p>'+
-    '<ol><li>Unten in Safari auf <b>Teilen</b> tippen (Quadrat mit Pfeil nach oben)</li><li><b>Zum Home-Bildschirm</b> wählen (evtl. etwas nach unten wischen)</li><li>Oben rechts <b>Hinzufügen</b> tippen</li><li>Safari schließen und das Haushaltsbuch über das neue Symbol öffnen</li></ol>'+
+    '<p>So startet das Haushaltsbuch wie eine App, und deine Daten bleiben dauerhaft auf dem iPhone:</p>'+anleitungInstallieren()+
     '<p class="small muted">Wichtig: Die App auf dem Home-Bildschirm hat ihren eigenen Speicher. Was du hier in Safari eingibst, sieht sie nicht.</p>'+
     '<button class="btn ghost full" onclick="H.browser()">Nur ausprobieren (hier im Browser weiter)</button></div>';
+  if(istAndroid()&&!istApp()&&!browserOk){
+    if(st.installiert)return '<div class="ob"><div class="obi">✅</div><h2>Installiert</h2><p>Öffne das Haushaltsbuch jetzt über das neue Symbol auf deinem Startbildschirm.</p>'+
+      '<button class="btn ghost full" onclick="H.browser()">Hier im Browser weitermachen</button></div>';
+    return '<div class="ob"><div class="obi">📲</div><h2>Als App installieren</h2>'+
+      '<p>So startet das Haushaltsbuch wie eine App: mit eigenem Symbol und ohne Browser-Leiste.</p>'+
+      (installEvt?'<button class="btn full grad" onclick="H.installieren()">Jetzt installieren</button><p class="small muted" style="margin:12px 0 0">Oder von Hand:</p>':'')+anleitungInstallieren()+
+      '<p class="small muted">Deine Daten liegen in Chrome und in der installierten App am selben Ort. Du kannst also auch später noch installieren.</p>'+
+      '<button class="btn ghost full" onclick="H.browser()">Ohne Installieren weiter</button></div>';}
   return '<div class="ob"><div class="obi">🔐</div><h2>Willkommen</h2>'+
     '<p>Du lädst die Kontoauszüge deiner Bank als Datei und siehst, wofür dein Geld draufgeht – mit Budgets, Ampel und Sparquote.</p>'+
     '<ul><li>Alles bleibt auf diesem Gerät: kein Konto, kein Server, keine Bank-Zugangsdaten.</li><li>Eine PIN schützt die App beim Öffnen.</li></ul>'+
     '<div class="field pin"><label>Neue PIN (4 bis 8 Ziffern)</label><input id="p1" class="in" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="new-password"></div>'+
     '<div class="field pin"><label>PIN wiederholen</label><input id="p2" class="in" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="new-password" onkeydown="if(event.key===\'Enter\')H.pinNeu()"></div>'+
     '<div class="err" id="perr"></div><button class="btn full grad" onclick="H.pinNeu()">PIN festlegen und loslegen</button>'+
-    '<p class="small muted" style="margin-top:14px">Merk dir die PIN gut. Zurücksetzen lässt sie sich nicht – dann hilft nur, die App neu zu installieren und deine letzte Sicherung einzulesen.</p></div>';
+    '<p class="small muted" style="margin-top:14px">Merk dir die PIN gut. Zurücksetzen lässt sie sich nicht – dann hilft nur, '+pinWeg()+'.</p></div>';
 }
 
 /* ---------- Leerer Zustand ---------- */
@@ -435,7 +459,11 @@ function vMehr(){
   if(eig.length)h+='<div class="lbl" style="margin-top:12px">Deine Kategorien</div>'+eig.map(function(k){return '<div class="rg"><span>'+ic(k.name)+' '+E(k.name)+(k.ein?' (Einnahme)':'')+(k.words&&k.words.length?' · '+E(k.words.join(", ")):'')+'</span><button onclick="H.katWeg('+js(k.name)+')" aria-label="löschen">✕</button></div>';}).join("");
   h+='<details class="more"><summary>Gelernte Zuordnungen ('+rg.length+')</summary>'+(rg.length?rg.map(function(r){return '<div class="rg"><span>'+(r.art==="zweck"?"Text enthält ":"")+'„'+E(r.k)+'“ → '+E(r.c)+'</span><button onclick="H.regelWeg('+js(r.art)+','+js(r.k)+')" aria-label="löschen">✕</button></div>';}).join(""):'<p class="small muted">Entstehen, wenn du bei einer Buchung die Kategorie änderst und „alle von …“ oder „Stichwort“ wählst.</p>')+'</details></div>';
   /* Sicherung */
-  h+='<div class="panel"><h3>💾 Sicherung</h3><p class="small muted" style="margin-top:0">Deine Daten liegen nur in dieser App. Löschst du sie vom Home-Bildschirm, sind sie weg. Speichere darum ab und zu eine Sicherung, z. B. in „Dateien“. Die Datei ist nicht verschlüsselt – leg sie nur dort ab, wo nur du hinkommst.</p>'+
+  h+='<div class="panel"><h3>💾 Sicherung</h3><p class="small muted" style="margin-top:0">'+je(
+      "Deine Daten liegen nur in dieser App. Löschst du sie vom Home-Bildschirm, sind sie weg. Speichere darum ab und zu eine Sicherung, z. B. in „Dateien“.",
+      "Deine Daten liegen nur in Chrome auf diesem Handy. Löschst du die Browserdaten oder geht das Handy verloren, sind sie weg. Speichere darum ab und zu eine Sicherung. Sie landet im Ordner „Downloads“ – kopier sie am besten zusätzlich an einen sicheren Ort, z. B. Google Drive.",
+      "Deine Daten liegen nur in diesem Browser. Löschst du die Browserdaten, sind sie weg. Speichere darum ab und zu eine Sicherung – sie landet im Download-Ordner.")+
+    ' Die Datei ist nicht verschlüsselt – leg sie nur dort ab, wo nur du hinkommst.</p>'+
     '<div class="kv"><span>Letzte Sicherung</span><span>'+(lb?new Date(lb).toLocaleDateString("de-DE"):"noch nie")+'</span></div>'+
     '<div class="stack" style="margin-top:8px"><button class="btn full" onclick="H.sichern()">Sicherung speichern</button><button class="btn ghost full" onclick="H.einlesen()">Sicherung einlesen</button></div></div>';
   /* PIN */
@@ -447,9 +475,17 @@ function vMehr(){
     '<div class="err" id="pinerr"></div><button class="btn full" onclick="H.pinAendern()">PIN ändern</button></details>'+
     '<button class="btn ghost full" style="margin-top:8px" onclick="Cockpit.lockNow()">Jetzt sperren</button></div>';
   /* Hilfe */
+  var bw=browserName(),dl=dlOrt(),dlSatz=je("Die Datei landet in „Dateien“ → „Downloads“.","Die Datei landet im Ordner „Downloads“.","Die Datei landet im Download-Ordner.");
   h+='<div class="panel help" id="hilfe"><h3>❔ Anleitung</h3>'+
-    '<details'+(st.hilfe?" open":"")+'><summary>Kontoauszug von der ING holen (CSV)</summary><div><ol><li>In Safari das Online-Banking der ING öffnen und anmelden.</li><li>Girokonto öffnen, bei den Umsätzen auf <b>Export</b> bzw. das Download-Symbol tippen.</li><li>Format <b>CSV</b> und den Zeitraum wählen (beim ersten Mal ruhig 12 Monate).</li><li>Die Datei landet in „Dateien“ → „Downloads“.</li><li>Hier auf <b>Kontoauszug laden</b> tippen und die Datei auswählen.</li></ol>Findest du den Export am iPhone nicht: in Safari über „aA“ die Desktop-Website anfordern oder am Computer exportieren und per AirDrop schicken. Überschneidende Zeiträume sind kein Problem – doppelte Buchungen werden erkannt.</div></details>'+
-    '<details><summary>Kontoauszug von der Commerzbank holen (CSV)</summary><div><ol><li>In Safari das Online-Banking der Commerzbank öffnen und anmelden.</li><li>Umsatzübersicht öffnen und das Girokonto wählen.</li><li>Oberhalb der Umsätze auf <b>PDF / CSV</b> tippen, dann <b>Umsätze exportieren</b>.</li><li>Format <b>CSV</b> wählen und <b>Exportieren</b> – die Datei landet in „Dateien“ → „Downloads“.</li><li>Hier auf <b>Kontoauszug laden</b> tippen und die Datei auswählen.</li></ol>Hast du Konten bei beiden Banken, lade einfach beide Dateien. Überweisungen zwischen deinen Konten erkennt die App und zählt sie nicht mit.</div></details>'+
+    '<details'+(st.hilfe?" open":"")+'><summary>Kontoauszug von der ING holen (CSV)</summary><div><ol><li>In '+bw+' das Online-Banking der ING öffnen und anmelden.</li><li>Girokonto öffnen, bei den Umsätzen auf <b>Export</b> bzw. das Download-Symbol tippen.</li><li>Format <b>CSV</b> und den Zeitraum wählen (beim ersten Mal ruhig 12 Monate).</li><li>'+dlSatz+'</li><li>Hier auf <b>Kontoauszug laden</b> tippen und die Datei auswählen.</li></ol>'+
+    je("Findest du den Export am iPhone nicht: in Safari über „aA“ die Desktop-Website anfordern oder am Computer exportieren und per AirDrop schicken.",
+       "Findest du den Export am Handy nicht: in Chrome über ⋮ „Desktopwebsite“ anhaken oder am Computer exportieren und dir die Datei schicken (z. B. per Mail oder Google Drive).",
+       "Findest du den Export nicht: das Online-Banking am Computer öffnen und dort exportieren.")+
+    ' Überschneidende Zeiträume sind kein Problem – doppelte Buchungen werden erkannt.</div></details>'+
+    '<details><summary>Kontoauszug von der Commerzbank holen (CSV)</summary><div><ol><li>In '+bw+' das Online-Banking der Commerzbank öffnen und anmelden.</li><li>Umsatzübersicht öffnen und das Girokonto wählen.</li><li>Oberhalb der Umsätze auf <b>PDF / CSV</b> tippen, dann <b>Umsätze exportieren</b>.</li><li>Format <b>CSV</b> wählen und <b>Exportieren</b> – die Datei landet '+(istIOS()?"in "+dl:dl)+'.</li><li>Hier auf <b>Kontoauszug laden</b> tippen und die Datei auswählen.</li></ol>Hast du Konten bei beiden Banken, lade einfach beide Dateien. Überweisungen zwischen deinen Konten erkennt die App und zählt sie nicht mit.</div></details>'+
+    (istApp()||!(istIOS()||istAndroid())?'':'<details><summary>Als App auf den '+je("Home-Bildschirm","Startbildschirm","Startbildschirm")+'</summary><div>'+
+      (installEvt?'<button class="btn full grad" style="margin:4px 0 10px" onclick="H.installieren()">Jetzt installieren</button>':'')+anleitungInstallieren()+
+      je("Achtung: Die App auf dem Home-Bildschirm hat einen eigenen Speicher. Speichere hier vorher eine Sicherung und lies sie in der App ein.","Deine Daten bleiben dabei erhalten – Chrome und die App nutzen denselben Speicher.","")+'</div></details>')+
     '<details><summary>So wird gerechnet</summary><div><ul><li><b>Einnahmen</b>: Gehalt und andere Gutschriften.</li><li><b>Ausgaben</b>: alle Abbuchungen. Erstattungen (z. B. Retouren) mindern die Ausgaben ihrer Kategorie.</li><li><b>Übrig</b> = Einnahmen − Ausgaben, <b>Sparquote</b> = Übrig ÷ Einnahmen.</li><li>Überweisungen aufs eigene Sparkonto sind keine Ausgaben – sie stecken im „Übrig“ und werden extra gezeigt.</li><li>Umbuchungen zwischen zwei Konten, die du hier geladen hast, zählen gar nicht.</li></ul></div></details>'+
     '<details><summary>Kategorie ändern und lernen</summary><div>Tipp auf eine Buchung und wähle die Kategorie. Mit „alle von …“ merkt sich die App den Empfänger und ordnet künftige Buchungen selbst zu. Bei PayPal oder Klarna steht der Händler im Verwendungszweck – dort ein Stichwort wählen (z. B. „spotify“).</div></details>'+
     '<details><summary>Wo liegen meine Daten?</summary><div>Nur im Speicher dieser App auf deinem Gerät. Es gibt kein Konto und keinen Server; die App kennt deine Bank-Zugangsdaten nicht. Aus dem Internet kommt nur das Programm selbst. Deine Buchungen verlassen das Gerät nur, wenn du selbst eine Sicherung speicherst oder teilst. Der Augen-Knopf oben blendet alle Beträge aus.</div></details></div>';
@@ -461,6 +497,10 @@ var sucheT=null;
 window.H={
   tab:function(t){st.tab=t;st.msg=null;st.hilfe=false;render();try{window.scrollTo(0,0);}catch(e){}},
   browser:function(){try{sessionStorage.setItem(APP+":browser","1");}catch(e){}render();},
+  installieren:function(){var e=installEvt;if(!e)return;installEvt=null;
+    /* prompt() geht je Ereignis nur einmal; Chrome bietet es bei Bedarf später neu an */
+    try{e.prompt();e.userChoice.then(function(c){var ok=c&&c.outcome==="accepted";if(ok)st.installiert=true;
+      if(ok&&C.pinCfg())flash("✓ Wird installiert. Öffne das Haushaltsbuch danach über das neue Symbol – deine Daten sind dort schon da.");else render();}).catch(function(){render();});}catch(x){render();}},
   pinNeu:function(){var a=val("p1"),b=val("p2"),err=document.getElementById("perr");
     if(!C.pinOk(a)){err.textContent="Die PIN muss aus 4 bis 8 Ziffern bestehen.";return;}
     if(a!==b){err.textContent="Die beiden Eingaben stimmen nicht überein.";return;}
@@ -529,8 +569,9 @@ window.H={
   regelWeg:function(a,k){HB.regelLoeschen(data,a,k);persist();render();},
   /* Sicherung */
   sichern:function(){if(!data.tx.length&&!Object.keys(data.budgets).length){flash("Noch nichts zu sichern.",true);return;}
-    var o=C.makeBackup([AREA],APP);
-    C.saveBackup(o,APP,true).then(function(ok){if(ok)flash("✓ Sicherung gespeichert");else flash("⚠ Speichern nicht möglich",true);})
+    var o=C.makeBackup([AREA],APP),teilen=teilenZumSichern();
+    /* iPhone: über „Teilen“ → „In Dateien sichern“; Android und Computer: normaler Download */
+    C.saveBackup(o,APP,teilen).then(function(ok){if(ok)flash(teilen?"✓ Sicherung gespeichert":"✓ Sicherung gespeichert – sie liegt "+dlOrt()+".");else flash("⚠ Speichern nicht möglich",true);})
       .catch(function(e){if(e&&e.name==="AbortError")return;flash("⚠ Sicherung nicht möglich: "+((e&&e.message)||e),true);});},
   einlesen:function(){document.getElementById("bkIn").click();},
   restore:function(inp){var f=inp.files&&inp.files[0];inp.value="";if(!f)return;

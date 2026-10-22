@@ -100,7 +100,7 @@ function showLock(){
       '<div class="lk-dots" id="cp-dots">'+new Array(p.n+1).join("<i></i>")+'</div>'+
       '<div class="lk-pad">'+[1,2,3,4,5,6,7,8,9,"",0,"⌫"].map(function(k){return k===""?"<span></span>":'<button type="button" data-k="'+k+'">'+k+"</button>";}).join("")+"</div>"+
       '<div class="lk-err" id="cp-lock-err"></div>'+
-      '<p class="lk-help">'+(LOCAL_ONLY?"PIN vergessen? Dann bleibt nur, die App vom Home-Bildschirm zu löschen, neu zu installieren und die letzte Sicherungsdatei einzulesen.":"PIN vergessen? Website-Daten des Cockpits im Browser löschen und die Sync neu einrichten – deine Daten liegen weiter im privaten Daten-Repo.")+'</p></div>';
+      '<p class="lk-help">'+(LOCAL_ONLY?(/Android/i.test(navigator.userAgent)?"PIN vergessen? Dann bleibt nur, in Chrome die Daten dieser Website zu löschen (⋮ → Einstellungen → Website-Einstellungen → Alle Websites) und die letzte Sicherungsdatei einzulesen.":"PIN vergessen? Dann bleibt nur, die App vom Home-Bildschirm zu löschen, neu zu installieren und die letzte Sicherungsdatei einzulesen."):"PIN vergessen? Website-Daten des Cockpits im Browser löschen und die Sync neu einrichten – deine Daten liegen weiter im privaten Daten-Repo.")+'</p></div>';
     var inp={value:""},busy=false;
     var paint=function(){var d=document.querySelectorAll("#cp-dots i");for(var i=0;i<d.length;i++)d[i].className=i<inp.value.length?"on":"";};
     var go=function(){var f=failState(),err=document.getElementById("cp-lock-err");if(busy)return;
