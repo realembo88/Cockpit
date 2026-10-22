@@ -294,9 +294,14 @@ function vHiit(){
   if(d.list.length){var o=hopt(),tot=H.totalSecs(c,d.list.length),st_=d.mode==="stationen";
     h+='<div class="panel"><h3 style="color:#f59e0b">Dein Training · '+C.esc(MODE[d.mode]||"")+" · "+C.esc(FOCUS[d.focus]||"")+"</h3>";
     h+='<div class="small" style="margin:-4px 0 8px;color:#fde68a">⏱ '+fmtDur(tot)+" gesamt · "+d.list.length+" "+(st_?"Stationen":"Übungen")+" × "+c.rounds+" · "+fmtDur(d.list.length*c.rounds*c.work)+" Belastung</div>";
-    d.list.forEach(function(nm,i){var e=H.find(nm),pool=H.slotPool(d.list,i,o),grp={};
-      pool.forEach(function(x){(grp[x.m]=grp[x.m]||[]).push(x);});
-      var opts=(e.custom?'<option selected>'+C.esc(nm)+"</option>":"")+Object.keys(H.GROUPS).filter(function(g){return grp[g];}).map(function(g){return '<optgroup label="'+H.GROUPS[g]+'">'+grp[g].map(function(x){return "<option"+(x.n===nm?" selected":"")+">"+C.esc(x.n)+"</option>";}).join("")+"</optgroup>";}).join("");
+    d.list.forEach(function(nm,i){var e=H.find(nm),used={},grp={},gg={};
+      /* Auswahl je Platz: Eigengewicht nach Muskelgruppe, darunter je Gerät eine eigene Gruppe (ausgeschaltete Geräte nur, wenn gerade gewählt) */
+      d.list.forEach(function(n,j){if(j!==i)used[n]=1;});
+      H.CAT.forEach(function(x){if(used[x.n])return;if(!x.gear){(grp[x.m]=grp[x.m]||[]).push(x);return;}
+        if(c.gear[x.gear]===false&&x.gear!==e.gear)return;(gg[x.gear]=gg[x.gear]||[]).push(x);});
+      var opt=function(x){return '<option value="'+C.esc(x.n)+'"'+(x.n===nm?" selected":"")+">"+C.esc(x.n)+"</option>";};
+      var opts=(e.custom?'<option selected>'+C.esc(nm)+"</option>":"")+Object.keys(H.GROUPS).filter(function(g){return grp[g];}).map(function(g){return '<optgroup label="'+H.GROUPS[g]+'">'+grp[g].map(opt).join("")+"</optgroup>";}).join("")+
+        H.GEARS.filter(function(g){return gg[g];}).map(function(g){return '<optgroup label="'+C.esc((H.GEAR_ICON[g]||"🧰")+" "+g+" – mit Gerät")+'">'+gg[g].map(opt).join("")+"</optgroup>";}).join("");
       var tags=[];if(e.gear)tags.push(H.GEAR_ICON[e.gear]+" "+e.gear);if(e.s)tags.push("je Seite");if(e.x)tags.push("Kombi");
       opts+='<option value="__new">✏️ Eigene Übung anlegen …</option>';
       h+='<div class="hx"><span class="no">'+(i+1)+'</span><span class="dot" style="background:'+H.GCOL[e.m]+'"></span><span class="nm"><select onchange="T.hPick('+i+',this.value)" aria-label="Übung '+(i+1)+'">'+opts+"</select>"+(tags.length?'<span class="tags">'+tags.map(function(t){return '<span class="tag">'+t+"</span>";}).join("")+"</span>":"")+'</span><button class="x" onclick="T.hSwap('+i+')" title="Andere Übung" aria-label="Tauschen">🔄</button><button class="x" onclick="T.hRm('+i+')" aria-label="Entfernen">✕</button></div>';});
@@ -304,7 +309,7 @@ function vHiit(){
     h+='<div class="row2" style="margin-top:12px"><button class="btn ghost" onclick="T.hAdd()">＋ Übung</button><button class="btn ghost" onclick="T.hBuild()">🎲 Neu mischen</button></div>';
     h+='<button class="btn amb full" style="margin-top:10px;font-size:17px;padding:16px" onclick="T.hStart()">▶ Start</button>';
     h+='<button class="mini" style="margin-top:10px;width:100%" onclick="T.hManual()">✓ Ohne Timer als erledigt eintragen</button>';
-    h+='<div class="note" style="margin-top:10px">Tippe auf eine Übung, um sie gezielt auszuwählen, oder auf 🔄 für einen Vorschlag. Ablauf: 10 s Vorlauf mit „Achtung“, dann nur Signaltöne – Pieptöne 3 – 2 – 1 vor jedem Start und jedem Ende, hoher Ton = los, tiefer Ton = Pause, bei „je Seite“ zur Hälfte ein Doppelpiep (Seitenwechsel). Nach jedem Durchgang hält der Timer an, bis du auf „Weiter“ tippst. Am iPhone den Lautlos-Schalter ausschalten, sonst bleibt es stumm.</div></div>';}
+    h+='<div class="note" style="margin-top:10px">Tippe auf eine Übung, um sie gezielt auszuwählen – unten in der Liste stehen die Übungen mit Gerät, je Gerät eine eigene Gruppe. 🔄 macht einen Vorschlag. Ablauf: 10 s Vorlauf mit „Achtung“, dann nur Signaltöne – Pieptöne 3 – 2 – 1 vor jedem Start und jedem Ende, hoher Ton = los, tiefer Ton = Pause, bei „je Seite“ zur Hälfte ein Doppelpiep (Seitenwechsel). Nach jedem Durchgang hält der Timer an, bis du auf „Weiter“ tippst. Am iPhone den Lautlos-Schalter ausschalten, sonst bleibt es stumm.</div></div>';}
   else h+='<div class="empty"><div class="big">⚡</div>Wähle Art und Fokus und tippe auf „Training erstellen“.</div>';
   return h+vCustom();
 }
