@@ -28,6 +28,7 @@ function merge(l,r,lU,rU){l=norm(JSON.parse(JSON.stringify(l)));r=norm(JSON.pars
   if(l.pz||r.pz){var a=l.pz||{},b=r.pz||{},o={challenges:{},done:{}};["challenges","done"].forEach(function(k){var x=a[k]||{},y=b[k]||{};Object.keys(Object.assign({},y,x)).forEach(function(i){var p=x[i],q=y[i];o[k][i]=!p?q:!q?p:(((k==="done"?p.t:p.upd)||0)>=((k==="done"?q.t:q.upd)||0)?p:q);});});out.pz=o;}
   var hcu={};[r.hiitCustom||{},l.hiitCustom||{}].forEach(function(m){Object.keys(m).forEach(function(k){if(!hcu[k]||(m[k].t||0)>(hcu[k].t||0))hcu[k]=m[k];});});if(Object.keys(hcu).length)out.hiitCustom=hcu;
   var hgr={};[r.hiitGear||{},l.hiitGear||{}].forEach(function(m){Object.keys(m).forEach(function(k){if(!hgr[k]||(m[k].t||0)>(hgr[k].t||0))hgr[k]=m[k];});});if(Object.keys(hgr).length)out.hiitGear=hgr;
+  ["teilnehmer","karten"].forEach(function(f){var o={};[r[f]||{},l[f]||{}].forEach(function(m){Object.keys(m).forEach(function(k){if(!o[k]||(m[k].t||0)>(o[k].t||0))o[k]=m[k];});});if(Object.keys(o).length)out[f]=o;});
   var hc=[l.hiitCfg,r.hiitCfg].filter(Boolean).sort(function(a,b){return (b.t||0)-(a.t||0);})[0];if(hc)out.hiitCfg=hc;
   Object.keys(Object.assign({},r.sessions,l.sessions)).forEach(function(i){if(del[i])return;var a=l.sessions[i],b=r.sessions[i];out.sessions[i]=!a?b:!b?a:((a.upd||0)>=(b.upd||0)?a:b);});
   out._summary=summaryFor(out);return out;}
@@ -73,11 +74,11 @@ function allExercises(){var s={};Object.keys(tpls()).forEach(function(t){tpls()[
 function render(){syncGear();syncCustom();
   document.getElementById("top").innerHTML=C.topbar(SA?{title:"Training",icon:"🏋️",sub:"Counter · 1 % · Kraft · Körper",accent:"#f43f5e",accent2:"#fb7185",home:false,eye:false,syncHref:"javascript:T.tab('einst')"}:{title:"Training",icon:"🏋️",sub:"Kraft · HIIT · Laufen · Körper",accent:"#f43f5e",accent2:"#fb7185"});C.paintStatus();
   var tabs=SA?[["counter","🔢 Counter"],["prozent","📈 1 %"],["uebersicht","📊 Übersicht"],["kraft","＋ Kraft"],["koerper","⚖️ Körper"],["verlauf","📋 Verlauf"],["fortschritt","📈 Fortschritt"],["einst","⚙️ Einstellungen"]]
-    :[["uebersicht","📊 Übersicht"],["kraft","＋ Kraft"],["hiit","⚡ HIIT"],["lauf","＋ Lauf"],["koerper","⚖️ Körper"],["verlauf","📋 Verlauf"],["fortschritt","📈 Fortschritt"],["einst","⚙️ Einstellungen"]];
+    :[["uebersicht","📊 Übersicht"],["kraft","＋ Kraft"],["hiit","⚡ HIIT"],["gruppe","👥 Teilnehmer"],["lauf","＋ Lauf"],["koerper","⚖️ Körper"],["verlauf","📋 Verlauf"],["fortschritt","📈 Fortschritt"],["einst","⚙️ Einstellungen"]];
   document.getElementById("tabs").innerHTML=tabs.map(function(t){return '<button class="tab'+(st.tab===t[0]?" on":"")+'" onclick="T.tab(\''+t[0]+'\')">'+t[1]+"</button>";}).join("");
   document.getElementById("exList").innerHTML=allExercises().map(function(n){return '<option value="'+C.esc(n)+'">';}).join("");
   var h="";if(st.flash)h+='<div class="flash'+(st.flash.warn?" warn":"")+'">'+C.esc(st.flash.t)+"</div>";
-  h+=({uebersicht:vDash,kraft:vKraft,hiit:vHiit,lauf:vLauf,koerper:vBody,einst:vEinst,counter:vCounter,prozent:vProzent,verlauf:vList,fortschritt:vProg}[st.tab])();
+  h+=({uebersicht:vDash,kraft:vKraft,hiit:vHiit,lauf:vLauf,koerper:vBody,einst:vEinst,counter:vCounter,prozent:vProzent,verlauf:vList,fortschritt:vProg,gruppe:vGruppe}[st.tab]||vDash)();
   document.getElementById("main").innerHTML=h;
 }
 function kpi(i,l,v){return '<div class="kpi"><div class="ico">'+i+'</div><div class="val">'+v+'</div><div class="lab">'+l+"</div></div>";}
@@ -160,7 +161,7 @@ function vLauf(){
 }
 
 /* ---------- Verlauf ---------- */
-function hiitHead(s){return '⚡ <b>HIIT · '+C.esc(FOCUS[s.focus]||"Gesamt")+'</b> · '+(s.ex||[]).length+" × "+(s.rounds||3)+" · "+fmtDur(s.secs||0)+" Belastung"+(s.of&&s.done<s.of?' <span class="small" style="color:#fbbf24">('+s.done+"/"+s.of+")</span>":"");}
+function hiitHead(s){var nt=Object.keys(tnOf(s)).length;return '⚡ <b>HIIT · '+C.esc(FOCUS[s.focus]||"Gesamt")+'</b> · '+(s.ex||[]).length+" × "+(s.rounds||3)+" · "+fmtDur(s.secs||0)+" Belastung"+(s.of&&s.done<s.of?' <span class="small" style="color:#fbbf24">('+s.done+"/"+s.of+")</span>":"")+(nt?" · 👥 "+nt:"");}
 function sesRow(s){var open=st.open[s.id];if(s.type==="counter"){var cd="",iv=tapIntervals(s.taps||[]),avg=iv.length?iv.reduce(function(a,b){return a+b;},0)/iv.length:null;
     if(open){var av=function(n){var x=iv.slice(-n);return iv.length>=n?x.reduce(function(a,b){return a+b;},0)/x.length:null;};
       cd="Ø pro Stück "+fmtIv(avg)+" · "+(avg?C.num(60/avg,1):"–")+" pro Minute"+(av(10)?"<br>Ø letzte 10: "+fmtIv(av(10)):"")+(av(20)?" · Ø letzte 20: "+fmtIv(av(20)):"")+
@@ -169,7 +170,9 @@ function sesRow(s){var open=st.open[s.id];if(s.type==="counter"){var cd="",iv=ta
   if(s.type==="hiit"){var dd="";
     if(open){dd=MODE[s.mode||"eigen"]+" · "+(s.work||40)+" s / "+(s.rest||20)+" s · "+(s.rounds||3)+" Durchgänge · gesamt "+fmtDur(s.dur||0)+"<br>"+(s.ex||[]).map(function(n,i){return (i+1)+". "+C.esc(n);}).join("<br>");
       if(s.note)dd+='<br><i>'+C.esc(s.note)+"</i>";
-      dd+='<div style="margin-top:8px"><button class="mini" onclick="T.hAgain(\''+s.id+'\')">⚡ Nochmal machen</button> <button class="mini" style="color:#ff8a80" onclick="T.del(\''+s.id+'\')">Löschen</button></div>';}
+      var tids=Object.keys(tnOf(s));if(tids.length)dd+="<br>👥 "+tids.map(function(id){return C.esc(tnName(id))+(tnOf(s)[id]===1?" 🎫":"");}).join(", ");
+      if(!SA&&st.tnS===s.id)dd+='<div style="margin-top:8px">'+tnChips(tids,"T.sTn")+"</div>";
+      dd+='<div style="margin-top:8px"><button class="mini" onclick="T.hAgain(\''+s.id+'\')">⚡ Nochmal machen</button> '+(SA?"":'<button class="mini" onclick="T.sTnEdit(\''+s.id+'\')">👥 Teilnehmer'+(st.tnS===s.id?" fertig":"")+"</button> ")+'<button class="mini" style="color:#ff8a80" onclick="T.del(\''+s.id+'\')">Löschen</button></div>';}
     return '<div class="ses"><div class="t" onclick="T.toggle(\''+s.id+'\')"><span>'+hiitHead(s)+'</span><span class="small muted" style="white-space:nowrap">'+new Date(s.date).toLocaleDateString("de-DE",{weekday:"short",day:"numeric",month:"numeric"})+"</span></div>"+(open?'<div class="d">'+dd+"</div>":"")+"</div>";}
   var head=s.type==="lauf"?'🏃 <b>'+C.num(s.dist,2)+' km</b> in '+fmtDur(s.dur)+' · '+fmtPace(pace(s)):'🏋️ <b>'+C.esc(s.tpl||"Kraft")+'</b> · '+(s.exercises||[]).length+' Übungen · '+C.int(volume(s))+' kg';
   var det="";
@@ -307,6 +310,8 @@ function vHiit(){
       h+='<div class="hx"><span class="no">'+(i+1)+'</span><span class="dot" style="background:'+H.GCOL[e.m]+'"></span><span class="nm"><select onchange="T.hPick('+i+',this.value)" aria-label="Übung '+(i+1)+'">'+opts+"</select>"+(tags.length?'<span class="tags">'+tags.map(function(t){return '<span class="tag">'+t+"</span>";}).join("")+"</span>":"")+'</span><button class="x" onclick="T.hSwap('+i+')" title="Andere Übung" aria-label="Tauschen">🔄</button><button class="x" onclick="T.hRm('+i+')" aria-label="Entfernen">✕</button></div>';});
     h+='<div class="legend">'+Object.keys(H.GROUPS).map(function(g){return '<span><i style="background:'+H.GCOL[g]+'"></i>'+H.GROUPS[g]+"</span>";}).join("")+"</div>";
     h+='<div class="row2" style="margin-top:12px"><button class="btn ghost" onclick="T.hAdd()">＋ Übung</button><button class="btn ghost" onclick="T.hBuild()">🎲 Neu mischen</button></div>';
+    if(!SA){var dtn=(d.tn||[]).filter(tnById),lt=lastTn();h+='<div class="lbl" style="margin-top:12px">👥 Wer ist dabei?'+(dtn.length?" ("+dtn.length+")":"")+"</div>"+tnChips(dtn,"T.hTn")+
+      (!dtn.length&&lt.length?'<button class="mini" onclick="T.hTnLast()">wie letztes Mal: '+C.esc(lt.map(tnName).join(", "))+"</button>":"");}
     h+='<button class="btn amb full" style="margin-top:10px;font-size:17px;padding:16px" onclick="T.hStart()">▶ Start</button>';
     h+='<button class="mini" style="margin-top:10px;width:100%" onclick="T.hManual()">✓ Ohne Timer als erledigt eintragen</button>';
     h+='<div class="note" style="margin-top:10px">Tippe auf eine Übung, um sie gezielt auszuwählen – unten in der Liste stehen die Übungen mit Gerät, je Gerät eine eigene Gruppe. 🔄 macht einen Vorschlag. Ablauf: 10 s Vorlauf mit „Achtung“, dann nur Signaltöne – Pieptöne 3 – 2 – 1 vor jedem Start und jedem Ende, hoher Ton = los, tiefer Ton = Pause, bei „je Seite“ zur Hälfte ein Doppelpiep (Seitenwechsel). Nach jedem Durchgang hält der Timer an, bis du auf „Weiter“ tippst. Am iPhone den Lautlos-Schalter ausschalten, sonst bleibt es stumm.</div></div>';}
@@ -353,10 +358,90 @@ function hsave(s,manual){var id=uid(),c=hrun?hrun.cfg:hcfg(),d=draft();
   var L=hrun?hrun.list:d.list,o={id:id,type:"hiit",date:hrun?hrun.date:C.today(),mode:(hrun?hrun.mode:d.mode)||"eigen",focus:(hrun?hrun.focus:d.focus)||"gesamt",ex:L.slice(),
     rounds:c.rounds,work:c.work,rest:c.rest,done:manual?L.length*c.rounds:s.doneWork,of:L.length*c.rounds,secs:manual?L.length*c.rounds*c.work:Math.round(s.workSecs),
     dur:manual?H.totalSecs(c,L.length):Math.round(s.el),note:"",upd:Date.now()};
+  var tm={};((hrun?hrun.tn:d.tn)||[]).forEach(function(pid){var p=tnById(pid);if(p)tm[pid]=p.status==="karte"?1:0;});if(Object.keys(tm).length)o.tn=tm;
   data.sessions[id]=o;persist();return id;}
 function sheet(html){var el=$("hrSheet");if(html==null){el.hidden=true;el.innerHTML="";}else{el.innerHTML=html;el.hidden=false;}}
 function hfinish(s){if(!hrun||hrun.saved)return;hrun.saved=hsave(s,false);wake(false);if(C.lockTouch)C.lockTouch();var full=s.doneWork>=s.workTotal;
-  sheet('<h2>'+(full?"🎉 Geschafft!":"Training gespeichert")+'</h2><div class="small" style="color:#cbd5e1">'+s.doneWork+" von "+s.workTotal+" Intervallen · "+fmtDur(s.workSecs)+" Belastung · "+fmtDur(s.el)+' gesamt</div><input placeholder="Notiz (optional), z. B. Gruppe, Gefühl" oninput="T.hNote(this.value)"><button class="btn amb" onclick="T.hClose()">Fertig</button>');}
+  hrun.sumHtml='<h2>'+(full?"🎉 Geschafft!":"Training gespeichert")+'</h2><div class="small" style="color:#cbd5e1">'+s.doneWork+" von "+s.workTotal+" Intervallen · "+fmtDur(s.workSecs)+" Belastung · "+fmtDur(s.el)+" gesamt</div>";
+  paintFinish();}
+
+/* ---------- Teilnehmer & 10er-Karten (HIIT) ----------
+   data.teilnehmer {id:{id, name, status:"mitglied"|"karte", t, del}} · data.karten {id:{id, tn, datum, n, t, del}}
+   HIIT-Einheit: tn {teilnehmerId: 1 = zieht von der Karte ab | 0 = wird nur gezählt}. Festgehalten beim Eintragen –
+   ein späterer Statuswechsel ändert die Vergangenheit nicht. Guthaben = Summe der Karten − Teilnahmen mit Abzug;
+   unter 0 wird mit der nächsten Karte verrechnet (Zuordnung der Teilnahmen zu den Karten nach Datum). Namen nie auf die Startseite. */
+var TN_ST={mitglied:"Mitglied",karte:"10er-Karte"};
+function dde(x){return x?x.slice(8,10)+"."+x.slice(5,7)+"."+x.slice(0,4):"–";}
+function dkurz(x){return new Date(x+"T12:00:00").toLocaleDateString("de-DE",{weekday:"short",day:"numeric",month:"numeric"});}
+function tnAll(){var m=data.teilnehmer||{};return Object.keys(m).map(function(k){return m[k];}).filter(function(p){return p&&p.name&&!p.del;}).sort(function(a,b){return a.name.localeCompare(b.name,"de");});}
+function tnById(id){var p=(data.teilnehmer||{})[id];return p&&!p.del?p:null;}
+function tnName(id){var p=(data.teilnehmer||{})[id];return p?p.name+(p.del?" (gelöscht)":""):"?";}
+function tnOf(x){return x&&x.tn&&typeof x.tn==="object"?x.tn:{};}
+function hiitAll(){return list().filter(function(x){return x.type==="hiit";});}
+function lastTn(){var x=hiitAll().filter(function(y){return Object.keys(tnOf(y)).length;})[0];return x?Object.keys(tnOf(x)).filter(tnById):[];}
+function tnStats(p){
+  var att=hiitAll().filter(function(x){return tnOf(x)[p.id]!=null;}).sort(function(a,b){return a.date.localeCompare(b.date)||(a.upd||0)-(b.upd||0);});
+  var ab=att.filter(function(x){return tnOf(x)[p.id]===1;});
+  var cards=Object.keys(data.karten||{}).map(function(k){return data.karten[k];}).filter(function(c){return c&&!c.del&&c.tn===p.id;}).sort(function(a,b){return a.datum.localeCompare(b.datum)||(a.t||0)-(b.t||0);});
+  var cum=0,hist=cards.map(function(c){var n=+c.n||10,used=Math.max(0,Math.min(n,ab.length-cum)),leer=used===n?ab[cum+n-1].date:null;cum+=n;return {c:c,n:n,used:used,leer:leer};});
+  var heute=C.today(),rest=cum-ab.length,ab8=ab.filter(function(x){return (Date.parse(heute)-Date.parse(x.date))/DAY<=56;}).length,prog=null;
+  if(rest>0&&ab8>0)prog=new Date(Date.now()+rest/(ab8/56)*DAY).toISOString().slice(0,10);
+  return {att:att,n:att.length,mon:att.filter(function(x){return x.date.slice(0,7)===heute.slice(0,7);}).length,last:att.length?att[att.length-1].date:null,
+    ab:ab.length,cards:hist,akt:hist.filter(function(h){return h.used<h.n;})[0]||null,rest:rest,prog:prog};}
+/* Kartenstand als Text (Teilnehmerliste, Ende eines Trainings) */
+function kartTxt(p,x){if(p.status!=="karte"&&!x.cards.length&&!x.ab)return "";
+  if(!x.cards.length&&x.rest>=0)return '<span style="color:#fbbf24">🎫 noch keine Karte angelegt</span>';
+  if(x.rest>0)return "🎫 noch <b>"+x.rest+"</b>"+(x.akt?" von "+x.akt.n:"")+(x.prog?" · nächste Karte voraussichtlich ab ca. <b>"+dde(x.prog)+"</b>":"");
+  if(x.rest===0)return '<span style="color:#fbbf24">🎫 Karte aufgebraucht – die nächste Teilnahme braucht eine neue Karte</span>';
+  return '<span style="color:#f87171">⚠ Karte fällig: '+(-x.rest)+(x.rest===-1?" Teilnahme":" Teilnahmen")+" offen – wird mit der nächsten Karte verrechnet</span>";}
+function tnChips(sel,fn){var l=tnAll();if(!l.length)return '<div class="note">Noch keine Teilnehmer – <a href="#" style="color:#fbbf24" onclick="T.tab(\'gruppe\');return false">jetzt anlegen</a>.</div>';
+  return '<div class="chips">'+l.map(function(p){return '<button class="chip amb'+(sel.indexOf(p.id)>-1?" on":"")+'" onclick="'+fn+'(\''+p.id+'\')">'+C.esc(p.name)+(p.status==="karte"?" 🎫":"")+"</button>";}).join("")+"</div>";}
+function tnToggle(sid,pid){var x=data.sessions[sid];if(!x)return;var m=Object.assign({},tnOf(x));
+  if(m[pid]!=null)delete m[pid];else{var p=tnById(pid);if(!p)return;m[pid]=p.status==="karte"?1:0;}
+  x.tn=m;x.upd=Date.now();persist();}
+function tnZeile(sid){var x=data.sessions[sid];
+  return Object.keys(tnOf(x)).map(function(id){var p=tnById(id);if(!p||tnOf(x)[id]!==1)return "";return '<div class="small" style="margin-top:4px">'+C.esc(p.name)+": "+kartTxt(p,tnStats(p))+"</div>";}).join("");}
+function paintFinish(){if(!hrun||!hrun.saved)return;var x=data.sessions[hrun.saved]||{},sel=Object.keys(tnOf(x));
+  sheet(hrun.sumHtml+'<input placeholder="Notiz (optional), z. B. Gruppe, Gefühl" value="'+C.esc(x.note||"")+'" oninput="T.hNote(this.value)">'+
+    (!SA&&tnAll().length?'<div class="small" style="color:#cbd5e1;margin:10px 0 4px">👥 Wer war dabei?</div>'+tnChips(sel,"T.finTn")+tnZeile(hrun.saved):"")+
+    '<button class="btn amb" style="margin-top:10px" onclick="T.hClose()">Fertig</button>');}
+function vGruppe(){var l=tnAll(),f=st.tnf||(st.tnf={name:"",status:"karte",ab:C.today()}),h="",stats={};
+  l.forEach(function(p){stats[p.id]=tnStats(p);});
+  var fl=l.filter(function(p){return p.status==="karte"&&stats[p.id].rest<=1;});
+  if(fl.length)h+='<div class="panel" style="border-color:#f59e0b66"><b style="color:#fbbf24">🎫 Bald oder jetzt fällig</b>'+fl.map(function(p){return '<div class="small" style="margin-top:4px">'+C.esc(p.name)+": "+kartTxt(p,stats[p.id])+"</div>";}).join("")+"</div>";
+  h+='<div class="panel"><h3 style="color:#f59e0b">👥 Teilnehmer ('+l.length+")</h3>";
+  if(!l.length)h+='<div class="note">Lege hier die Leute an, die beim HIIT mitmachen. Beim Training tippst du dann an, wer dabei war – bei einer 10er-Karte wird je Teilnahme 1 abgezogen.</div>';
+  h+=l.map(function(p){var x=stats[p.id],op=st.tnOpen&&st.tnOpen[p.id],ed=st.tnEd===p.id,kf=st.tnK===p.id,r='<div class="pr" style="display:block;padding:10px 0">';
+    r+='<div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><span><b style="color:#fff">'+C.esc(p.name)+'</b> <span class="tag">'+TN_ST[p.status||"mitglied"]+"</span></span>"+
+      '<span style="white-space:nowrap"><button class="x" onclick="T.tnEdit(\''+p.id+'\')" aria-label="Bearbeiten">✏️</button><button class="x" onclick="T.tnOpen(\''+p.id+'\')" aria-label="Verlauf">'+(op?"▲":"▼")+"</button></span></div>";
+    r+='<div class="small muted" style="margin-top:3px">'+x.n+"× dabei"+(x.n?" · diesen Monat "+x.mon+" · zuletzt "+dkurz(x.last):"")+"</div>";
+    var kt=kartTxt(p,x);if(kt)r+='<div class="small" style="margin-top:4px">'+kt+"</div>";
+    if(p.status==="karte"&&x.akt)r+='<div style="height:6px;border-radius:3px;background:var(--field);margin-top:6px;overflow:hidden"><i style="display:block;height:100%;width:'+Math.round(x.akt.used/x.akt.n*100)+'%;background:#f59e0b"></i></div>';
+    if(p.status==="karte"||x.cards.length)r+=kf?'<div class="row2" style="margin-top:8px"><input type="date" id="tnKd" value="'+C.today()+'"><button class="btn amb" style="flex:0 0 auto" onclick="T.tnKarteSave(\''+p.id+'\')">Karte anlegen</button><button class="mini" style="flex:0 0 auto" onclick="T.tnKarte(null)">✕</button></div>':
+      '<button class="mini" style="margin-top:8px" onclick="T.tnKarte(\''+p.id+'\')">＋ neue 10er-Karte</button>';
+    if(ed)r+='<div style="margin-top:8px"><div class="field"><label>Name</label><input id="tnEn" value="'+C.esc(p.name)+'"></div><div class="chips">'+Object.keys(TN_ST).map(function(k){return '<button class="chip amb'+((st.tnEs||p.status)===k?" on":"")+'" onclick="T.tnEs(\''+k+'\')">'+TN_ST[k]+"</button>";}).join("")+
+      '</div><div class="row2"><button class="btn amb" onclick="T.tnSave(\''+p.id+'\')">Speichern</button><button class="mini" style="flex:0 0 auto;color:#ff8a80" onclick="T.tnDel(\''+p.id+'\')">Löschen</button></div>'+
+      '<div class="note">Ein Statuswechsel gilt ab jetzt. Bisherige Teilnahmen bleiben, wie sie eingetragen wurden.</div></div>';
+    if(op){r+='<div class="small" style="margin-top:8px;line-height:1.6">';
+      if(x.cards.length)r+="<b>Karten</b><br>"+x.cards.slice().reverse().map(function(c){return "🎫 ab "+dde(c.c.datum)+": "+c.used+"/"+c.n+" genutzt"+(c.leer?" · aufgebraucht am "+dde(c.leer):"")+' <button class="x" style="font-size:12px" onclick="T.tnKarteDel(\''+c.c.id+'\')" aria-label="Karte löschen">✕</button>';}).join("<br>")+"<br>";
+      r+="<b>Teilnahmen</b><br>"+(x.att.length?x.att.slice().reverse().slice(0,30).map(function(s){return dkurz(s.date)+(tnOf(s)[p.id]===1?" · 🎫 −1":" · gezählt");}).join("<br>"):"noch keine")+"</div>";}
+    return r+"</div>";}).join("");
+  h+="</div>";
+  /* Neu anlegen */
+  h+='<div class="panel"><h3>＋ Teilnehmer anlegen</h3><div class="field"><label>Name</label><input id="tnN" value="'+C.esc(f.name)+'" placeholder="Vorname" oninput="T.tnV(\'name\',this.value)"></div>'+
+    '<div class="chips">'+Object.keys(TN_ST).map(function(k){return '<button class="chip amb'+(f.status===k?" on":"")+'" onclick="T.tnV(\'status\',\''+k+'\')">'+TN_ST[k]+"</button>";}).join("")+"</div>"+
+    (f.status==="karte"?'<div class="field"><label>Erste 10er-Karte ab (leer = noch keine)</label><input type="date" id="tnAb" value="'+C.esc(f.ab||"")+'" onchange="T.tnV(\'ab\',this.value)"></div>':'<div class="note" style="margin-bottom:8px">Mitglieder werden nur gezählt, es wird nichts abgezogen.</div>')+
+    '<button class="btn amb full" onclick="T.tnNeu()">Anlegen</button></div>';
+  /* Übersicht: wer war wann wie oft da */
+  var hs=hiitAll();
+  if(hs.length&&l.length){var mons=[],d0=new Date();for(var i=5;i>=0;i--){var dm=new Date(d0.getFullYear(),d0.getMonth()-i,1);mons.push(dm.getFullYear()+"-"+("0"+(dm.getMonth()+1)).slice(-2));}
+    var cnt=function(pid,m){return hs.filter(function(s){return s.date.slice(0,7)===m&&tnOf(s)[pid]!=null;}).length;};
+    h+='<div class="panel"><h3>📊 Wer war wann da</h3><div style="overflow-x:auto"><table class="t"><tr><th></th>'+mons.map(function(m){return "<th>"+new Date(m+"-15T12:00:00").toLocaleDateString("de-DE",{month:"short"})+"</th>";}).join("")+"<th>gesamt</th></tr>"+
+      '<tr><td class="muted">Termine</td>'+mons.map(function(m){return "<td>"+hs.filter(function(s){return s.date.slice(0,7)===m;}).length+"</td>";}).join("")+"<td>"+hs.length+"</td></tr>"+
+      l.map(function(p){return "<tr><td>"+C.esc(p.name)+"</td>"+mons.map(function(m){var n=cnt(p.id,m);return "<td>"+(n||'<span class="muted">–</span>')+"</td>";}).join("")+"<td><b>"+stats[p.id].n+"</b></td></tr>";}).join("")+"</table></div>";
+    h+='<div class="lbl" style="margin-top:12px">Letzte Termine</div>'+hs.slice(0,10).map(function(s){var ids=Object.keys(tnOf(s));return '<div class="small" style="padding:5px 0;border-bottom:1px solid var(--border)"><b>'+dkurz(s.date)+"</b> · "+(ids.length?ids.map(function(id){return C.esc(tnName(id));}).join(", "):'<span class="muted">ohne Teilnehmer</span>')+"</div>";}).join("")+
+      '<div class="note" style="margin-top:8px">Teilnehmer nachträglich ändern: im Verlauf die HIIT-Einheit öffnen → „👥 Teilnehmer“.</div></div>';}
+  return h;}
 
 /* ---------- Körper (Waage) ---------- */
 function wlist(){return Object.keys(data.weights||{}).map(function(k){return data.weights[k];}).sort(function(a,b){return a.date.localeCompare(b.date);});}
@@ -575,7 +660,7 @@ Object.assign(window.T,{
   hVoice:function(v){hset("voice",typeof v==="boolean"?v:!hcfg().voice);render();},
   
   hReset:function(){var c=hcfg();["work","rest","rounds","prep"].forEach(function(k){c[k]=HDEF[k];});c.t=Date.now();data.hiitCfg=c;persist();render();},
-  hBuild:function(){var c=hcfg();st.hd={mode:c.mode,focus:c.focus,list:H.build({mode:c.mode,focus:c.focus,n:Math.min(nMax(c.mode),Math.max(8,c.n)),bench:c.bench,gear:c.gear,recent:recentHiit()})};saveDraft();render();
+  hBuild:function(){var c=hcfg(),alt=draft();st.hd={tn:(alt.tn||[]).slice(),mode:c.mode,focus:c.focus,list:H.build({mode:c.mode,focus:c.focus,n:Math.min(nMax(c.mode),Math.max(8,c.n)),bench:c.bench,gear:c.gear,recent:recentHiit()})};saveDraft();render();
     var el=document.querySelectorAll(".panel")[1];if(el)el.scrollIntoView({behavior:"smooth",block:"start"});},
   hSwap:function(i){var d=draft(),nn=H.swap(d.list,i,hopt());if(!nn){flash("Keine weitere passende Übung gefunden",true);return;}d.list[i]=nn;saveDraft();render();},
   hPick:function(i,v){if(v==="__new"){T.hcOpen(i);return;}var d=draft();d.list[i]=v;saveDraft();render();},
@@ -583,6 +668,29 @@ Object.assign(window.T,{
   hcOpen:function(i){st.hcOpen=true;st.hcSlot=i;render();var p=document.getElementById("hcPanel");if(p)p.scrollIntoView({behavior:"smooth",block:"start"});var n=document.getElementById("hcN");if(n)setTimeout(function(){n.focus();},300);},
   hcV:function(k,v){st.hc[k]=v;if(k!=="n")render();},
   sperre:function(m){try{localStorage.setItem(SPERRE_KEY,m);}catch(e){}if(C.lockTouch)C.lockTouch();render();},
+  hTn:function(pid){var d=draft(),l=(d.tn||[]).filter(tnById),i=l.indexOf(pid);if(i>-1)l.splice(i,1);else l.push(pid);d.tn=l;saveDraft();render();},
+  hTnLast:function(){var d=draft();d.tn=lastTn();saveDraft();render();},
+  finTn:function(pid){if(hrun&&hrun.saved){tnToggle(hrun.saved,pid);paintFinish();}},
+  sTnEdit:function(sid){st.tnS=st.tnS===sid?null:sid;render();},
+  sTn:function(pid){if(st.tnS){tnToggle(st.tnS,pid);render();}},
+  tnV:function(k,v){if(!st.tnf)st.tnf={name:"",status:"karte",ab:C.today()};st.tnf[k]=v;if(k!=="name")render();},
+  tnNeu:function(){var f=st.tnf||{},n=String(f.name||"").trim().replace(/\s+/g," ");if(!n){flash("⚠ Bitte einen Namen eingeben",true);return;}
+    if(tnAll().some(function(p){return p.name.toLowerCase()===n.toLowerCase();})){flash("„"+n+"“ gibt es schon",true);return;}
+    var id=uid(),now=Date.now(),karte=f.status!=="mitglied";if(!data.teilnehmer)data.teilnehmer={};data.teilnehmer[id]={id:id,name:n,status:karte?"karte":"mitglied",t:now};
+    if(karte&&f.ab){if(!data.karten)data.karten={};var k=uid();data.karten[k]={id:k,tn:id,datum:f.ab,n:10,t:now};}
+    st.tnf=null;persist();flash("✓ „"+n+"“ angelegt"+(karte&&f.ab?" mit 10er-Karte ab "+dde(f.ab):""));},
+  tnOpen:function(pid){st.tnOpen=st.tnOpen||{};st.tnOpen[pid]=!st.tnOpen[pid];render();},
+  tnEdit:function(pid){st.tnEd=st.tnEd===pid?null:pid;st.tnEs=null;render();},
+  tnEs:function(k){var v=document.getElementById("tnEn"),nm=v?v.value:null;st.tnEs=k;render();var w=document.getElementById("tnEn");if(w&&nm!=null)w.value=nm;},
+  tnSave:function(pid){var p=tnById(pid);if(!p)return;var n=String((document.getElementById("tnEn")||{}).value||"").trim().replace(/\s+/g," ");if(!n){flash("⚠ Bitte einen Namen eingeben",true);return;}
+    data.teilnehmer[pid]=Object.assign({},p,{name:n,status:st.tnEs||p.status,t:Date.now()});st.tnEd=null;st.tnEs=null;persist();flash("✓ Gespeichert");},
+  tnDel:function(pid){var p=tnById(pid);if(!p||!confirm("„"+p.name+"“ löschen? In früheren Trainings bleibt die Teilnahme als „(gelöscht)“ stehen."))return;
+    data.teilnehmer[pid]=Object.assign({},p,{del:true,t:Date.now()});st.tnEd=null;persist();render();},
+  tnKarte:function(pid){st.tnK=pid;render();},
+  tnKarteSave:function(pid){var p=tnById(pid),d=(document.getElementById("tnKd")||{}).value;if(!p)return;if(!d){flash("⚠ Bitte ein Datum wählen",true);return;}
+    if(!data.karten)data.karten={};var k=uid();data.karten[k]={id:k,tn:pid,datum:d,n:10,t:Date.now()};st.tnK=null;persist();
+    var x=tnStats(p);flash("✓ Neue 10er-Karte für "+p.name+" ab "+dde(d)+" – jetzt "+(x.rest>=0?"noch "+x.rest+" Einheiten":x.rest+" (wird verrechnet)"));},
+  tnKarteDel:function(kid){var c=(data.karten||{})[kid];if(!c||!confirm("Diese 10er-Karte (ab "+dde(c.datum)+") löschen?"))return;data.karten[kid]=Object.assign({},c,{del:true,t:Date.now()});persist();render();},
   hgQuick:function(){st.hgQuick=!st.hgQuick;st.hg=null;render();if(st.hgQuick){var n=document.getElementById("hgN");if(n)setTimeout(function(){n.focus();},100);}},
   hgV:function(k,v){if(!st.hg)st.hg={n:"",icon:GEAR_ICONS[0]};st.hg[k]=v;if(k!=="n")render();},
   hgAdd:function(quick){var f=st.hg||{},n=String(f.n||"").trim().replace(/\s+/g," ").replace(/['"<>]/g,"");
@@ -607,9 +715,9 @@ Object.assign(window.T,{
   hcDel:function(key){var c=(data.hiitCustom||{})[key];if(!c||!confirm("„"+c.n+"“ aus deinen eigenen Übungen löschen?"))return;data.hiitCustom[key]={n:c.n,del:true,t:Date.now()};syncCustom();persist();render();},
   hRm:function(i){var d=draft();d.list.splice(i,1);saveDraft();render();},
   hAdd:function(){var d=draft();d.list.push(d.list[d.list.length-1]||"Squats");var nn=H.swap(d.list,d.list.length-1,hopt());if(nn)d.list[d.list.length-1]=nn;else d.list.pop();saveDraft();render();},
-  hAgain:function(id){var s=data.sessions[id];if(!s)return;st.hd={mode:s.mode||"eigen",focus:s.focus||"gesamt",list:(s.ex||[]).slice()};saveDraft();T.tab("hiit");},
+  hAgain:function(id){var s=data.sessions[id];if(!s)return;st.hd={mode:s.mode||"eigen",focus:s.focus||"gesamt",list:(s.ex||[]).slice(),tn:Object.keys(tnOf(s)).filter(tnById)};saveDraft();T.tab("hiit");},
   hStart:function(){var d=draft();if(!d.list.length)return;var c=hcfg();H.setVoice(c.voice);
-    hrun={list:d.list.slice(),cfg:c,mode:d.mode,focus:d.focus,date:C.today(),saved:null};
+    hrun={list:d.list.slice(),cfg:c,mode:d.mode,focus:d.focus,date:C.today(),saved:null,tn:(d.tn||[]).slice()};
     hrun.timer=H.Timer(c,hrun.list,hpaint,hfinish);sheet(null);$("hrun").hidden=false;document.body.style.overflow="hidden";
     hrun.timer.start();wake(true);},
   hToggle:function(){if(hrun&&!hrun.saved){hrun.timer.toggle();hrun.timer.isRunning()?wake(true):0;}},
