@@ -149,6 +149,32 @@ function fromEnergie(en,y,feld){
     out.push({d:iso(new Date(y,i+1,0,12).getTime()),v:v,q:"Energie"});});
   return out;
 }
+/* Hauptwohnung ohne eigenen Zähler: Rest laut Energie (en._hw, Hausverbrauch − UG − DG − Wallbox) als rechnerische Zählerstände.
+   base = Stand am 31.12. des Vorjahres (vorhandene Ablesung, sonst 0) – für den Verbrauch zählen nur die Differenzen.
+   Übernommen werden die Monate ab Januar bis zur ersten Lücke. */
+var REST_Q="Energie (Rest)";
+function restAusEnergie(en,y,base,baseQ){
+  var hw=en&&en._hw&&en._hw[y],info={n:0,est:0,neg:0},out=[];
+  if(!hw||!Array.isArray(hw.v))return {list:out,info:info};
+  var v=+base||0;out.push({d:(y-1)+"-12-31",v:Math.round(v*10)/10,q:baseQ||"Startwert"});
+  for(var i=0;i<12;i++){var x=hw.v[i];if(x===null||x===undefined||x===""||isNaN(+x))break;x=+x;
+    if(x<0)info.neg++;if(hw.e&&hw.e[i])info.est++;v+=x;info.n++;
+    out.push({d:iso(new Date(y,i+1,0,12).getTime()),v:Math.round(v*10)/10,q:REST_Q});}
+  if(!info.n)out=[];
+  return {list:out,info:info};
+}
+/* Wasser-Hauptzähler aus Energie: Stand Jahresanfang (eigener Startwert, sonst Dezember des Vorjahres),
+   Stand Jahresende (nur mit Dezember-Wert) und der zuletzt erfasste Monat */
+function wasserAusEnergie(en,y){
+  var o={a:null,e:null,last:null};if(!en||!en.data)return o;
+  var num=function(v){if(v===""||v===null||v===undefined)return null;v=+String(v).replace(",",".");return isNaN(v)?null:v;};
+  var cur=en.data[y],prev=en.data[y-1];
+  o.a=cur?num(cur.w_s):null;
+  if(o.a===null&&prev&&prev.m&&prev.m[11])o.a=num(prev.m[11].w);
+  ((cur&&cur.m)||[]).forEach(function(m,i){var v=num(m&&m.w);if(v!==null)o.last={d:iso(new Date(y,i+1,0,12).getTime()),v:v,i:i};});
+  if(o.last&&o.last.i===11)o.e=o.last.v;
+  return o;
+}
 
 
 /* ---------- Belege: Dokumente aus dem Archiv je Kostenart und Jahr ----------
@@ -236,6 +262,6 @@ function belegFehlt(data,y){var prev=posList(data,y-1),out=[];posList(data,y).fo
 return {BELEG_KW:BELEG_KW,DAUER:DAUER,belegJahr:belegJahr,kostObj:kostObj,belegLinks:belegLinks,belegSumme:belegSumme,belegSync:belegSync,belegIndex:belegIndex,belegRest:belegRest,
   belegVerknuepfen:belegVerknuepfen,belegLoesen:belegLoesen,belegVorschlaege:belegVorschlaege,belegFehlt:belegFehlt,belegTitel:beleg_titel,belegBetrag:beleg_betrag,
   POS:POS,SCHL:SCHL,ART:ART,calc:calc,segments:segments,units:units,smoobuPT:smoobuPT,readingAt:readingAt,verbrauch:verbrauch,
-  kontoSumme:kontoSumme,kontoZeitraum:kontoZeitraum,fromEnergie:fromEnergie,posList:posList,days:days,addD:addD,de:de,iso:iso,yearDays:yearDays,r2:r2};
+  kontoSumme:kontoSumme,kontoZeitraum:kontoZeitraum,fromEnergie:fromEnergie,restAusEnergie:restAusEnergie,wasserAusEnergie:wasserAusEnergie,REST_Q:REST_Q,posList:posList,days:days,addD:addD,de:de,iso:iso,yearDays:yearDays,r2:r2};
 })();
 if(typeof window!=="undefined")window.HAUS=HAUS;

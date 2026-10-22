@@ -200,7 +200,25 @@ function updTariffFromPart(kind,idx,part,val){
 }
 
 function payload(){
-  return {tariffs:S.tariffs,fixed:S.fixed,data:S.data,wallbox:S.wb,_summary:hubSummary()};
+  return {tariffs:S.tariffs,fixed:S.fixed,data:S.data,wallbox:S.wb,_summary:hubSummary(),_hw:hwExport()};
+}
+/* Hauptwohnung (kein eigener Zähler) je Monat als Rest: Hausverbrauch − DG − UG (− Wallbox), wie im Reiter „Verteilung“.
+   Abgeleiteter Wert für den Bereich Haus (Zähler „aus Energie übernehmen“): {Jahr:{v:[kWh|null ×12], e:[1 = geschätzt]}} */
+function hwExport(){
+  const out={};
+  try{
+    const useWB=(S.wb.sessions||[]).length>0;
+    Object.keys(S.data||{}).forEach(y=>{
+      const yy=+y;if(isNaN(yy)||!S.data[y]||!S.data[y].m)return;
+      const c=cS(yy);let any=false;
+      const v=c.map(ci=>{const parts=[ci.dg,ci.ug].concat(useWB?[ci.wb||0]:[]);
+        const r=(ci.totV!==null&&parts.every(x=>x!==null))?ci.totV-parts.reduce((a,b)=>a+b,0):null;
+        if(r!==null)any=true;return r===null?null:Math.round(r*10)/10;});
+      if(!any)return;
+      out[y]={v,e:c.map(ci=>(ci.dgEst||ci.ugEst||(ci.totSrc==='calc'&&(ci.bEst||ci.eEst)))?1:0)};
+    });
+  }catch(err){console.warn('hwExport',err);}
+  return out;
 }
 function hubSummary(){
   try{
@@ -1238,7 +1256,7 @@ function mergeEnergie(l,r,lU,rU){
   });
   out.wallbox={sessions:Wallbox.mergeSessions((older.wallbox||{}).sessions,(newer.wallbox||{}).sessions)};
   const saved={t:S.tariffs,f:S.fixed,d:S.data,w:S.wb};
-  S.tariffs=out.tariffs;S.fixed=out.fixed;S.data=out.data;S.wb=out.wallbox;out._summary=hubSummary();
+  S.tariffs=out.tariffs;S.fixed=out.fixed;S.data=out.data;S.wb=out.wallbox;out._summary=hubSummary();out._hw=hwExport();
   S.tariffs=saved.t;S.fixed=saved.f;S.data=saved.d;S.wb=saved.w;
   return out;
 }
@@ -1248,7 +1266,9 @@ if(typeof Chart!=='undefined'){Chart.defaults.color='#5c7aaa';Chart.defaults.bor
 S.tab='uebersicht';
 loadState();rApp();zfLaden();wLaden(false);
 if(location.hash==='#fotos')setTimeout(()=>{const el=document.getElementById('fotos');if(el)el.scrollIntoView({behavior:'smooth',block:'start'});},300);
-try{const _p=Cockpit.getLocal('energie',null);if(_p&&_p._summary&&/•••/.test(JSON.stringify(_p._summary)))saveState(false);}catch(e){}
+try{const _p=Cockpit.getLocal('energie',null);if(_p&&_p._summary&&/•••/.test(JSON.stringify(_p._summary)))saveState(false);
+  /* Hauptwohnung-Rest für den Bereich Haus aktuell halten (z. B. nach einer neuen App-Version) */
+  else if(_p&&JSON.stringify(_p._hw||{})!==JSON.stringify(hwExport()))saveState(false);}catch(e){}
 window.addEventListener('cockpit:priv',()=>rApp());
 Cockpit.autoPull(['energie','dokumente','haus'],function(a,d){if(a==='energie'&&d)applyData(d);rApp();});
 

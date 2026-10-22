@@ -413,15 +413,24 @@ function segForm(b){
 function vZ(){
   var j=J(),r=R(),en=C.getLocal("energie",null),h=yearBar();
   h+='<div class="note" style="margin-bottom:10px">Stand am <b>Ende</b> des angegebenen Tages. Für den Jahresanfang den Stand vom 31.12. des Vorjahres eintragen; bei einem Mieterwechsel den Stand am letzten Miettag. Zwischen zwei Ablesungen wird bei Bedarf anteilig gerechnet.</div>';
-  r.units.forEach(function(u){var list=((j.zaehler||{})[u.k]||[]).slice().sort(function(a,b){return a.d.localeCompare(b.d);}),efeld=u.k==="UG"?"ug":u.k==="DG"?"dg":null;
+  /* Hauptwohnung = die einzige Einheit ohne Unterzähler in Energie (nicht UG/DG) → Rest laut Energie */
+  var ohneUZ=r.units.filter(function(u){return u.k!=="UG"&&u.k!=="DG";}),restK=ohneUZ.length===1?ohneUZ[0].k:null;
+  r.units.forEach(function(u){var list=((j.zaehler||{})[u.k]||[]).slice().sort(function(a,b){return a.d.localeCompare(b.d);}),efeld=u.k==="UG"?"ug":u.k==="DG"?"dg":null,istRest=u.k===restK;
     h+='<div class="panel"><h3>Strom '+esc(u.k)+" · "+esc(u.n)+"</h3>";
+    if(istRest&&en)h+='<div class="note" style="margin-bottom:8px">Kein eigener Zähler: Der Verbrauch kommt als <b>Rest aus Energie</b> (Hausverbrauch inkl. PV-Eigenverbrauch minus UG, DG und Wallbox). Übernommen werden rechnerische Monatsstände; es zählen nur die Differenzen.</div>';
     h+=list.length?list.map(function(x,i){return '<div class="row"><div class="l">'+de(x.d)+(x.q?' <span class="small muted">· '+esc(x.q)+"</span>":"")+'</div><div class="r">'+C.num(x.v,0)+' kWh <button class="x" onclick="H2.delZ(\''+u.k+'\',\''+x.d+'\')" aria-label="Ablesung löschen">✕</button></div></div>';}).join(""):'<div class="note">Noch keine Ablesungen.</div>';
     h+='<div class="g3" style="margin-top:8px"><input class="inp" type="date" id="zd_'+u.k+'" value="'+st.y+'-12-31"><input class="inp" inputmode="decimal" id="zv_'+u.k+'" placeholder="Zählerstand kWh"></div>'+
-      '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="mini" onclick="H2.addZ(\''+u.k+'\')">＋ Ablesung</button>'+(efeld&&en?'<button class="mini" onclick="H2.zEnergie(\''+u.k+'\',\''+efeld+'\')">⬇ aus Energie übernehmen</button>':"")+"</div>";
+      '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap"><button class="mini" onclick="H2.addZ(\''+u.k+'\')">＋ Ablesung</button>'+(efeld&&en?'<button class="mini" onclick="H2.zEnergie(\''+u.k+'\',\''+efeld+'\')">⬇ aus Energie übernehmen</button>':"")+
+      (istRest&&en?'<button class="mini" onclick="H2.zRest(\''+u.k+'\')">⬇ aus Energie übernehmen (Rest)</button>':"")+"</div>";
     var seg=r.segs.filter(function(s){return s.unit===u.k;});
     h+='<div class="chk" style="margin-top:10px">'+seg.map(function(s){return esc(s.name)+" ("+de(s.von)+"–"+de(s.bis)+"): "+(s.strom?"<b>"+C.int(s.strom.kwh)+" kWh</b>"+(s.strom.von.exakt&&s.strom.bis.exakt?"":" (anteilig geschätzt)"):"–");}).join("<br>")+"</div></div>";});
   h+='<div class="panel"><h3>Wasser Hauptzähler (zur Information)</h3><div class="g3"><div><div class="lbl">Stand Jahresanfang (m³)</div><input class="inp" inputmode="decimal" value="'+esc(j.wasserHZ&&j.wasserHZ.a!=null?j.wasserHZ.a:"")+'" onchange="H2.wz(\'a\',this.value)"></div><div><div class="lbl">Stand Jahresende (m³)</div><input class="inp" inputmode="decimal" value="'+esc(j.wasserHZ&&j.wasserHZ.e!=null?j.wasserHZ.e:"")+'" onchange="H2.wz(\'e\',this.value)"></div></div>'+
-    (j.wasserHZ&&j.wasserHZ.a!=null&&j.wasserHZ.e!=null&&j.wasserHZ.e!==""?'<div class="chk">Verbrauch Haus: <b>'+C.num(j.wasserHZ.e-j.wasserHZ.a,0)+" m³</b></div>":"")+"</div>";
+    (j.wasserHZ&&j.wasserHZ.a!=null&&j.wasserHZ.e!=null&&j.wasserHZ.e!==""?'<div class="chk">Verbrauch Haus: <b>'+C.num(j.wasserHZ.e-j.wasserHZ.a,0)+" m³</b></div>":"");
+  var we=en?HS.wasserAusEnergie(en,st.y):null;
+  if(we&&(we.a!==null||we.last))h+='<div class="note" style="margin-top:8px">Laut Energie: '+[we.a!==null?"Jahresanfang "+C.num(we.a,0)+" m³":"",
+      we.e!==null?"Jahresende "+C.num(we.e,0)+" m³":we.last?"zuletzt "+C.num(we.last.v,0)+" m³ am "+de(we.last.d)+(we.a!==null?" (bisher "+C.num(we.last.v-we.a,0)+" m³)":""):""].filter(Boolean).join(" · ")+"</div>"+
+    '<div style="margin-top:8px"><button class="mini" onclick="H2.wEnergie()">⬇ aus Energie übernehmen</button></div>';
+  h+="</div>";
   return h;
 }
 
@@ -547,6 +556,24 @@ window.H2={
   zEnergie:function(u,f){var en=C.getLocal("energie",null),list=HS.fromEnergie(en,st.y,f);if(!list.length){flash("⚠ Im Bereich Energie gibt es für "+st.y+" noch keine Zählerstände "+u,true);return;}
     var j=J(),have={};(j.zaehler[u]||[]).forEach(function(x){have[x.d]=1;});var n=0;j.zaehler[u]=j.zaehler[u]||[];list.forEach(function(x){if(!have[x.d]){j.zaehler[u].push(x);n++;}});
     touch();persist();flash(n?"✓ "+n+" Ablesungen übernommen":"Alle Ablesungen waren schon vorhanden");},
+  /* Hauptwohnung: rechnerische Stände aus dem Rest laut Energie – ersetzt eigene Ablesungen des Jahres (nach Rückfrage) */
+  zRest:function(u){var en=C.getLocal("energie",null),y=st.y,j=J(),cur=j.zaehler[u]||[],d0=(y-1)+"-12-31";
+    var b=cur.filter(function(x){return x.d===d0;})[0],pj=data.jahre[y-1],pb=pj&&pj.zaehler&&(pj.zaehler[u]||[]).filter(function(x){return x.d===d0;})[0];
+    var base=b?b.v:pb?pb.v:0,res=HS.restAusEnergie(en,y,base,b?(b.q||"Stand 31.12."):pb?"Stand aus "+(y-1):"Startwert (rechnerisch)");
+    if(!res.list.length){flash("⚠ In Energie gibt es für "+y+" noch keine Monatswerte der Hauptwohnung. Öffne einmal den Bereich Energie – dann werden sie berechnet.",true);return;}
+    var fremd=cur.filter(function(x){return x.d!==d0&&x.q!==HS.REST_Q;});
+    if(fremd.length&&!confirm(fremd.length+(fremd.length===1?" eigene Ablesung":" eigene Ablesungen")+" für "+u+" "+y+" werden durch die berechneten Werte aus Energie ersetzt. Fortfahren?"))return;
+    j.zaehler[u]=res.list;touch();persist();
+    var i=res.info,bis=res.list[res.list.length-1].d;
+    flash("✓ "+u+": "+i.n+(i.n===1?" Monat":" Monate")+" bis "+de(bis)+" aus Energie übernommen"+(i.est?" ("+i.est+" davon geschätzt)":"")+(i.neg?" · ⚠ "+i.neg+" Monat(e) mit negativem Rest – Werte in Energie prüfen":""),!!i.neg);},
+  wEnergie:function(){var en=C.getLocal("energie",null),y=st.y,w=HS.wasserAusEnergie(en,y),j=J(),hz=j.wasserHZ||{};
+    if(w.a===null&&w.e===null){flash("⚠ In Energie gibt es für "+y+" noch keine Wasserstände",true);return;}
+    var leer=function(v){return v===null||v===undefined||v==="";},ers=[];
+    if(w.a!==null&&!leer(hz.a)&&+hz.a!==w.a)ers.push("Jahresanfang: "+C.num(+hz.a,0)+" → "+C.num(w.a,0)+" m³");
+    if(w.e!==null&&!leer(hz.e)&&+hz.e!==w.e)ers.push("Jahresende: "+C.num(+hz.e,0)+" → "+C.num(w.e,0)+" m³");
+    if(ers.length&&!confirm("Vorhandene Werte ersetzen?\n"+ers.join("\n")))return;
+    j.wasserHZ=Object.assign({},hz);if(w.a!==null)j.wasserHZ.a=w.a;if(w.e!==null)j.wasserHZ.e=w.e;touch();persist();
+    flash(w.e!==null?"✓ Wasser: Jahresanfang und Jahresende aus Energie übernommen":"✓ Jahresanfang übernommen. Den Stand zum Jahresende gibt es in Energie erst mit dem Dezember-Wert"+(w.last?" (zuletzt "+C.num(w.last.v,0)+" m³ am "+de(w.last.d)+")":"")+".");},
   wz:function(k,v){var j=J();j.wasserHZ=j.wasserHZ||{};j.wasserHZ[k]=pnum(v);touch();persist();render();},
   vzIst:function(id,v){var j=J();j.vzIst=j.vzIst||{};var n=pnum(v);if(n==null)delete j.vzIst[id];else j.vzIst[id]=n;touch();persist();render();},
   neueVz:function(id,k,v){var j=J();j.neueVz=j.neueVz||{};var o=j.neueVz[id]=j.neueVz[id]||{};o[k]=k==="betrag"?pnum(v):v;if(k==="betrag"&&o.betrag==null)delete j.neueVz[id];touch();persist();render();},

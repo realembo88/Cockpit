@@ -1,7 +1,7 @@
 /* Cockpit · HIIT – Übungskatalog, Trainingsgenerator, Timer mit Tonsignalen
    Gruppen: c Cardio · b Beine & Po · k Core · a Arme & Oberkörper · r Rücken (erste = Hauptgruppe)
    Flags:   s je Seite · x Kombi-Station
-   Gerät:   Bank, Medizinball, Gymnastikball, Kettlebell, Springseil, Treppe            */
+   Gerät:   Bank, Medizinball, Gymnastikball, Kettlebell, Springseil, Treppe – dazu eigene Geräte (setGear) */
 (function(){
 "use strict";
 var RAW=[
@@ -60,8 +60,14 @@ var BASE=CAT.slice(),BY={};CAT.forEach(function(e){BY[e.n.toLowerCase()]=e;});
 function setCustom(list){CAT=BASE.slice();BY={};BASE.forEach(function(e){BY[e.n.toLowerCase()]=e;});
   (list||[]).forEach(function(c){if(!c||!c.n||BY[c.n.toLowerCase()])return;var e={n:c.n,g:c.g||"k",m:(c.g||"k")[0],s:!!c.s,x:!!c.x,gear:c.gear||null,own:true};CAT.push(e);BY[e.n.toLowerCase()]=e;});
   if(window.HIIT)window.HIIT.CAT=CAT;}
-var GEARS=["Bank","Medizinball","Gymnastikball","Kettlebell","Springseil","Treppe"];
-var GEAR_ICON={Bank:"🪑",Medizinball:"🏐",Gymnastikball:"🔵",Kettlebell:"🏋️",Springseil:"➰",Treppe:"🪜"};
+var BASE_GEARS=["Bank","Medizinball","Gymnastikball","Kettlebell","Springseil","Treppe"],GEARS=BASE_GEARS.slice();
+var BASE_ICON={Bank:"🪑",Medizinball:"🏐",Gymnastikball:"🔵",Kettlebell:"🏋️",Springseil:"➰",Treppe:"🪜"},GEAR_ICON=Object.assign({},BASE_ICON);
+/* Eigene Geräte ergänzen die Liste: [{n, icon}] – stehen dann bei eigenen Übungen und bei „Stationen“ zur Auswahl */
+function setGear(list){var seen={};GEARS=BASE_GEARS.slice();BASE_GEARS.forEach(function(g){seen[g.toLowerCase()]=1;});
+  Object.keys(GEAR_ICON).forEach(function(k){if(!BASE_ICON[k])delete GEAR_ICON[k];});
+  (list||[]).forEach(function(g){if(!g||!g.n||seen[g.n.toLowerCase()])return;seen[g.n.toLowerCase()]=1;GEARS.push(g.n);GEAR_ICON[g.n]=g.icon||"🧰";});
+  if(window.HIIT)window.HIIT.GEARS=GEARS;}
+function isBaseGear(n){return BASE_GEARS.some(function(g){return g.toLowerCase()===String(n||"").toLowerCase();});}
 var GROUPS={c:"Cardio",b:"Beine & Po",k:"Core",a:"Arme & Oberkörper",r:"Rücken"};
 var GCOL={c:"#f59e0b",b:"#a78bfa",k:"#34d399",a:"#f43f5e",r:"#38bdf8"};
 var FOCI=[["gesamt","Gesamt"],["a","Arme"],["b","Beine"],["r","Rücken"],["k","Core"],["zufall","Zufall"]];
@@ -210,5 +216,5 @@ function Timer(cfg,list,onTick,onEnd){
 
 window.HIIT={CAT:CAT,GEARS:GEARS,GEAR_ICON:GEAR_ICON,GROUPS:GROUPS,GCOL:GCOL,FOCI:FOCI,MODES:MODES,
   find:find,build:build,swap:swap,slotPool:slotPool,segments:segments,totalSecs:totalSecs,Timer:Timer,SND:SND,say:say,
-  setVoice:function(v){voiceOn=!!v;},setCustom:setCustom};
+  setVoice:function(v){voiceOn=!!v;},setCustom:setCustom,setGear:setGear,isBaseGear:isBaseGear,BASE_GEARS:BASE_GEARS};
 })();

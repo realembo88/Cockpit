@@ -27,6 +27,7 @@ function merge(l,r,lU,rU){l=norm(JSON.parse(JSON.stringify(l)));r=norm(JSON.pars
   var bd=[l.body,r.body].filter(Boolean).sort(function(a,b){return (b.t||0)-(a.t||0);})[0];if(bd)out.body=bd;
   if(l.pz||r.pz){var a=l.pz||{},b=r.pz||{},o={challenges:{},done:{}};["challenges","done"].forEach(function(k){var x=a[k]||{},y=b[k]||{};Object.keys(Object.assign({},y,x)).forEach(function(i){var p=x[i],q=y[i];o[k][i]=!p?q:!q?p:(((k==="done"?p.t:p.upd)||0)>=((k==="done"?q.t:q.upd)||0)?p:q);});});out.pz=o;}
   var hcu={};[r.hiitCustom||{},l.hiitCustom||{}].forEach(function(m){Object.keys(m).forEach(function(k){if(!hcu[k]||(m[k].t||0)>(hcu[k].t||0))hcu[k]=m[k];});});if(Object.keys(hcu).length)out.hiitCustom=hcu;
+  var hgr={};[r.hiitGear||{},l.hiitGear||{}].forEach(function(m){Object.keys(m).forEach(function(k){if(!hgr[k]||(m[k].t||0)>(hgr[k].t||0))hgr[k]=m[k];});});if(Object.keys(hgr).length)out.hiitGear=hgr;
   var hc=[l.hiitCfg,r.hiitCfg].filter(Boolean).sort(function(a,b){return (b.t||0)-(a.t||0);})[0];if(hc)out.hiitCfg=hc;
   Object.keys(Object.assign({},r.sessions,l.sessions)).forEach(function(i){if(del[i])return;var a=l.sessions[i],b=r.sessions[i];out.sessions[i]=!a?b:!b?a:((a.upd||0)>=(b.upd||0)?a:b);});
   out._summary=summaryFor(out);return out;}
@@ -69,7 +70,7 @@ function lastOf(name,before){var n=String(name||"").toLowerCase().trim();if(!n)r
 function allExercises(){var s={};Object.keys(tpls()).forEach(function(t){tpls()[t].forEach(function(n){s[n]=1;});});list().forEach(function(x){(x.exercises||[]).forEach(function(e){if(e.name)s[e.name]=1;});});return Object.keys(s).sort(function(a,b){return a.localeCompare(b,"de");});}
 
 /* ---------- Rahmen ---------- */
-function render(){syncCustom();
+function render(){syncGear();syncCustom();
   document.getElementById("top").innerHTML=C.topbar(SA?{title:"Training",icon:"🏋️",sub:"Counter · 1 % · Kraft · Körper",accent:"#f43f5e",accent2:"#fb7185",home:false,eye:false,syncHref:"javascript:T.tab('einst')"}:{title:"Training",icon:"🏋️",sub:"Kraft · HIIT · Laufen · Körper",accent:"#f43f5e",accent2:"#fb7185"});C.paintStatus();
   var tabs=SA?[["counter","🔢 Counter"],["prozent","📈 1 %"],["uebersicht","📊 Übersicht"],["kraft","＋ Kraft"],["koerper","⚖️ Körper"],["verlauf","📋 Verlauf"],["fortschritt","📈 Fortschritt"],["einst","⚙️ Einstellungen"]]
     :[["uebersicht","📊 Übersicht"],["kraft","＋ Kraft"],["hiit","⚡ HIIT"],["lauf","＋ Lauf"],["koerper","⚖️ Körper"],["verlauf","📋 Verlauf"],["fortschritt","📈 Fortschritt"],["einst","⚙️ Einstellungen"]];
@@ -232,13 +233,29 @@ function nMax(m){return m==="stationen"?10:14;}
 function stepper(label,val,dec,inc,hint){return '<div class="stp"><span>'+label+(hint?'<br><span class="small muted">'+hint+"</span>":"")+'</span><span class="c"><button onclick="'+dec+'" aria-label="weniger">−</button><b>'+val+'</b><button onclick="'+inc+'" aria-label="mehr">＋</button></span></div>';}
 function customList(){var m=data.hiitCustom||{};return Object.keys(m).map(function(k){return m[k];}).filter(function(c){return c&&!c.del;}).sort(function(a,b){return a.n.localeCompare(b.n,"de");});}
 function syncCustom(){if(H&&H.setCustom)H.setCustom(customList());}
+/* Eigene HIIT-Geräte (Gegenstände): data.hiitGear {schlüssel:{n, icon, t, del}} */
+var GEAR_ICONS=["🧰","🏋️","🥊","🎯","🧘","⚽","🏀","🎒","🧱","⭕","🔗","🪵"];
+function gearList(){var m=data.hiitGear||{};return Object.keys(m).map(function(k){return m[k];}).filter(function(g){return g&&g.n&&!g.del;}).sort(function(a,b){return a.n.localeCompare(b.n,"de");});}
+function syncGear(){if(H&&H.setGear)H.setGear(gearList());}
+function gearForm(quick){var f=st.hg||(st.hg={n:"",icon:GEAR_ICONS[0]});
+  return '<div class="field" style="margin-top:8px"><label>'+(quick?"Neues Gerät":"Name des Geräts")+'</label><input id="hgN" value="'+C.esc(f.n)+'" placeholder="z. B. Sandsack, Hantelscheibe" oninput="T.hgV(\'n\',this.value)" onkeydown="if(event.key===\'Enter\')T.hgAdd('+(quick?1:0)+')"></div>'+
+    '<div class="chips">'+GEAR_ICONS.map(function(ic){return '<button class="chip amb'+(f.icon===ic?" on":"")+'" onclick="T.hgV(\'icon\',\''+ic+'\')" aria-label="Symbol '+ic+'">'+ic+"</button>";}).join("")+"</div>"+
+    '<button class="btn '+(quick?"ghost":"amb")+' full" onclick="T.hgAdd('+(quick?1:0)+')">＋ Gerät anlegen</button>';}
+function vGear(){var gl=gearList(),used={};customList().forEach(function(c){if(c.gear)used[c.gear]=(used[c.gear]||0)+1;});
+  var h='<div class="panel"><h3 style="color:#f59e0b">🧰 HIIT: Geräte &amp; Gegenstände</h3><div class="note" style="margin-bottom:8px">Eigene Geräte anlegen, z. B. Sandsack oder Hantelscheibe. Sie stehen danach bei „Eigene Übungen“ (HIIT) und bei „Stationen → Vorhandene Geräte“ zur Auswahl. In einem Stationen-Training kommt ein Gerät dran, sobald es mindestens eine Übung dafür gibt.</div>';
+  h+='<div class="lbl">Im Katalog</div><div class="chips">'+H.BASE_GEARS.map(function(g){return '<span class="chip">'+H.GEAR_ICON[g]+" "+C.esc(g)+"</span>";}).join("")+"</div>";
+  if(gl.length)h+='<div class="lbl" style="margin-top:8px">Deine Geräte</div>'+gl.map(function(g){var n=used[g.n]||0;
+    return '<div class="pr"><span>'+(g.icon||"🧰")+" "+C.esc(g.n)+'<br><span class="small muted">'+(n?n+(n===1?" eigene Übung":" eigene Übungen"):"noch keine Übung – unter HIIT → Eigene Übungen anlegen")+'</span></span><button class="x" onclick="T.hgDel(\''+C.esc(g.n.toLowerCase()).replace(/'/g,"")+'\')" aria-label="Gerät löschen">✕</button></div>';}).join("");
+  return h+gearForm(false)+"</div>";}
 function vCustom(){var cl=customList(),f=st.hc||(st.hc={n:"",g:"k",gear:"",s:false,x:false}),open=st.hcOpen||!cl.length&&false;
   var h='<div class="panel" id="hcPanel"><h3 style="color:#f59e0b;cursor:pointer" onclick="T.hcToggle()">✏️ Eigene Übungen ('+cl.length+') <span class="small muted" style="float:right">'+(st.hcOpen?"▲":"▼")+"</span></h3>";
   if(!st.hcOpen)return h+'<div class="note">Übungen, die im Katalog fehlen, hier anlegen – sie werden dann auch beim „Training erstellen“ berücksichtigt.</div></div>';
   if(st.hcSlot!=null&&draft().list[st.hcSlot]!=null)h+='<div class="note" style="color:#fbbf24;margin-bottom:8px">Wird an Platz '+(st.hcSlot+1)+' ins aktuelle Training eingesetzt.</div>';
   h+='<div class="field"><label>Name der Übung</label><input id="hcN" value="'+C.esc(f.n)+'" placeholder="z. B. Ball-Slams" oninput="T.hcV(\'n\',this.value)"></div>';
   h+='<div class="lbl">Muskelgruppe</div><div class="chips">'+Object.keys(H.GROUPS).map(function(g){return '<button class="chip amb'+(f.g===g?" on":"")+'" onclick="T.hcV(\'g\',\''+g+'\')">'+H.GROUPS[g]+"</button>";}).join("")+"</div>";
-  h+='<div class="lbl">Gerät</div><div class="chips"><button class="chip amb'+(!f.gear?" on":"")+'" onclick="T.hcV(\'gear\',\'\')">ohne (Eigengewicht)</button>'+H.GEARS.map(function(g){return '<button class="chip amb'+(f.gear===g?" on":"")+'" onclick="T.hcV(\'gear\',\''+g+'\')">'+H.GEAR_ICON[g]+" "+g+"</button>";}).join("")+"</div>";
+  h+='<div class="lbl">Gerät</div><div class="chips"><button class="chip amb'+(!f.gear?" on":"")+'" onclick="T.hcV(\'gear\',\'\')">ohne (Eigengewicht)</button>'+H.GEARS.map(function(g){return '<button class="chip amb'+(f.gear===g?" on":"")+'" onclick="T.hcV(\'gear\',\''+C.esc(g).replace(/'/g,"")+'\')">'+H.GEAR_ICON[g]+" "+C.esc(g)+"</button>";}).join("")+
+    '<button class="chip'+(st.hgQuick?" on":"")+'" onclick="T.hgQuick()">＋ neues Gerät</button></div>';
+  if(st.hgQuick)h+='<div style="border:1px dashed var(--border);border-radius:10px;padding:2px 10px 10px;margin-bottom:10px">'+gearForm(true)+"</div>";
   h+='<div class="chips"><button class="chip amb'+(f.s?" on":"")+'" onclick="T.hcV(\'s\','+!f.s+')">je Seite (Seitenwechsel-Piep)</button><button class="chip amb'+(f.x?" on":"")+'" onclick="T.hcV(\'x\','+!f.x+')">Kombi</button></div>';
   h+='<button class="btn amb full" onclick="T.hcAdd()">＋ Übung speichern</button>';
   if(cl.length)h+='<div style="margin-top:12px">'+cl.map(function(c){var tg=[H.GROUPS[c.g[0]]];if(c.gear)tg.push(H.GEAR_ICON[c.gear]+" "+c.gear);if(c.s)tg.push("je Seite");if(c.x)tg.push("Kombi");
@@ -253,7 +270,7 @@ function vHiit(){
   var n=Math.min(nMax(c.mode),Math.max(8,c.n));
   h+=stepper(c.mode==="stationen"?"Stationen":"Übungen",n,"T.hN(-1)","T.hN(1)",c.mode==="stationen"?"8–10":"8–14");
   if(c.mode==="bank")h+=stepper("davon Bank-Übungen",Math.min(3,Math.max(1,c.bench)),"T.hBench(-1)","T.hBench(1)","1–3, für alle gleich");
-  if(c.mode==="stationen")h+='<div class="lbl" style="margin-top:10px">Vorhandene Geräte</div><div class="chips">'+H.GEARS.map(function(g){return '<button class="chip amb'+(c.gear[g]!==false?" on":"")+'" onclick="T.hGear(\''+g+'\')">'+H.GEAR_ICON[g]+" "+g+"</button>";}).join("")+"</div>";
+  if(c.mode==="stationen")h+='<div class="lbl" style="margin-top:10px">Vorhandene Geräte</div><div class="chips">'+H.GEARS.map(function(g){return '<button class="chip amb'+(c.gear[g]!==false?" on":"")+'" onclick="T.hGear(\''+C.esc(g).replace(/'/g,"")+'\')">'+H.GEAR_ICON[g]+" "+C.esc(g)+"</button>";}).join("")+"</div>";
   h+='<button class="btn amb full" style="margin-top:12px" onclick="T.hBuild()">⚡ Training erstellen</button>';
   h+='<div class="note" style="margin-top:8px">'+c.work+" s Belastung / "+c.rest+" s Pause · "+c.rounds+' Durchgänge · zwischen den Durchgängen geht es mit „Weiter“ weiter · <a href="#" onclick="T.hTimes();return false" style="color:#fbbf24">'+(st.hTimes?"Zeiten schließen":"Zeiten anpassen")+"</a></div>";
   if(st.hTimes){h+='<div style="margin-top:8px">'+stepper("Belastung",c.work+" s","T.hCfg('work',-5)","T.hCfg('work',5)")+stepper("Pause",c.rest+" s","T.hCfg('rest',-5)","T.hCfg('rest',5)")+
@@ -393,6 +410,8 @@ function vEinst(){
     h+='<button class="btn ghost full" style="margin-bottom:10px" onclick="T.teAdd()">＋ Vorlage</button><div class="row2"><button class="btn grad" onclick="T.teSave()">Vorlagen speichern</button><button class="btn ghost" style="flex:0 0 auto" onclick="T.teCancel()">Abbrechen</button></div>'+
       '<div class="note" style="margin-top:8px">Eine Übung pro Zeile. Haltezeit-Übungen (Plank, Wandsitz …) werden automatisch in Sekunden gezählt.</div>';}
   h+="</div>";
+  /* Eigene HIIT-Geräte */
+  if(H&&!SA)h+=vGear();
   /* Körpergröße */
   h+='<div class="panel"><h3>📐 Körpergröße</h3><div class="row2"><div class="field"><label>Größe (cm) – für den BMI</label><input id="bh2" inputmode="numeric" value="'+(bodyH()||"")+'" placeholder="z. B. 180"></div><button class="btn ghost" style="align-self:end;margin-bottom:12px" onclick="T.wH(document.getElementById(\'bh2\').value)">Speichern</button></div></div>';
   /* Sicherung */
@@ -545,6 +564,22 @@ Object.assign(window.T,{
   hcToggle:function(){st.hcOpen=!st.hcOpen;if(!st.hcOpen)st.hcSlot=null;render();},
   hcOpen:function(i){st.hcOpen=true;st.hcSlot=i;render();var p=document.getElementById("hcPanel");if(p)p.scrollIntoView({behavior:"smooth",block:"start"});var n=document.getElementById("hcN");if(n)setTimeout(function(){n.focus();},300);},
   hcV:function(k,v){st.hc[k]=v;if(k!=="n")render();},
+  hgQuick:function(){st.hgQuick=!st.hgQuick;st.hg=null;render();if(st.hgQuick){var n=document.getElementById("hgN");if(n)setTimeout(function(){n.focus();},100);}},
+  hgV:function(k,v){if(!st.hg)st.hg={n:"",icon:GEAR_ICONS[0]};st.hg[k]=v;if(k!=="n")render();},
+  hgAdd:function(quick){var f=st.hg||{},n=String(f.n||"").trim().replace(/\s+/g," ").replace(/['"<>]/g,"");
+    if(!n){flash("⚠ Bitte einen Namen für das Gerät eingeben",true);return;}
+    var key=n.toLowerCase(),alt=(data.hiitGear||{})[key];
+    if(H.isBaseGear(n)||(alt&&!alt.del)){flash("„"+n+"“ gibt es schon",true);return;}
+    if(!data.hiitGear)data.hiitGear={};data.hiitGear[key]={n:n,icon:f.icon||GEAR_ICONS[0],t:Date.now()};syncGear();
+    if(quick&&st.hc){st.hc.gear=n;st.hgQuick=false;}
+    st.hg=null;persist();flash("✓ Gerät „"+n+"“ angelegt"+(quick?" und ausgewählt":" – jetzt unter HIIT → Eigene Übungen eine Übung dafür anlegen"));},
+  hgDel:function(key){var g=(data.hiitGear||{})[key];if(!g||g.del)return;
+    var ex=customList().filter(function(c){return c.gear===g.n;});
+    if(!confirm("Gerät „"+g.n+"“ löschen?"+(ex.length?" "+ex.length+(ex.length===1?" eigene Übung nutzt es – sie gilt danach als Übung ohne Gerät.":" eigene Übungen nutzen es – sie gelten danach als Übungen ohne Gerät."):"")))return;
+    var now=Date.now();data.hiitGear[key]={n:g.n,del:true,t:now};
+    ex.forEach(function(c){var k=c.n.toLowerCase();data.hiitCustom[k]=Object.assign({},c,{gear:null,t:now});});
+    if(st.hc&&st.hc.gear===g.n)st.hc.gear="";
+    syncGear();syncCustom();persist();flash("✓ Gerät „"+g.n+"“ gelöscht");},
   hcAdd:function(){var f=st.hc,n=String(f.n||"").trim().replace(/\s+/g," ");if(!n){flash("⚠ Bitte einen Namen eingeben",true);return;}
     var key=n.toLowerCase(),ex=H.find(n);if(!ex.custom&&!ex.own){flash("„"+ex.n+"“ gibt es schon im Katalog",true);return;}
     if(!data.hiitCustom)data.hiitCustom={};data.hiitCustom[key]={n:n,g:f.g||"k",gear:f.gear||null,s:!!f.s,x:!!f.x,t:Date.now()};syncCustom();
