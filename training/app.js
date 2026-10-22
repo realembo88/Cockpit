@@ -237,6 +237,18 @@ function syncCustom(){if(H&&H.setCustom)H.setCustom(customList());}
 var GEAR_ICONS=["🧰","🏋️","🥊","🎯","🧘","⚽","🏀","🎒","🧱","⭕","🔗","🪵"];
 function gearList(){var m=data.hiitGear||{};return Object.keys(m).map(function(k){return m[k];}).filter(function(g){return g&&g.n&&!g.del;}).sort(function(a,b){return a.n.localeCompare(b.n,"de");});}
 function syncGear(){if(H&&H.setGear)H.setGear(gearList());}
+/* Sperre im Training (je Gerät): "bereich" = im Trainingsbereich nicht automatisch sperren, "hiit" = nur solange ein HIIT läuft, "normal" = wie überall.
+   Verlässt man den Trainingsbereich und die Sperre wäre fällig gewesen, fragt die nächste Seite nach der PIN (cockpit.js). */
+var SPERRE_KEY="cockpit:training:sperre",SPERRE=[["bereich","Im Training nie"],["hiit","Nur solange HIIT läuft"],["normal","Wie überall"]];
+function sperreModus(){var m="";try{m=localStorage.getItem(SPERRE_KEY)||"";}catch(e){}return /^(bereich|hiit|normal)$/.test(m)?m:"bereich";}
+if(C.lockPause&&!SA)C.lockPause(function(){var m=sperreModus();return m==="bereich"||(m==="hiit"&&!!hrun&&!hrun.saved);});
+function vSperre(){if(SA||!C.lockPause)return "";var m=sperreModus(),aktiv=C.lockAktiv&&C.lockAktiv(),min=((C.pinCfg&&C.pinCfg())||{}).min||5;
+  var h='<div class="panel"><h3>🔒 Sperre im Training</h3><div class="note" style="margin-bottom:10px">'+(aktiv?"Sonst sperrt sich das Cockpit nach "+min+" Minuten ohne Bedienung. Hier legst du fest, ob das auch beim Training gilt – gilt nur auf diesem Gerät.":"Auf diesem Gerät ist keine Sperre eingerichtet (⚙️ Cockpit-Einstellungen → Sperre). Die Auswahl gilt, sobald du eine einrichtest.")+"</div>";
+  h+='<div class="chips">'+SPERRE.map(function(s){return '<button class="chip'+(m===s[0]?" on":"")+'" onclick="T.sperre(\''+s[0]+'\')">'+s[1]+"</button>";}).join("")+"</div>";
+  h+='<div class="note">'+({bereich:"Solange der Trainingsbereich offen ist, sperrt er sich nicht von selbst – auch nicht, wenn das Handy beim HIIT lange liegt. Wechselst du danach in einen anderen Bereich, fragt das Cockpit nach der PIN, falls die Sperre inzwischen fällig war.",
+    hiit:"Während ein HIIT läuft (auch in den Pausen zwischen den Durchgängen), sperrt das Cockpit nicht. Danach beginnt die Wartezeit neu.",
+    normal:"Das Training sperrt sich wie alle anderen Bereiche."})[m]+"</div></div>";
+  return h;}
 function gearForm(quick){var f=st.hg||(st.hg={n:"",icon:GEAR_ICONS[0]});
   return '<div class="field" style="margin-top:8px"><label>'+(quick?"Neues Gerät":"Name des Geräts")+'</label><input id="hgN" value="'+C.esc(f.n)+'" placeholder="z. B. Sandsack, Hantelscheibe" oninput="T.hgV(\'n\',this.value)" onkeydown="if(event.key===\'Enter\')T.hgAdd('+(quick?1:0)+')"></div>'+
     '<div class="chips">'+GEAR_ICONS.map(function(ic){return '<button class="chip amb'+(f.icon===ic?" on":"")+'" onclick="T.hgV(\'icon\',\''+ic+'\')" aria-label="Symbol '+ic+'">'+ic+"</button>";}).join("")+"</div>"+
@@ -338,7 +350,7 @@ function hsave(s,manual){var id=uid(),c=hrun?hrun.cfg:hcfg(),d=draft();
     dur:manual?H.totalSecs(c,L.length):Math.round(s.el),note:"",upd:Date.now()};
   data.sessions[id]=o;persist();return id;}
 function sheet(html){var el=$("hrSheet");if(html==null){el.hidden=true;el.innerHTML="";}else{el.innerHTML=html;el.hidden=false;}}
-function hfinish(s){if(!hrun||hrun.saved)return;hrun.saved=hsave(s,false);wake(false);var full=s.doneWork>=s.workTotal;
+function hfinish(s){if(!hrun||hrun.saved)return;hrun.saved=hsave(s,false);wake(false);if(C.lockTouch)C.lockTouch();var full=s.doneWork>=s.workTotal;
   sheet('<h2>'+(full?"🎉 Geschafft!":"Training gespeichert")+'</h2><div class="small" style="color:#cbd5e1">'+s.doneWork+" von "+s.workTotal+" Intervallen · "+fmtDur(s.workSecs)+" Belastung · "+fmtDur(s.el)+' gesamt</div><input placeholder="Notiz (optional), z. B. Gruppe, Gefühl" oninput="T.hNote(this.value)"><button class="btn amb" onclick="T.hClose()">Fertig</button>');}
 
 /* ---------- Körper (Waage) ---------- */
@@ -412,6 +424,7 @@ function vEinst(){
   h+="</div>";
   /* Eigene HIIT-Geräte */
   if(H&&!SA)h+=vGear();
+  h+=vSperre();
   /* Körpergröße */
   h+='<div class="panel"><h3>📐 Körpergröße</h3><div class="row2"><div class="field"><label>Größe (cm) – für den BMI</label><input id="bh2" inputmode="numeric" value="'+(bodyH()||"")+'" placeholder="z. B. 180"></div><button class="btn ghost" style="align-self:end;margin-bottom:12px" onclick="T.wH(document.getElementById(\'bh2\').value)">Speichern</button></div></div>';
   /* Sicherung */
@@ -564,6 +577,7 @@ Object.assign(window.T,{
   hcToggle:function(){st.hcOpen=!st.hcOpen;if(!st.hcOpen)st.hcSlot=null;render();},
   hcOpen:function(i){st.hcOpen=true;st.hcSlot=i;render();var p=document.getElementById("hcPanel");if(p)p.scrollIntoView({behavior:"smooth",block:"start"});var n=document.getElementById("hcN");if(n)setTimeout(function(){n.focus();},300);},
   hcV:function(k,v){st.hc[k]=v;if(k!=="n")render();},
+  sperre:function(m){try{localStorage.setItem(SPERRE_KEY,m);}catch(e){}if(C.lockTouch)C.lockTouch();render();},
   hgQuick:function(){st.hgQuick=!st.hgQuick;st.hg=null;render();if(st.hgQuick){var n=document.getElementById("hgN");if(n)setTimeout(function(){n.focus();},100);}},
   hgV:function(k,v){if(!st.hg)st.hg={n:"",icon:GEAR_ICONS[0]};st.hg[k]=v;if(k!=="n")render();},
   hgAdd:function(quick){var f=st.hg||{},n=String(f.n||"").trim().replace(/\s+/g," ").replace(/['"<>]/g,"");
@@ -601,7 +615,7 @@ Object.assign(window.T,{
       (s.doneWork?'<button class="btn" style="background:#334155" onclick="T.hEnd()">Beenden &amp; speichern</button>':"")+'<button class="btn ghost" onclick="T.hDiscard()">Verwerfen</button>');},
   hResume:function(){sheet(null);if(hrun)hrun.timer.start();},
   hEnd:function(){if(!hrun)return;var s=hrun.timer.stop();hfinish(s);},
-  hDiscard:function(){if(hrun){hrun.timer.stop();wake(false);}hrun=null;sheet(null);$("hrun").hidden=true;document.body.style.overflow="";render();},
+  hDiscard:function(){if(hrun){hrun.timer.stop();wake(false);}if(C.lockTouch)C.lockTouch();hrun=null;sheet(null);$("hrun").hidden=true;document.body.style.overflow="";render();},
   hNote:function(v){if(hrun&&hrun.saved&&data.sessions[hrun.saved])data.sessions[hrun.saved].note=v;},
   hClose:function(){if(hrun&&hrun.saved&&data.sessions[hrun.saved]){data.sessions[hrun.saved].note=(data.sessions[hrun.saved].note||"").trim();data.sessions[hrun.saved].upd=Date.now();persist();}
     wake(false);hrun=null;sheet(null);$("hrun").hidden=true;document.body.style.overflow="";st.tab="uebersicht";flash("✓ HIIT gespeichert");window.scrollTo(0,0);},

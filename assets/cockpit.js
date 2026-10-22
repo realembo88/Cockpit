@@ -59,7 +59,7 @@ function rnd(n){var a=new Uint8Array(n);crypto.getRandomValues(a);return a;}
 function b64u(buf){var s="",b=new Uint8Array(buf);for(var i=0;i<b.length;i++)s+=String.fromCharCode(b[i]);return btoa(s).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");}
 function unb64u(s){s=s.replace(/-/g,"+").replace(/_/g,"/");while(s.length%4)s+="=";var b=atob(s),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a;}
 function isUnlocked(){try{return sessionStorage.getItem(UNL_KEY)==="1";}catch(e){return false;}}
-function markUnlocked(){try{sessionStorage.setItem(UNL_KEY,"1");sessionStorage.setItem(ACT_KEY,String(Date.now()));}catch(e){}}
+function markUnlocked(){try{sessionStorage.setItem(UNL_KEY,"1");sessionStorage.setItem(ACT_KEY,String(Date.now()));sessionStorage.removeItem(NS+":sperreFaellig");}catch(e){}}
 /* --- PIN --- */
 function pinHash(pin,salt,it){return crypto.subtle.importKey("raw",new TextEncoder().encode(String(pin)),"PBKDF2",false,["deriveBits"])
   .then(function(k){return crypto.subtle.deriveBits({name:"PBKDF2",hash:"SHA-256",salt:salt,iterations:it},k,256);}).then(b64u);}
@@ -128,9 +128,20 @@ function hideLock(){document.documentElement.classList.remove("locked");var ov=d
   try{window.dispatchEvent(new CustomEvent("cockpit:unlocked"));}catch(e){}}
 function tryUnlock(){var e=document.getElementById("cp-lock-err");if(e)e.textContent="";
   unlockDevice().catch(function(err){if(e)e.textContent=(err&&err.name==="NotAllowedError")?"Abgebrochen oder nicht bestätigt – bitte erneut versuchen.":"Entsperren nicht möglich: "+(err&&err.message||err);});}
-function lockNow(){try{sessionStorage.removeItem(UNL_KEY);}catch(e){}guard();}
+function lockNow(){try{sessionStorage.removeItem(UNL_KEY);sessionStorage.removeItem(DUE_KEY);}catch(e){}guard();}
+/* Sperre aussetzen (z. B. Training/HIIT): eine Seite meldet per lockPause(fn), dass gerade nicht automatisch gesperrt werden soll.
+   Wäre die Sperre fällig gewesen, wird das gemerkt – die nächste Seite ohne Aussetzen fragt dann nach der PIN. */
+var DUE_KEY=NS+":sperreFaellig",lockPauseFn=null;
+function lockPause(fn){lockPauseFn=fn||null;}
+function paused(){try{return typeof lockPauseFn==="function"?!!lockPauseFn():!!lockPauseFn;}catch(e){return false;}}
+function setDue(){try{sessionStorage.setItem(DUE_KEY,"1");}catch(e){}}
+function isDue(){try{return sessionStorage.getItem(DUE_KEY)==="1";}catch(e){return false;}}
+/* Bedienung jetzt (z. B. Ende eines HIIT-Trainings): die Wartezeit bis zur Sperre beginnt neu */
+function lockTouch(){try{sessionStorage.removeItem(DUE_KEY);sessionStorage.setItem(ACT_KEY,String(Date.now()));}catch(e){}actT=Date.now();}
 function guard(){
-  if(!lockAktiv()||isUnlocked())return;
+  if(!lockAktiv())return;
+  if(isUnlocked()&&isDue()&&!paused()){try{sessionStorage.removeItem(UNL_KEY);sessionStorage.removeItem(DUE_KEY);}catch(e){}}
+  if(isUnlocked())return;
   showLock();
   if(!pinCfg())setTimeout(function(){if(document.visibilityState==="visible")tryUnlock();},300);
 }
@@ -138,11 +149,12 @@ function guard(){
 var actT=0;
 function aktiv(){var n=Date.now();if(n-actT<15000)return;actT=n;try{sessionStorage.setItem(ACT_KEY,String(n));}catch(e){}}
 ["pointerdown","keydown","touchstart","wheel"].forEach(function(ev){window.addEventListener(ev,aktiv,{passive:true,capture:true});});
-setInterval(function(){if(!lockAktiv()||!isUnlocked()||document.hidden)return;var a=+(sessionStorage.getItem(ACT_KEY)||0);if(a&&Date.now()-a>relockMs())lockNow();},20000);
+setInterval(function(){if(!lockAktiv()||!isUnlocked()||document.hidden)return;var a=+(sessionStorage.getItem(ACT_KEY)||0);
+  if(a&&Date.now()-a>relockMs()){if(paused())setDue();else lockNow();}},20000);
 document.addEventListener("visibilitychange",function(){
   if(!lockAktiv())return;
   try{if(document.hidden){sessionStorage.setItem(HID_KEY,String(Date.now()));return;}
-    var h=+sessionStorage.getItem(HID_KEY)||0;if(h&&Date.now()-h>relockMs())sessionStorage.removeItem(UNL_KEY);else aktiv();guard();}catch(e){}
+    var h=+sessionStorage.getItem(HID_KEY)||0;if(h&&Date.now()-h>relockMs()){if(paused())setDue();else sessionStorage.removeItem(UNL_KEY);}else aktiv();guard();}catch(e){}
 });
 if(lockAktiv()&&!isUnlocked())document.documentElement.classList.add("locked");
 if(document.readyState==="loading")document.addEventListener("DOMContentLoaded",guard);else guard();
@@ -443,7 +455,7 @@ window.Cockpit={
   esc:esc,num:num,eur:eur,int:int,parseNum:parseNum,today:today,
   getConfig:getConfig,setConfig:setConfig,configured:configured,testConnection:testConnection,
   lockCfg:lockCfg,lockSupported:lockSupported,lockEnable:lockEnable,lockDisable:lockDisable,
-  pinCfg:pinCfg,pinSupported:pinSupported,pinSet:pinSet,pinCheck:pinCheck,pinRemove:pinRemove,pinMinuten:pinMinuten,pinOk:pinOk,lockAktiv:lockAktiv,lockNow:lockNow,
+  lockPause:lockPause,lockTouch:lockTouch,pinCfg:pinCfg,pinSupported:pinSupported,pinSet:pinSet,pinCheck:pinCheck,pinRemove:pinRemove,pinMinuten:pinMinuten,pinOk:pinOk,lockAktiv:lockAktiv,lockNow:lockNow,
   priv:priv,setPriv:setPriv,togglePriv:togglePriv,eurRaw:eurRaw,maskText:maskText,eyeButton:eyeButton,
   getLocal:getLocal,save:save,registerMerge:registerMerge,versions:versions,versionAt:versionAt,getBackup:getBackup,pull:pull,push:push,autoPull:autoPull,
   onStatus:onStatus,paintStatus:paintStatus,topbar:topbar,
