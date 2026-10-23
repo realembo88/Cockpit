@@ -151,21 +151,42 @@ function loadStock(){
   }
   return tryP(0);
 }
+/* Dow Jones (^DJI) für das Dow/Gold-Verhältnis: Yahoo über CORS-Proxy, sonst Stooq; sonst letzter bekannter Stand */
+function loadDow(){
+  var yurl="https://query1.finance.yahoo.com/v8/finance/chart/%5EDJI?interval=1d&range=5d",
+      surl="https://stooq.com/q/l/?s=%5Edji&f=sd2t2ohlc&h&e=csv";
+  var proxies=[function(u){return "https://corsproxy.io/?url="+encodeURIComponent(u);},function(u){return "https://api.allorigins.win/raw?url="+encodeURIComponent(u);}];
+  function getT(u){return fetch(u,{cache:"no-store"}).then(function(r){return r.ok?r.text():null;}).catch(function(){return null;});}
+  function yahoo(i){if(i>=proxies.length)return stooq(0);
+    return getJ(proxies[i](yurl)).then(function(j){var m=j&&j.chart&&j.chart.result&&j.chart.result[0]&&j.chart.result[0].meta;
+      return m&&m.regularMarketPrice>0?{price:m.regularMarketPrice,prev:m.chartPreviousClose||m.previousClose||null,src:"Yahoo Finance"}:yahoo(i+1);});}
+  function stooq(i){if(i>=proxies.length)return Promise.resolve(null);
+    return getT(proxies[i](surl)).then(function(t){var l=(t||"").trim().split(/\r?\n/);if(l.length<2)return stooq(i+1);
+      var hd=l[0].toLowerCase().split(","),v=l[1].split(","),c=+v[hd.indexOf("close")],o=+v[hd.indexOf("open")];
+      return c>0?{price:c,prev:null,open:o>0?o:null,src:"Stooq"}:stooq(i+1);});}
+  return yahoo(0);
+}
 function refresh(){
   if(st.loading)return;
   st.loading=true;render();
-  Promise.all([loadFx()].concat(METALS.map(function(m){return loadMetal(m.sym);})).concat([loadStock()])).then(function(r){
+  Promise.all([loadFx()].concat(METALS.map(function(m){return loadMetal(m.sym);})).concat([loadStock(),loadDow()])).then(function(r){
+    var dow=r[METALS.length+2];
     var fx=r[0],usd={},ok=false,fxOld=false;
     METALS.forEach(function(m,i){if(r[i+1]!=null){usd[m.id]=r[i+1];ok=true;}});
     if(ok&&!fx){var lf=lastFx();if(lf){fx=lf.fx;fxOld=true;}}   /* Wechselkurs-Dienst aus → letzter bekannter Kurs */
     st.fxOld=fxOld;st.diag={fx:!!r[0],metal:ok};
     if(ok&&fx){
-      st.prices={ts:Date.now(),fx:fx,usd:usd};st.priceErr=false;localSet(LOCAL_PRICE_KEY,st.prices);
+      var alt=st.prices||{};
+      st.prices={ts:Date.now(),fx:fx,usd:usd};
+      if(dow){st.prices.dji=dow.price;st.prices.djiPrev=dow.prev;st.prices.djiTs=Date.now();st.prices.djiSrc=dow.src;}
+      else if(alt.dji){st.prices.dji=alt.dji;st.prices.djiPrev=alt.djiPrev;st.prices.djiTs=alt.djiTs;st.prices.djiSrc=alt.djiSrc;}
+      st.djiErr=!dow;st.priceErr=false;localSet(LOCAL_PRICE_KEY,st.prices);
       var today=C.today(),gme=st.stock.GME&&st.stock.GME.price;
-      var snap={fx:+fx.toFixed(5),usd:{}};METALS.forEach(function(m){if(usd[m.id])snap.usd[m.id]=+usd[m.id].toFixed(3);});if(gme)snap.gme=+gme.toFixed(3);
+      var snap={fx:+fx.toFixed(5),usd:{}};METALS.forEach(function(m){if(usd[m.id])snap.usd[m.id]=+usd[m.id].toFixed(3);});if(gme)snap.gme=+gme.toFixed(3);if(dow)snap.dji=+dow.price.toFixed(2);
       /* höchstens ein Schnappschuss pro Tag im gemeinsamen Datensatz – hält die Sync schlank */
       var hasPos=METALS.some(function(m){return items(null,m.id).length;});
       if(hasPos&&!data.history[today]&&!fxOld){data.history[today]=snap;data._sumTs=Date.now();persist();}
+      else if(hasPos&&dow&&data.history[today]&&!data.history[today].dji){data.history[today].dji=snap.dji;persist();}
       /* Startseiten-Kachel aktuell halten – höchstens alle 6 Stunden, damit die Sync nicht ständig schreibt */
       else if(hasPos&&(!data._summary||data._summary.k==="—"||Date.now()-(data._sumTs||0)>6*3600e3)){data._sumTs=Date.now();persist();}
     }else st.priceErr=true;
@@ -209,23 +230,42 @@ function vDash(){
       '<div class="p">'+(p!=null?C.eurRaw(p/TROY)+" / g":"—")+'</div><div class="s">'+(p!=null?C.eurRaw(p)+" / oz":"")+"</div>"+
       (g?'<div class="hold"><div class="kv" style="padding:2px 0"><span>Bestand</span><span>'+amt(g)+'</span></div><div class="kv" style="padding:2px 0"><span>Wert</span><b style="color:'+m.color+'">'+(v!=null?C.eur(v,0):"—")+"</b></div>"+
         (v!=null?'<div class="kv" style="padding:2px 0"><span>G/V</span><span class="'+(v-c>=0?"pos":"neg")+'">'+signEur(v-c,0)+"</span></div>":"")+"</div>":'<div class="hold muted">Kein Bestand</div>')+"</div>";}).join("")+"</div>";
+  h+=vRatio();
   /* Verlauf aus echten Tages-Schnappschüssen */
-  var ds=histDates();
-  h+='<div class="panel"><div class="chipbar"><button class="chip'+(st.chart==="wert"?" on":"")+'" onclick="E.chart(\'wert\')">Portfoliowert</button>'+METALS.filter(function(m){return grams(null,m.id);}).map(function(m){return '<button class="chip'+(st.chart===m.id?" on":"")+'" onclick="E.chart(\''+m.id+'\')">'+m.label+"kurs</button>";}).join("")+"</div>";
+  var ds=histDates(),dgDs=ds.filter(function(d){var s=data.history[d];return s&&s.dji&&s.usd&&s.usd.gold;});
+  h+='<div class="panel"><div class="chipbar"><button class="chip'+(st.chart==="wert"?" on":"")+'" onclick="E.chart(\'wert\')">Portfoliowert</button>'+METALS.filter(function(m){return grams(null,m.id);}).map(function(m){return '<button class="chip'+(st.chart===m.id?" on":"")+'" onclick="E.chart(\''+m.id+'\')">'+m.label+"kurs</button>";}).join("")+(dgDs.length>=2?'<button class="chip'+(st.chart==="dowgold"?" on":"")+'" onclick="E.chart(\'dowgold\')">Dow/Gold</button>':"")+"</div>";
   if(ds.length<2){h+='<div class="note">📈 Hier entsteht dein <b>echter</b> Verlauf: Das Cockpit speichert an jedem Tag, an dem du diesen Bereich öffnest, einen Kurs-Schnappschuss. Ab dem zweiten Tag erscheint die Kurve.'+(ds.length?" Erster Schnappschuss: "+new Date(ds[0]).toLocaleDateString("de-DE")+".":"")+"</div>";}
   else{
     var pts,col,fmt;
-    if(st.chart==="wert"||!METALS.some(function(x){return x.id===st.chart;})){col="#c9a84c";fmt=function(v){return C.eur(v,0);};
+    if(st.chart==="dowgold"&&dgDs.length>=2){col="#7fb2ff";fmt=function(v){return C.num(v,2);};
+      pts=dgDs.map(function(d){var s=data.history[d];return {label:d.slice(8,10)+"."+d.slice(5,7)+".",value:s.dji/s.usd.gold};});}
+    else if(st.chart==="wert"||!METALS.some(function(x){return x.id===st.chart;})){col="#c9a84c";fmt=function(v){return C.eur(v,0);};
       pts=ds.map(function(d){var s=data.history[d],v=0;METALS.forEach(function(m){if(s.usd&&s.usd[m.id])v+=grams(null,m.id,d)/TROY*s.usd[m.id]*s.fx;});return {label:d.slice(8,10)+"."+d.slice(5,7)+".",value:v};});}
     else{var mm=METALS.filter(function(x){return x.id===st.chart;})[0];col=mm.color;fmt=function(v){return C.eurRaw(v,2)+"/g";};
       pts=ds.map(function(d){var s=data.history[d];return {label:d.slice(8,10)+"."+d.slice(5,7)+".",value:s.usd&&s.usd[mm.id]?s.usd[mm.id]*s.fx/TROY:null};});}
-    h+=C.lineChart(pts,{color:col,fmt:fmt,money:st.chart==="wert"})+'<div class="note" style="margin-top:6px">'+ds.length+" Tages-Schnappschüsse seit "+new Date(ds[0]).toLocaleDateString("de-DE")+(st.chart==="wert"?" · Wert mit dem jeweils damaligen Bestand":" · in €/g")+"</div>";
+    h+=C.lineChart(pts,{color:col,fmt:fmt,money:st.chart==="wert"})+'<div class="note" style="margin-top:6px">'+ds.length+" Tages-Schnappschüsse seit "+new Date(ds[0]).toLocaleDateString("de-DE")+(st.chart==="dowgold"&&dgDs.length>=2?" · Dow/Gold-Verhältnis ("+dgDs.length+" Tage mit Dow-Kurs)":st.chart==="wert"?" · Wert mit dem jeweils damaligen Bestand":" · in €/g")+"</div>";
   }
   h+="</div>";
   h+='<div class="panel"><h3>Aufteilung</h3><div class="scroll-x"><table class="t"><thead><tr><th>Metall</th><th>Bestand</th><th>Wert</th><th>Einkauf</th><th>G/V</th><th>Anteil</th></tr></thead><tbody>'+
     METALS.filter(function(m){return grams(null,m.id);}).map(function(m){var v=value(null,m.id),c=cost(null,m.id);
       return '<tr><td style="color:'+m.color+';font-weight:700">'+m.label+"</td><td>"+amt(grams(null,m.id))+"</td><td><b>"+(v!=null?C.eur(v,0):"—")+'</b></td><td class="muted">'+C.eur(c,0)+'</td><td class="'+(v!=null&&v-c>=0?"pos":"neg")+'">'+(v!=null?signEur(v-c,0):"—")+"</td><td>"+(v!=null&&t.v?C.num(v/t.v*100,1)+" %":"—")+"</td></tr>";}).join("")+
     "</tbody></table></div></div>";
+  return h;
+}
+/* Dow-Jones/Gold-Ratio: Dow-Punkte ÷ Goldpreis in $ je Unze */
+function ratioVor(){var ds=histDates(),heute=C.today();for(var i=ds.length-1;i>=0;i--){if(ds[i]>=heute)continue;var s=data.history[ds[i]];
+  if(s&&s.dji&&s.usd&&s.usd.gold)return {r:s.dji/s.usd.gold,d:ds[i]};}return null;}
+function vRatio(){
+  var p=st.prices,g=p&&p.usd&&p.usd.gold,dj=p&&p.dji;
+  var h='<div class="panel"><h3 style="color:#7fb2ff">📐 Dow-Jones/Gold-Ratio</h3>';
+  if(!g||!dj){h+='<div class="note">'+(st.loading?"Kurse werden geladen …":"Der Dow-Jones-Kurs ist gerade nicht abrufbar. Das Verhältnis erscheint, sobald Dow und Gold vorliegen.")+"</div></div>";return h;}
+  var r=dj/g,v=ratioVor(),dc=v?(r-v.r)/v.r*100:null,alt=p.djiTs&&Date.now()-p.djiTs>6*3600e3;
+  h+='<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><span style="font-size:28px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums">'+C.num(r,2)+'</span><span class="muted small">Unzen Gold für einen Dow Jones</span>'+
+    (dc!=null?'<span class="small '+(dc>=0?"pos":"neg")+'">'+(dc>=0?"▲":"▼")+" "+C.num(Math.abs(dc),2)+" % seit "+new Date(v.d).toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit"})+"</span>":"")+"</div>"+
+    '<div class="kv"><span>Dow Jones</span><span>'+C.num(dj,0)+" Punkte"+(p.djiPrev?' <span class="small '+(dj>=p.djiPrev?"pos":"neg")+'">'+(dj>=p.djiPrev?"▲":"▼")+" "+C.num(Math.abs((dj-p.djiPrev)/p.djiPrev*100),2)+" %</span>":"")+"</span></div>"+
+    '<div class="kv"><span>Gold</span><span>'+C.num(g,2)+" $ / oz</span></div>";
+  if(st.djiErr||alt)h+='<div class="small" style="color:#ffb74d;margin-top:6px">Dow-Kurs vom '+new Date(p.djiTs).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})+" (gerade nicht abrufbar)</div>";
+  h+='<div class="note" style="margin-top:8px">Hoher Wert: Aktien sind teuer im Verhältnis zu Gold. Niedriger Wert: Gold ist teuer im Verhältnis zu Aktien. Zum Vergleich ungefähr: um 1 (1980), über 40 (1999), knapp 6 (2011). Aktualisiert sich mit den Kursen'+(p.djiSrc?" · Dow via "+C.esc(p.djiSrc):"")+".</div></div>";
   return h;
 }
 function vPos(){
