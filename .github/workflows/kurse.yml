@@ -23,7 +23,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Letzten Stand holen
         run: |
-          git fetch --depth=1 origin kurse && git show origin/kurse:kurse.json > /tmp/alt.json || echo '{}' > /tmp/alt.json
+          (git fetch -q --depth=1 origin kurse && git show FETCH_HEAD:kurse.json > /tmp/alt.json) || echo '{}' > /tmp/alt.json
       - name: Kurse abrufen
         run: python3 .github/kurse.py /tmp/alt.json /tmp/kurse.json
       - name: In Zweig "kurse" schreiben (ein einziger Commit, kein wachsender Verlauf)

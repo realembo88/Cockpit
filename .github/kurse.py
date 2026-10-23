@@ -76,7 +76,12 @@ def main(alt_pfad, neu_pfad):
     out = {"ts": int(time.time() * 1000)}; neu = 0
     for k, s in SYMBOLE.items():
         q = yahoo(s["yahoo"], s["range"]) or cnbc(s["cnbc"]) or google(s["google"]) or stooq(s["stooq"])
-        if q: q["abruf"] = out["ts"]; out[k] = q; neu += 1
+        if q:
+            q["abruf"] = out["ts"]
+            if not q.get("hist"):   # Quelle ohne Verlauf: eigenen Tagesverlauf fortschreiben (letzter Kurs je Tag, 31 Tage)
+                tag = time.strftime("%Y-%m-%d", time.gmtime()); h = {d: v for d, v in ((alt.get(k) or {}).get("hist") or [])}
+                h[tag] = round(q["price"], 3); q["hist"] = [[d, h[d]] for d in sorted(h)][-31:]
+            out[k] = q; neu += 1
         elif k in alt: out[k] = alt[k]          # Ausfall: letzten Stand behalten (mit altem Abrufzeitpunkt)
     json.dump(out, open(neu_pfad, "w"), separators=(",", ":"))
     print("Kurse:", {k: (out[k].get("price"), out[k].get("src")) for k in SYMBOLE if k in out})
