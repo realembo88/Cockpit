@@ -154,7 +154,19 @@ function uebernehmen(x,fz,vs){x=norm(x);var v=vs.tid&&x.termine[vs.tid];
   if(vs.frei){var s=stamm(x,fz);delete s.ign["doc:"+vs.doc.id];s.docPlus=s.docPlus||{};s.docPlus[vs.doc.id]=1;s.t=Date.now();}
   return v;}
 
-return {FZ:FZ,IDS:IDS,ARTEN:ARTEN,KM_VORLAUF:KM_VORLAUF,heute:heute,tage:tage,plusM:plusM,de:de,parse:parse,blank:blank,norm:norm,merge:merge,aktiv:aktiv,
+/* ---------- Monatsübersicht je Fahrzeug ----------
+   km: Strecke seit dem vorherigen Eintrag, gleichmäßig auf die Tage dazwischen verteilt (Fahrten über den Monatswechsel landen anteilig
+   in beiden Monaten). Der erste Eintrag zählt ab dem Start-Kilometerstand und ganz in seinen Monat (Datum davor unbekannt).
+   Menge und Kosten: Tank-/Ladevorgänge mit Datum im Monat. Ergebnis {"JJJJ-MM":{km, fill, cost, n}} – Summe km = Gesamtstrecke. */
+function monate(c){var out={},e=((c&&c.entries)||[]).filter(function(x){return x&&x.date&&isFinite(+x.odo);}).slice().sort(function(a,b){return a.date.localeCompare(b.date)||a.odo-b.odo;});
+  function m(ym){return out[ym]||(out[ym]={km:0,fill:0,cost:0,n:0});}
+  e.forEach(function(x,i){var o=m(x.date.slice(0,7));o.n++;o.fill+=+x.fill||0;if(x.price!=null&&isFinite(+x.price))o.cost+=(+x.fill||0)*(+x.price);
+    var prev=i?e[i-1]:null,km=prev?x.odo-prev.odo:(c.startOdo!=null?x.odo-c.startOdo:0);if(!(km>0))return;
+    var tg=prev?tage(prev.date,x.date):0;if(!prev||tg<=0){m(x.date.slice(0,7)).km+=km;return;}
+    for(var t=1;t<=tg;t++){var dd=iso(new Date(d(prev.date).getTime()+t*DAY));m(dd.slice(0,7)).km+=km/tg;}});
+  Object.keys(out).forEach(function(k){var o=out[k];o.km=Math.round(o.km*10)/10;o.fill=Math.round(o.fill*100)/100;o.cost=Math.round(o.cost*100)/100;});
+  return out;}
+return {FZ:FZ,IDS:IDS,monate:monate,ARTEN:ARTEN,KM_VORLAUF:KM_VORLAUF,heute:heute,tage:tage,plusM:plusM,de:de,parse:parse,blank:blank,norm:norm,merge:merge,aktiv:aktiv,
   termineVon:termineVon,stamm:stamm,kmAktuell:kmAktuell,standard:standard,neuFrei:neuFrei,erledigt:erledigt,kmRest:kmRest,name:name,titel:titel,lage:lage,kmTxt:kmTxt,
   termine:termine,naechster:naechster,docMatch:docMatch,fahrzeugVon:fahrzeugVon,kennzeichenVorschlag:kennzeichenVorschlag,kennzeichenFrei:kennzeichenFrei,vorschlaege:vorschlaege,uebernehmen:uebernehmen,reifenArt:reifenArt};
 })();

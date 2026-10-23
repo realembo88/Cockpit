@@ -37,6 +37,7 @@
 <script src="../assets/cockpit.js"></script>
 <script src="../assets/wallbox.js"></script>
 <script src="../dokumente/logic.js"></script>
+<style>table.t.mon td,table.t.mon th{vertical-align:top;line-height:1.45;}table.t.mon tr.sum td{border-top:2px solid var(--border);}</style>
 <script src="logic.js"></script>
 <script>
 (function(){
@@ -231,14 +232,32 @@ function kzVorschlag(fz,idx){var a=AUTO.kennzeichenVorschlag(data,fz,idx);
 
 function viewCompare(){var L=Object.keys(CARS).map(function(id){return {k:CARS[id],s:stats(data[id])};}),mit=L.filter(function(x){return x.s.avgC100!=null;});
   var h='<div class="small muted" style="margin-bottom:14px">Laufende Energiekosten der Autos je 100 km.</div>';
-  if(mit.length<2)return h+'<div class="empty"><div class="big">💰</div>Für den Vergleich brauchst du Einträge<br>mit Preisangabe bei <b>mindestens zwei</b> Autos.</div>';
+  if(mit.length<2)return h+'<div class="empty"><div class="big">💰</div>Für den Vergleich brauchst du Einträge<br>mit Preisangabe bei <b>mindestens zwei</b> Autos.</div>'+viewMonate();
   mit.sort(function(a,b){return a.s.avgC100-b.s.avgC100;});var ch=mit[0].k,sv=mit[mit.length-1].s.avgC100-mit[0].s.avgC100;
   h+='<div class="panel" style="border-color:'+ch.accent+'66;background:linear-gradient(135deg,'+ch.accent+'33,var(--panel))"><div class="small muted">Günstigstes im Unterhalt</div><div style="font-size:22px;font-weight:800;color:'+ch.accent+'">'+ch.icon+" "+ch.short+'</div><div style="font-size:13px;margin-top:6px">spart <b style="color:'+ch.accent+'">'+C.eur(sv)+"</b> pro 100 km gegenüber dem "+mit[mit.length-1].k.short+" (≈ <b>"+C.eur(sv*100,0)+"</b> auf 10.000 km)</div></div>";
   h+='<div class="grid2" style="margin-bottom:16px">'+mit.map(function(p){var k=p.k,s=p.s;return '<div class="panel" style="margin:0;border-color:'+k.accent+'44"><b style="color:'+k.accent+'">'+k.icon+" "+k.short+"</b>"+
     kv("Ø Verbrauch",s.avgCons!=null?C.num(s.avgCons)+" "+k.cons:"–")+kv("Ø Kosten",'<b style="color:'+k.accent+'">'+C.num(s.avgC100,2)+" €/100km</b>")+kv("Strecke",C.int(s.totKm)+" km")+kv("Gesamtkosten",C.eur(s.totCost))+"</div>";}).join("")+"</div>";
   h+='<div class="panel"><h3 style="color:#e040fb">€/100 km im Vergleich</h3>'+C.barChart(mit.map(function(p){return {label:p.k.short,value:p.s.avgC100,color:p.k.accent};}),{fmt:function(v){return C.eur(v)+"/100km";}})+"</div>";
-  return h;
+  return h+viewMonate();
 }
+/* Monatsübersicht: je Monat gefahrene km, getankte/geladene Menge und Kosten je Auto, dazu beide zusammen */
+function viewMonate(){var ids=Object.keys(CARS).filter(function(id){return data[id].entries.length;});if(!ids.length)return "";
+  var M={},jahre={};ids.forEach(function(id){M[id]=AUTO.monate(data[id]);Object.keys(M[id]).forEach(function(ym){jahre[ym.slice(0,4)]=1;});});
+  var js=Object.keys(jahre).sort(),y=st.vy&&jahre[st.vy]?st.vy:js[js.length-1],yi=js.indexOf(y);
+  var mons=[];for(var i=1;i<=12;i++){var ym=y+"-"+(i<10?"0":"")+i;if(ids.some(function(id){return M[id][ym];}))mons.push(ym);}
+  var heute=C.today();
+  var z=function(o,k){var km=o?o.km:0,f=o?o.fill:0,c=o?o.cost:0;if(!o||(!km&&!f))return '<td class="muted">–</td>';
+    return "<td><b>"+C.int(km)+" km</b><br>"+C.num(f,1)+" "+k.unit+"<br>"+C.eur(c)+(km>0&&c>0?'<br><span class="small muted">'+C.num(c/km*100,2)+" €/100 km</span>":"")+"</td>";};
+  var sum=function(id){var o={km:0,fill:0,cost:0};mons.forEach(function(ym){var x=M[id][ym];if(x){o.km+=x.km;o.fill+=x.fill;o.cost+=x.cost;}});return o;};
+  var both=function(ym){var km=0,c=0;ids.forEach(function(id){var x=M[id][ym];if(x){km+=x.km;c+=x.cost;}});return "<td><b>"+C.int(km)+" km</b><br>"+C.eur(c)+"</td>";};
+  var h='<div class="panel"><h3 style="color:#e040fb">📅 Monatsübersicht</h3>';
+  if(js.length>1)h+='<div style="display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:10px"><button class="mini" '+(yi>0?'onclick="A.vy(\''+js[yi-1]+'\')"':"disabled")+'>‹</button><b>'+y+'</b><button class="mini" '+(yi<js.length-1?'onclick="A.vy(\''+js[yi+1]+'\')"':"disabled")+">›</button></div>";
+  h+='<div style="overflow-x:auto"><table class="t mon"><tr><th>Monat</th>'+ids.map(function(id){return '<th style="color:'+CARS[id].accent+'">'+CARS[id].icon+" "+CARS[id].short+"</th>";}).join("")+(ids.length>1?"<th>zusammen</th>":"")+"</tr>";
+  h+=mons.map(function(ym){
+    return "<tr><td>"+new Date(ym+"-15T12:00:00").toLocaleDateString("de-DE",{month:"short"})+(ym===heute.slice(0,7)?" *":"")+"</td>"+ids.map(function(id){return z(M[id][ym],CARS[id]);}).join("")+(ids.length>1?both(ym):"")+"</tr>";}).join("");
+  h+='<tr class="sum"><td><b>'+y+"</b></td>"+ids.map(function(id){var o=sum(id);return z(o,CARS[id]);}).join("")+(ids.length>1?(function(){var km=0,c=0;ids.forEach(function(id){var o=sum(id);km+=o.km;c+=o.cost;});return "<td><b>"+C.int(km)+" km</b><br>"+C.eur(c)+"</td>";})():"")+"</tr></table></div>";
+  h+='<div class="small muted" style="margin-top:8px">Kilometer: Strecke zwischen zwei Einträgen, gleichmäßig auf die Tage dazwischen verteilt. Menge und Kosten: Tank- bzw. Ladevorgänge im Monat.'+(mons.indexOf(heute.slice(0,7))>-1?" * Monat läuft noch – Kilometer bis zum letzten Eintrag.":"")+"</div></div>";
+  return h;}
 function kv(l,v){return '<div class="kv"><span>'+l+"</span><span>"+v+"</span></div>";}
 
 function viewData(){var anz=Object.keys(CARS).map(function(id){var k=CARS[id];return '<b style="color:'+k.accent+'">'+data[id].entries.length+"</b> "+k.short;}).join(", ");
@@ -257,6 +276,7 @@ function applyImport(raw){var d;try{d=JSON.parse(raw);}catch(e){flash("⚠ Kein 
 window.A={
   car:function(id){st.car=id;st.setup=false;st.form=blankForm();st.erl=null;st.edit=null;st.stEdit=false;if(st.tab==="daten"||st.tab==="vergleich")st.tab="uebersicht";if(st.tab==="fahrzeug")sichern();render();},
   tab:function(t){st.tab=t;if(t==="fahrzeug")sichern();render();},
+  vy:function(y){st.vy=y;render();},
   erl:function(id){var v=data.termine[id];if(!v)return;var ka=AUTO.kmAktuell(data,v.fz);st.erl={id:id,am:C.today(),km:ka?String(ka):""};st.edit=null;render();},
   erlSet:function(k,v){if(st.erl)st.erl[k]=v;},
   erlZu:function(){st.erl=null;render();},
