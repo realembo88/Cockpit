@@ -1,0 +1,34 @@
+# Holt GME- und Dow-Jones-Kurse und legt sie als kurse.json im Zweig "kurse" ab.
+# Die App liest sie über raw.githubusercontent.com (CORS erlaubt). Nur öffentliche Marktdaten.
+name: Kurse
+on:
+  schedule:
+    - cron: "*/20 13-21 * * 1-5"   # US-Handelszeit (UTC), alle 20 Minuten
+    - cron: "15 22 * * 1-5"        # Schlusskurs
+    - cron: "0 9 * * *"            # einmal täglich, auch am Wochenende
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [".github/kurse.py", ".github/workflows/kurse.yml"]
+permissions:
+  contents: write
+concurrency:
+  group: kurse
+  cancel-in-progress: false
+jobs:
+  kurse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Letzten Stand holen
+        run: |
+          git fetch --depth=1 origin kurse && git show origin/kurse:kurse.json > /tmp/alt.json || echo '{}' > /tmp/alt.json
+      - name: Kurse abrufen
+        run: python3 .github/kurse.py /tmp/alt.json /tmp/kurse.json
+      - name: In Zweig "kurse" schreiben (ein einziger Commit, kein wachsender Verlauf)
+        run: |
+          cd "$(mktemp -d)" && git init -q -b kurse && cp /tmp/kurse.json .
+          git config user.name "github-actions[bot]" && git config user.email "41898+github-actions[bot]@users.noreply.github.com"
+          git add kurse.json && git commit -qm "Kurse $(date -u +%FT%TZ)"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" kurse

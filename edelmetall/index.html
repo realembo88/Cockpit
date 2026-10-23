@@ -130,9 +130,14 @@ function loadFx(){
 function lastFx(){if(st.prices&&st.prices.fx)return {fx:st.prices.fx,old:true};var ds=Object.keys(data.history).sort();
   for(var i=ds.length-1;i>=0;i--){var h=data.history[ds[i]];if(h&&h.fx)return {fx:h.fx,old:true,date:ds[i]};}return null;}
 function loadMetal(sym){return getJ("https://api.gold-api.com/price/"+sym).then(function(j){return j&&typeof j.price==="number"&&j.price>0?j.price:null;});}
+/* Börsenkurse (GME, Dow Jones) holt eine GitHub Action serverseitig und legt sie im Zweig "kurse" ab (.github/kurse.py).
+   raw.githubusercontent.com erlaubt CORS – kein fremder Umweg-Server nötig. Ein Abruf je Aktualisierung. */
+var KURSE_URL="https://raw.githubusercontent.com/realembo88/Cockpit/kurse/kurse.json",kursP=null;
+function loadKurse(){if(!kursP)kursP=getJ(KURSE_URL+"?t="+Math.floor(Date.now()/60e3)).then(function(j){return j&&j.ts?j:null;});return kursP;}
+function kursAlt(q){return !q||!q.abruf||Date.now()-q.abruf>4*864e5;}   /* älter als 4 Tage: Action läuft wohl nicht */
 function loadStock(){
   var sym="GME",yurl="https://query1.finance.yahoo.com/v8/finance/chart/"+sym+"?interval=1d&range=1mo";
-  var proxies=[function(u){return "https://corsproxy.io/?url="+encodeURIComponent(u);},function(u){return "https://api.allorigins.win/raw?url="+encodeURIComponent(u);}];
+  var proxies=[function(u){return "https://api.allorigins.win/raw?url="+encodeURIComponent(u);}];
   st.stockErr="";
   function finnhub(){
     if(!st.fh){st.stockErr="Aktienkurs gerade nicht abrufbar.";return null;}
@@ -149,13 +154,17 @@ function loadStock(){
       st.stock[sym]={price:res.meta.regularMarketPrice,prev:res.meta.chartPreviousClose||res.meta.previousClose||null,hist:hist};st.stockSrc="Yahoo Finance";
     });
   }
-  return tryP(0);
+  return loadKurse().then(function(j){var q=j&&j[sym];
+    if(q&&q.price>0&&!kursAlt(q)){
+      st.stock[sym]={price:q.price,prev:q.prev||null,t:q.t?q.t*1000:q.abruf,hist:(q.hist||[]).map(function(x){return {label:x[0].slice(8,10)+"."+x[0].slice(5,7),value:x[1]};})};
+      st.stockSrc=q.src+" (über GitHub)";return;}
+    return tryP(0);});
 }
 /* Dow Jones (^DJI) für das Dow/Gold-Verhältnis: Yahoo über CORS-Proxy, sonst Stooq; sonst letzter bekannter Stand */
 function loadDow(){
   var yurl="https://query1.finance.yahoo.com/v8/finance/chart/%5EDJI?interval=1d&range=5d",
       surl="https://stooq.com/q/l/?s=%5Edji&f=sd2t2ohlc&h&e=csv";
-  var proxies=[function(u){return "https://corsproxy.io/?url="+encodeURIComponent(u);},function(u){return "https://api.allorigins.win/raw?url="+encodeURIComponent(u);}];
+  var proxies=[function(u){return "https://api.allorigins.win/raw?url="+encodeURIComponent(u);}];
   function getT(u){return fetch(u,{cache:"no-store"}).then(function(r){return r.ok?r.text():null;}).catch(function(){return null;});}
   function yahoo(i){if(i>=proxies.length)return stooq(0);
     return getJ(proxies[i](yurl)).then(function(j){var m=j&&j.chart&&j.chart.result&&j.chart.result[0]&&j.chart.result[0].meta;
@@ -164,10 +173,13 @@ function loadDow(){
     return getT(proxies[i](surl)).then(function(t){var l=(t||"").trim().split(/\r?\n/);if(l.length<2)return stooq(i+1);
       var hd=l[0].toLowerCase().split(","),v=l[1].split(","),c=+v[hd.indexOf("close")],o=+v[hd.indexOf("open")];
       return c>0?{price:c,prev:null,open:o>0?o:null,src:"Stooq"}:stooq(i+1);});}
-  return yahoo(0);
+  return loadKurse().then(function(j){var q=j&&j.DJI;
+    if(q&&q.price>0&&!kursAlt(q))return {price:q.price,prev:q.prev||null,t:q.t?q.t*1000:q.abruf,src:q.src+" (über GitHub)"};
+    return yahoo(0);});
 }
 function refresh(){
   if(st.loading)return;
+  kursP=null;
   st.loading=true;render();
   Promise.all([loadFx()].concat(METALS.map(function(m){return loadMetal(m.sym);})).concat([loadStock(),loadDow()])).then(function(r){
     var dow=r[METALS.length+2];
@@ -178,7 +190,7 @@ function refresh(){
     if(ok&&fx){
       var alt=st.prices||{};
       st.prices={ts:Date.now(),fx:fx,usd:usd};
-      if(dow){st.prices.dji=dow.price;st.prices.djiPrev=dow.prev;st.prices.djiTs=Date.now();st.prices.djiSrc=dow.src;}
+      if(dow){st.prices.dji=dow.price;st.prices.djiPrev=dow.prev;st.prices.djiTs=dow.t||Date.now();st.prices.djiSrc=dow.src;}
       else if(alt.dji){st.prices.dji=alt.dji;st.prices.djiPrev=alt.djiPrev;st.prices.djiTs=alt.djiTs;st.prices.djiSrc=alt.djiSrc;}
       st.djiErr=!dow;st.priceErr=false;localSet(LOCAL_PRICE_KEY,st.prices);
       var today=C.today(),gme=st.stock.GME&&st.stock.GME.price;
@@ -259,12 +271,12 @@ function vRatio(){
   var p=st.prices,g=p&&p.usd&&p.usd.gold,dj=p&&p.dji;
   var h='<div class="panel"><h3 style="color:#7fb2ff">📐 Dow-Jones/Gold-Ratio</h3>';
   if(!g||!dj){h+='<div class="note">'+(st.loading?"Kurse werden geladen …":"Der Dow-Jones-Kurs ist gerade nicht abrufbar. Das Verhältnis erscheint, sobald Dow und Gold vorliegen.")+"</div></div>";return h;}
-  var r=dj/g,v=ratioVor(),dc=v?(r-v.r)/v.r*100:null,alt=p.djiTs&&Date.now()-p.djiTs>6*3600e3;
+  var r=dj/g,v=ratioVor(),dc=v?(r-v.r)/v.r*100:null,alt=p.djiTs&&Date.now()-p.djiTs>4*864e5;
   h+='<div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap"><span style="font-size:28px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums">'+C.num(r,2)+'</span><span class="muted small">Unzen Gold für einen Dow Jones</span>'+
     (dc!=null?'<span class="small '+(dc>=0?"pos":"neg")+'">'+(dc>=0?"▲":"▼")+" "+C.num(Math.abs(dc),2)+" % seit "+new Date(v.d).toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit"})+"</span>":"")+"</div>"+
     '<div class="kv"><span>Dow Jones</span><span>'+C.num(dj,0)+" Punkte"+(p.djiPrev?' <span class="small '+(dj>=p.djiPrev?"pos":"neg")+'">'+(dj>=p.djiPrev?"▲":"▼")+" "+C.num(Math.abs((dj-p.djiPrev)/p.djiPrev*100),2)+" %</span>":"")+"</span></div>"+
     '<div class="kv"><span>Gold</span><span>'+C.num(g,2)+" $ / oz</span></div>";
-  if(st.djiErr||alt)h+='<div class="small" style="color:#ffb74d;margin-top:6px">Dow-Kurs vom '+new Date(p.djiTs).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})+" (gerade nicht abrufbar)</div>";
+  if(p.djiTs)h+='<div class="small'+(st.djiErr||alt?"":" muted")+'" style="margin-top:6px'+(st.djiErr||alt?";color:#ffb74d":"")+'">Dow-Kurs vom '+new Date(p.djiTs).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})+(st.djiErr?" (gerade nicht abrufbar – letzter Stand)":"")+"</div>";
   h+='<div class="note" style="margin-top:8px">Hoher Wert: Aktien sind teuer im Verhältnis zu Gold. Niedriger Wert: Gold ist teuer im Verhältnis zu Aktien. Zum Vergleich ungefähr: um 1 (1980), über 40 (1999), knapp 6 (2011). Aktualisiert sich mit den Kursen'+(p.djiSrc?" · Dow via "+C.esc(p.djiSrc):"")+".</div></div>";
   return h;
 }
@@ -294,11 +306,12 @@ function vStocks(){
   var pe=d.price&&fx?d.price*fx:null,val=pe!=null?pe*(hold.shares||0):null,pl=val!=null&&hold.einstand?val-hold.einstand:null;
   var dc=d.price&&d.prev?(d.price-d.prev)/d.prev*100:null;
   var h='<div class="hero2" style="border-color:'+s.color+'55;background:linear-gradient(135deg,'+s.color+'2e,var(--panel) 70%)"><div class="lab">'+s.label+" ("+s.sym+')</div><div class="big">'+(val!=null?C.eur(val):"—")+'</div>'+
-    '<div class="small"><span class="muted">'+(C.priv()?"•••":C.int(hold.shares||0))+" Stück"+(d.price?" × "+C.num(d.price,2)+" $":"")+"</span>"+(dc!=null?' · <span class="'+(dc>=0?"pos":"neg")+'">'+(dc>=0?"▲":"▼")+" "+C.num(Math.abs(dc),2)+" %</span>":"")+(pl!=null?' · <b class="'+(pl>=0?"pos":"neg")+'">'+signEur(pl)+"</b>":"")+"</div></div>";
+    '<div class="small"><span class="muted">'+(C.priv()?"•••":C.int(hold.shares||0))+" Stück"+(d.price?" × "+C.num(d.price,2)+" $":"")+"</span>"+(dc!=null?' · <span class="'+(dc>=0?"pos":"neg")+'">'+(dc>=0?"▲":"▼")+" "+C.num(Math.abs(dc),2)+" %</span>":"")+(pl!=null?' · <b class="'+(pl>=0?"pos":"neg")+'">'+signEur(pl)+"</b>":"")+"</div>"+
+    (d.t?'<div class="small muted" style="margin-top:4px">Kurs vom '+new Date(d.t).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})+" · "+C.esc(st.stockSrc)+"</div>":"")+"</div>";
   if(st.stockErr&&!st.loading)h+='<div class="banner">⚠ '+C.esc(st.stockErr)+"</div>";
   if(d.hist&&d.hist.length>1)h+='<div class="panel"><h3 style="color:'+s.color+'">Kursverlauf 1 Monat ($)</h3>'+C.lineChart(d.hist,{color:s.color,fmt:function(v){return C.num(v,2)+" $";}})+'<div class="note">Echte Kurshistorie via '+C.esc(st.stockSrc)+"</div></div>";
   h+='<div class="panel"><h3>Bestand bearbeiten</h3><div class="row2"><div class="field"><label>Stückzahl</label><input id="s-sh" inputmode="decimal" value="'+(hold.shares||0)+'"></div><div class="field"><label>Einkauf gesamt (€)</label><input id="s-ek" inputmode="decimal" value="'+(hold.einstand||"")+'" placeholder="optional"></div></div><button class="btn full" onclick="E.saveStock()">Speichern</button></div>';
-  h+='<div class="panel"><h3>Ersatz-Kursquelle (optional)</h3><div class="note" style="margin-bottom:10px">Der Kurs kommt normalerweise von Yahoo Finance über einen öffentlichen Umweg-Server (CORS-Proxy). Der sieht nur, dass jemand den GME-Kurs abfragt – nicht deinen Bestand. Fällt das aus, springt ein kostenloser Finnhub-Schlüssel ein. Er bleibt nur auf diesem Gerät.</div>'+
+  h+='<div class="panel"><h3>Ersatz-Kursquelle (optional)</h3><div class="note" style="margin-bottom:10px">Den Kurs holt normalerweise eine kleine Aufgabe auf GitHub (Yahoo Finance, Ersatz Stooq) – werktags alle 20 Minuten zur US-Handelszeit, sonst einmal täglich. Dabei werden nur öffentliche Kurse abgefragt, nicht dein Bestand. Fällt das aus, springt ein kostenloser Finnhub-Schlüssel ein. Er bleibt nur auf diesem Gerät.</div>'+
     '<div class="field"><label>Finnhub-Key</label><input id="fh" type="password" autocomplete="off" value="'+C.esc(st.fh)+'"></div><button class="btn ghost full" onclick="E.saveFh()">Key speichern</button></div>';
   return h;
 }
