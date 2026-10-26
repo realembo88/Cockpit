@@ -143,10 +143,16 @@ function wbBox(){
     '<button class="btn" style="padding:8px 12px;font-size:13px" onclick="A.useWB()">Übernehmen</button>'+
     '<div class="small muted" style="margin-top:8px">Öffentlich geladen? Dann die Menge nach dem Übernehmen dazurechnen und den Preis anpassen.</div></div>';
 }
+/* Nachbarn zum Datum: Einträge davor müssen weniger, danach mehr km haben – so lassen sich auch ältere Einträge nachtragen */
+function grenzen(c,date){var vor=null,nach=null;
+  c.entries.forEach(function(e){if((e.date||"")<=date){if(!vor||e.odo>vor.odo)vor=e;}else if(!nach||e.odo<nach.odo)nach=e;});
+  return {vor:vor,nach:nach,lo:vor?vor.odo:c.startOdo,hi:nach?nach.odo:null};}
 function preview(){var k=car(),c=cd(),f=st.form;var odo=C.parseNum(f.odo),fill=C.parseNum(f.fill),price=C.parseNum(f.price);
-  if(isNaN(odo)||isNaN(fill)||c.startOdo==null)return "";
-  var prev=c.entries.length?c.entries[c.entries.length-1].odo:c.startOdo,km=odo-prev,cons=km>0?fill/km*100:null,cost=!isNaN(price)?fill*price:null,c100=(km>0&&cost!=null)?cost/km*100:null;
-  return '<div class="panel" style="background:var(--panel2)"><div class="small muted" style="margin-bottom:6px">Vorschau</div><div class="chips" style="margin:0"><span style="color:#e040fb">📍 '+(km>0?C.int(km):"–")+' km</span><span style="color:'+(cons!=null&&cons<k.norm?"#00c853":"#ff9800")+'">'+k.icon+" "+(cons!=null?C.num(cons)+" "+k.cons:"–")+"</span>"+
+  if(c.startOdo==null)return "";
+  var g0=grenzen(c,f.date||C.today()),hint=g0.nach?'<div class="note" style="margin-bottom:10px">↩ Nachtrag: Kilometerstand zwischen '+C.int(g0.lo)+" und "+C.int(g0.hi)+" km ("+(g0.vor?"Eintrag vom "+new Date(g0.vor.date).toLocaleDateString("de-DE"):"Start")+" bis "+new Date(g0.nach.date).toLocaleDateString("de-DE")+").</div>":"";
+  if(isNaN(odo)||isNaN(fill))return hint;
+  var prev=grenzen(c,f.date||C.today()).lo,km=odo-prev,cons=km>0?fill/km*100:null,cost=!isNaN(price)?fill*price:null,c100=(km>0&&cost!=null)?cost/km*100:null;
+  return hint+'<div class="panel" style="background:var(--panel2)"><div class="small muted" style="margin-bottom:6px">Vorschau</div><div class="chips" style="margin:0"><span style="color:#e040fb">📍 '+(km>0?C.int(km):"–")+' km</span><span style="color:'+(cons!=null&&cons<k.norm?"#00c853":"#ff9800")+'">'+k.icon+" "+(cons!=null?C.num(cons)+" "+k.cons:"–")+"</span>"+
     (cost!=null?'<span style="color:#00bcd4">🧾 '+C.eur(cost)+"</span>":"")+(c100!=null?'<span style="color:#7eb8ff">💰 '+C.num(c100,2)+" €/100km</span>":"")+"</div></div>";}
 
 function viewLog(){var k=car(),S=stats(cd());
@@ -315,11 +321,13 @@ window.A={
   add:function(){var c=cd(),f=st.form,odo=C.parseNum(f.odo),fill=C.parseNum(f.fill),price=C.parseNum(f.price);
     if(c.startOdo==null){flash("⚠ Bitte zuerst den Startzählerstand setzen",true);return;}
     if(isNaN(odo)||isNaN(fill)||fill<=0){flash("⚠ Kilometerstand und Menge ausfüllen",true);return;}
-    var last=c.entries.length?c.entries[c.entries.length-1].odo:c.startOdo;
-    if(odo<=last){flash("⚠ Kilometerstand muss über "+C.int(last)+" km liegen",true);return;}
+    var d=f.date||C.today(),g=grenzen(c,d),dd=function(e){return new Date(e.date).toLocaleDateString("de-DE");};
+    if(odo<=c.startOdo){flash("⚠ Kilometerstand muss über dem Startzählerstand ("+C.int(c.startOdo)+" km) liegen",true);return;}
+    if(g.vor&&odo<=g.vor.odo){flash("⚠ Kilometerstand muss über "+C.int(g.vor.odo)+" km liegen (Eintrag vom "+dd(g.vor)+")",true);return;}
+    if(g.nach&&odo>=g.nach.odo){flash("⚠ Kilometerstand muss unter "+C.int(g.nach.odo)+" km liegen (Eintrag vom "+dd(g.nach)+")",true);return;}
     c.entries.push({id:Date.now(),date:f.date||C.today(),odo:odo,fill:fill,price:isNaN(price)?null:price,note:f.note.trim()});
     c.entries.sort(function(a,b){return a.odo-b.odo;});if(!isNaN(price))c.lastPrice=price;
-    persist();st.form=blankForm();st.tab="uebersicht";flash("Eintrag gespeichert ✓");},
+    persist();st.form=blankForm();st.tab="uebersicht";flash(g.nach?"Eintrag nachgetragen ✓ (zwischen "+(g.vor?dd(g.vor):"Start")+" und "+dd(g.nach)+")":"Eintrag gespeichert ✓");},
   del:function(id){if(!confirm("Eintrag wirklich löschen?"))return;var c=cd();c.entries=c.entries.filter(function(e){return e.id!==id;});if(c.deleted.indexOf(id)<0)c.deleted.push(id);persist();render();},
   exp:function(){C.downloadText("auto-"+C.today()+".json",JSON.stringify(data,null,1))?flash("Export gestartet ✓"):flash("⚠ Download nicht möglich",true);},
   imp:function(){var t=document.getElementById("imp");if(t&&t.value.trim())applyImport(t.value);else flash("⚠ Bitte zuerst Daten einfügen",true);},
