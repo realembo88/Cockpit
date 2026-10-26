@@ -460,12 +460,36 @@ function ekHowto(){
     '2. Am PC unter <a href="../dokumente/index.html" style="color:#7dd3fc">Dokumente</a> auf <b>🔍 Analysieren</b> tippen. Sicher erkannte Bons werden dabei gleich abgelegt (02_Archiv/Privat/Einkaeufe/Jahr), unsichere bleiben zur Prüfung im Eingang.<br>'+
     '3. Danach stehen Laden, Artikel und Zahlart hier – Kartenzahlungen werden mit dem Konto abgeglichen, Barzahlungen mit den Abhebungen.</div></div>';
 }
+/* Bon von Hand erfassen / bearbeiten */
+function ekBlank(){return {id:null,datum:C.today(),zeit:"",laden:"",summe:"",zahlart:"karte",kat:st.ek.lastKat!=null?st.ek.lastKat:14,pos:[]};}
+function ekRestTxt(){var f=st.ek.form;if(!f)return "";var sum=C.parseNum(f.summe),ps=f.pos.reduce(function(a,x){var v=C.parseNum(x.p);return a+(isNaN(v)?0:v);},0);
+  if(isNaN(sum)||!(sum>0))return "";
+  if(!f.pos.length)return "Der ganze Betrag zählt zu „"+EINK.katName(eink,+f.kat)+"“.";
+  var r=Math.round((sum-ps)*100)/100;
+  return r>0.004?"Positionen "+C.eur(ps)+" – die übrigen "+C.eur(r)+" zählen zu „"+EINK.katName(eink,+f.kat)+"“.":r<-0.004?"⚠ Positionen ("+C.eur(ps)+") ergeben mehr als der Betrag – die Differenz "+C.eur(-r)+" wird als Rabatt gezählt.":"✓ Positionen ergeben genau den Betrag.";}
+function katSel(v,on){return '<select class="inl" onchange="'+on+'">'+EINK.kats(eink).map(function(k,i){return i===EINK.PFAND?"":'<option value="'+i+'"'+(+v===i?" selected":"")+">"+C.esc(k)+"</option>";}).join("")+"</select>";}
+function ekForm(){var f=st.ek.form,E=EINK,ld={};E.bons(eink).forEach(function(b){if(b.laden)ld[b.laden]=1;});
+  var inp=function(lab,k,typ,ph,mode){return '<div style="flex:1;min-width:0"><div class="small muted" style="margin:6px 0 3px">'+lab+'</div><input class="search" style="margin:0" type="'+typ+'"'+(mode?' inputmode="'+mode+'"':"")+(k==="laden"?' list="ekLd" autocomplete="off"':"")+' placeholder="'+C.esc(ph||"")+'" value="'+C.esc(f[k])+'" oninput="F2.ekF(\''+k+'\',this.value)"></div>';};
+  return '<div class="panel" id="ekForm"><h3>'+(f.id?"✎ Bon bearbeiten":"＋ Bon von Hand erfassen")+'</h3>'+
+    '<div style="display:flex;gap:8px">'+inp("Datum","datum","date")+inp("Uhrzeit (optional)","zeit","time")+"</div>"+
+    inp("Geschäft","laden","text","z. B. Bäckerei, Wochenmarkt")+'<datalist id="ekLd">'+Object.keys(ld).sort().map(function(x){return '<option value="'+C.esc(x)+'">';}).join("")+"</datalist>"+
+    inp("Betrag gesamt (€)","summe","text","z. B. 12,80","decimal")+
+    '<div class="small muted" style="margin:10px 0 4px">Zahlart</div><div style="display:flex;gap:6px;flex-wrap:wrap">'+["karte","bar","sonstiges"].map(function(z){return '<button class="pill'+(f.zahlart===z?" on":"")+'" onclick="F2.ekZaF(\''+z+'\')">'+E.ICON[z]+" "+E.ZA[z]+"</button>";}).join("")+"</div>"+
+    '<div class="small muted" style="margin:10px 0 4px">Warengruppe'+(f.pos.length?" für den Rest":"")+"</div>"+katSel(f.kat,"F2.ekF('kat',this.value)")+
+    '<div class="small muted" style="margin:12px 0 4px">Einzelne Artikel (optional)</div>'+
+    f.pos.map(function(x,i){return '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap"><input class="search" style="margin:0;flex:2;min-width:120px" placeholder="Artikel" value="'+C.esc(x.n)+'" oninput="F2.ekP('+i+',\'n\',this.value)">'+
+      '<input class="search" style="margin:0;flex:1;min-width:70px" inputmode="decimal" placeholder="€" value="'+C.esc(x.p)+'" oninput="F2.ekP('+i+',\'p\',this.value)">'+katSel(x.k,"F2.ekP("+i+",'k',this.value)")+
+      '<button class="pill" onclick="F2.ekPDel('+i+')" aria-label="Artikel entfernen">✕</button></div>';}).join("")+
+    '<button class="pill" onclick="F2.ekPAdd()">＋ Artikel</button>'+
+    '<div class="note" id="ekRest" style="margin-top:10px">'+ekRestTxt()+"</div>"+
+    '<div style="display:flex;gap:8px;margin-top:12px"><button class="btn" style="flex:1" onclick="F2.ekSave()">'+(f.id?"Speichern":"Bon speichern")+'</button><button class="btn ghost" onclick="F2.ekAbbr()">Abbrechen</button></div></div>';}
 function vEink(){
   var E=EINK,e=st.ek,all=E.bons(eink),m=E.match(all,data.tx);
   var h='<div class="filt"><div class="yr"><button onclick="F2.yr(-1)" aria-label="Vorjahr">‹</button><b>'+st.year+'</b><button onclick="F2.yr(1)" aria-label="Folgejahr">›</button></div>'+
     '<select class="inl" onchange="F2.ekMon(this.value)"><option value="">Ganzes Jahr</option>'+F.MON.map(function(mo,i){var v=("0"+(i+1)).slice(-2);return '<option value="'+v+'"'+(v===e.mon?" selected":"")+">"+mo+"</option>";}).join("")+"</select>"+
     [["alle","Alle"],["karte","💳 Karte"],["bar","💵 Bar"]].map(function(z){return '<button class="pill'+(e.za===z[0]?" on":"")+'" onclick="F2.ekZa(\''+z[0]+'\')">'+z[1]+"</button>";}).join("")+"</div>";
-  if(!all.length)return h+'<div class="empty"><div class="big">🧾</div>Noch keine Kassenbons.<br><span class="small">Gescannte Bons erscheinen hier mit Artikeln, Laden und Zahlart.</span></div>'+ekHowto();
+  h+=e.form?ekForm():'<button class="btn ghost full" style="margin-bottom:14px" onclick="F2.ekNeu()">＋ Bon von Hand erfassen</button>';
+  if(!all.length)return h+'<div class="empty"><div class="big">🧾</div>Noch keine Kassenbons.<br><span class="small">Gescannte Bons erscheinen hier mit Artikeln, Laden und Zahlart. Bons ohne Scan oben von Hand erfassen.</span></div>'+ekHowto();
   var pfx=String(st.year)+(e.mon?"-"+e.mon:""),lab=e.mon?F.MON[+e.mon-1]+" "+st.year:String(st.year);
   var per=all.filter(function(b){return b.datum.indexOf(pfx)===0;}),SA=E.stats(per,m,eink);
   var list=per.filter(function(b){return e.za==="alle"||E.eff(b,m)===e.za;}),S=e.za==="alle"?SA:E.stats(list,m,eink);
@@ -520,7 +544,7 @@ function bonRow(b,m){
   var h='<div class="tx'+(b.aus?" aus":"")+'"><div style="min-width:0;flex:1"><div class="p" style="cursor:pointer" onclick="F2.ekOpen(\''+id+'\')">'+C.esc(b.laden||"Unbekannt")+(b.ort?' <span class="small muted">'+C.esc(b.ort)+"</span>":"")+"</div>"+
     '<div class="z">'+dt(b.datum)+(b.zeit?" "+C.esc(b.zeit):"")+" · "+b.artikel.length+" Artikel"+(b.karte&&z==="karte"?" · "+C.esc(b.karte):"")+"</div>"+
     '<button class="cat z-'+z+'" onclick="F2.ekOpen(\''+id+'\')">'+E.ICON[z]+" "+E.ZA[z]+(b.zk?" ✎":"")+"</button>"+
-    (t?'<span class="cat ok" title="'+C.esc((t.p||t.t||"")+" · "+t.d)+'">✓ Konto '+dt(t.d)+"</span>":"")+(b.diff?'<span class="cat u" title="Die Positionen ergeben nicht die Summe">⚠ Positionen</span>':"")+(b.aus?'<span class="cat u">nicht gezählt</span>':"");
+    (t?'<span class="cat ok" title="'+C.esc((t.p||t.t||"")+" · "+t.d)+'">✓ Konto '+dt(t.d)+"</span>":"")+(b.diff?'<span class="cat u" title="Die Positionen ergeben nicht die Summe">⚠ Positionen</span>':"")+(b.aus?'<span class="cat u">nicht gezählt</span>':"")+(b.manuell?'<span class="cat d">✍ manuell</span>':"");
   if(op){
     h+='<div class="bonbox">'+(b.artikel.length?b.artikel.map(function(a){var mg=+a[3];return '<div class="art"><span class="n">'+C.esc(a[0])+(mg&&mg!==1?" <i>× "+C.num(mg,mg%1?3:0)+"</i>":"")+" <i>· "+C.esc(E.katName(eink,+a[2]))+'</i></span><span class="v">'+C.eur(+a[1])+"</span></div>";}).join(""):'<div class="note">Keine Positionen erkannt.</div>')+
       (b.diff?'<div class="note" style="color:#ffb74d;margin-top:6px">Die Positionen ergeben '+C.eur(b.summe+b.diff)+" statt "+C.eur(b.summe)+" – die Summe des Bons zählt.</div>":"")+
@@ -528,6 +552,7 @@ function bonRow(b,m){
       (b.ladenNeu?'<div class="note">gelesen als „'+C.esc(b.ladenOrig)+'“</div>':"")+
       '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:10px"><select class="inl" onchange="F2.ekSetZa(\''+id+'\',this.value)">'+Object.keys(E.ZA).map(function(k){return '<option value="'+k+'"'+(k===b.zahlart?" selected":"")+">"+E.ICON[k]+" "+E.ZA[k]+"</option>";}).join("")+"</select>"+
       '<button class="pill" onclick="F2.ekAus(\''+id+'\')">'+(b.aus?"wieder mitzählen":"nicht mitzählen")+"</button>"+
+      (b.manuell?'<button class="pill" onclick="F2.ekEdit(\''+id+'\')">✎ Bearbeiten</button><button class="pill" onclick="F2.ekDel(\''+id+'\')">🗑 Löschen</button>':"")+
       (window.DOKS&&DOKS.supported()&&b.archiv?'<button class="pill" onclick="F2.ekDoc(\''+id+'\')">📄 Bon öffnen</button>':"")+"</div>"+
       (t?'<div class="note" style="margin-top:6px">Buchung: '+C.esc(t.p||t.t||"")+" · "+dt(t.d)+" · "+C.eur(-t.b)+"</div>":"")+"</div>";}
   return h+'</div><div class="a">'+C.eur(b.summe)+"</div></div>";
@@ -838,13 +863,38 @@ window.F2={
   ekSetZa:function(id,z){var b=eink.bons.filter(function(x){return x.id===id;})[0],k=Object.assign({},eink.korr[id]);
     if(b&&b.zahlart===z)delete k.zahlart;else k.zahlart=z;k.t=Date.now();eink.korr[id]=k;C.save("einkaeufe",eink);render();},
   ekAus:function(id){var k=Object.assign({},eink.korr[id]);if(k.aus)delete k.aus;else k.aus=true;k.t=Date.now();eink.korr[id]=k;C.save("einkaeufe",eink);render();},
+  ekNeu:function(){st.ek.form=ekBlank();render();var x=document.getElementById("ekForm");if(x)x.scrollIntoView({block:"start"});},
+  ekAbbr:function(){st.ek.form=null;render();},
+  ekF:function(k,v){st.ek.form[k]=v;var r=document.getElementById("ekRest");if(r)r.innerHTML=ekRestTxt();},
+  ekZaF:function(z){st.ek.form.zahlart=z;render();},
+  ekPAdd:function(){st.ek.form.pos.push({n:"",p:"",k:st.ek.form.kat});render();},
+  ekPDel:function(i){st.ek.form.pos.splice(i,1);render();},
+  ekP:function(i,k,v){st.ek.form.pos[i][k]=v;var r=document.getElementById("ekRest");if(r)r.innerHTML=ekRestTxt();},
+  ekSave:function(){var f=st.ek.form,sum=C.parseNum(f.summe),laden=String(f.laden||"").trim();
+    if(!f.datum){flash("⚠ Bitte ein Datum angeben",true);return;}
+    if(!laden){flash("⚠ Bitte das Geschäft angeben",true);return;}
+    if(isNaN(sum)||!(sum>0)){flash("⚠ Bitte den Betrag angeben",true);return;}
+    var pos=[],bad=false;f.pos.forEach(function(x){var n=String(x.n||"").trim(),p=C.parseNum(x.p);if(!n&&String(x.p||"").trim()==="")return;if(isNaN(p)){bad=true;return;}pos.push([n||"Artikel",Math.round(p*100)/100,+x.k]);});
+    if(bad){flash("⚠ Bitte bei jedem Artikel einen Betrag angeben",true);return;}
+    var id=f.id||"m-"+Date.now().toString(36)+Math.random().toString(36).slice(2,5);
+    eink.manuell[id]={id:id,laden:laden,datum:f.datum,zeit:f.zeit||"",summe:Math.round(sum*100)/100,zahlart:f.zahlart,kat:+f.kat,pos:pos,t:Date.now()};
+    /* eine früher im Bon geänderte Zahlart würde die neue überdecken */
+    if(f.id&&eink.korr[id]&&eink.korr[id].zahlart){var k=Object.assign({},eink.korr[id]);delete k.zahlart;k.t=Date.now();eink.korr[id]=k;}
+    st.ek.lastKat=+f.kat;var neu=!f.id;st.ek.form=null;st.ek.open=id;st.year=+f.datum.slice(0,4);if(st.ek.mon&&st.ek.mon!==f.datum.slice(5,7))st.ek.mon="";if(st.ek.za!=="alle"&&st.ek.za!==f.zahlart)st.ek.za="alle";
+    C.save("einkaeufe",eink);flash(neu?"✓ Bon gespeichert – "+laden+" · "+C.eur(sum):"✓ Bon geändert");},
+  ekEdit:function(id){var m=eink.manuell[id];if(!m)return;
+    st.ek.form={id:id,datum:m.datum,zeit:m.zeit||"",laden:m.laden||"",summe:String(m.summe).replace(".",","),zahlart:(eink.korr[id]&&eink.korr[id].zahlart)||m.zahlart||"karte",kat:m.kat!=null?m.kat:14,
+      pos:(m.pos||[]).map(function(a){return {n:a[0],p:String(a[1]).replace(".",","),k:a[2]};})};render();var x=document.getElementById("ekForm");if(x)x.scrollIntoView({block:"start"});},
+  ekDel:function(id){var m=eink.manuell[id];if(!m||!confirm("Bon löschen?\n\n"+(m.laden||"")+" · "+C.eur(+m.summe)+" · "+dt(m.datum)))return;
+    eink.manuell[id]={id:id,del:true,t:Date.now()};st.ek.open=null;C.save("einkaeufe",eink);flash("Bon gelöscht");},
   ekAlleL:function(){st.ek.alleL=true;render();},
   ekLEdit:function(k){st.ek.lEdit=st.ek.lEdit===k?null:k;render();if(st.ek.lEdit){var i=document.getElementById("lname");if(i){i.focus();i.select();}}},
   ekLSave:function(k){var i=document.getElementById("lname"),name=i?i.value.trim():"";if(!name)return;var n=0;
     EINK.bons(eink).forEach(function(b){if(EINK.fold(b.laden)!==k)return;setAlias(b.ladenOrig,name);n++;});
     st.ek.lEdit=null;C.save("einkaeufe",eink);flash("✓ „"+name+"“ – gilt für "+nBon(n)+" und künftige Bons");},
   ekLReset:function(k){EINK.bons(eink).forEach(function(b){if(EINK.fold(b.laden)===k)eink.laeden[EINK.fold(b.ladenOrig)]={del:true,t:Date.now()};});st.ek.lEdit=null;C.save("einkaeufe",eink);render();},
-  ekLaden:function(id,name){var b=eink.bons.filter(function(x){return x.id===id;})[0];name=String(name||"").trim();if(!b||!name)return;
+  ekLaden:function(id,name){if(eink.manuell[id]){name=String(name||"").trim();if(!name)return;eink.manuell[id]=Object.assign({},eink.manuell[id],{laden:name,t:Date.now()});C.save("einkaeufe",eink);render();return;}
+    var b=eink.bons.filter(function(x){return x.id===id;})[0];name=String(name||"").trim();if(!b||!name)return;
     setAlias(b.laden,name);C.save("einkaeufe",eink);flash("✓ Alle Bons von „"+b.laden+"“ heißen jetzt „"+name+"“");},
   ekDoc:function(id){var b=eink.bons.filter(function(x){return x.id===id;})[0];if(!b)return;DOKS.oeffnen({archiv:b.archiv}).catch(function(err){flash("⚠ "+(err.message||err),true);});},
   zu:function(tid,did,ok){var z=DOKS.zuNorm(C.getLocal("zuordnung",null));z.paare[tid+"|"+did]={ok:!!ok,t:Date.now()};C.save("zuordnung",z);st.zuOpen=null;

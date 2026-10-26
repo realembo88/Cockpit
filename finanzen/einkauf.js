@@ -2,6 +2,7 @@
    cockpit_ablage.py schreibt _cockpit/einkaeufe.json (Laden, Datum, Summe, Zahlart, Artikel),
    die Dokumente-Seite übernimmt die Datei in den Bereich "einkaeufe", Finanzen wertet ihn aus.
    Korrekturen aus dem Cockpit (Zahlart, „nicht mitzählen“) liegen getrennt in korr und überstehen jeden Import.
+   Von Hand erfasste Bons liegen in manuell {id:{…,t,del}} – ebenfalls getrennt, je Bon zusammengeführt.
    Bewusst ohne persönliche Daten (öffentlicher Code). */
 var EINK=(function(){
 "use strict";
@@ -14,25 +15,34 @@ var ZA={karte:"Karte",bar:"Bar",sonstiges:"Sonstiges",unbekannt:"unbekannt"};
 var ICON={karte:"💳",bar:"💵",sonstiges:"🎟",unbekannt:"❔"};
 var DAY=864e5;
 
-function blank(){return {aktualisiert:"",kategorien:null,bons:[],korr:{},laeden:{}};}
+function blank(){return {aktualisiert:"",kategorien:null,bons:[],korr:{},laeden:{},manuell:{}};}
 function norm(d){d=d&&typeof d==="object"?d:blank();if(!Array.isArray(d.bons))d.bons=[];
-  ["korr","laeden"].forEach(function(k){if(!d[k]||typeof d[k]!=="object"||Array.isArray(d[k]))d[k]={};});return d;}
+  ["korr","laeden","manuell"].forEach(function(k){if(!d[k]||typeof d[k]!=="object"||Array.isArray(d[k]))d[k]={};});return d;}
 function byT(a,b){var o={};Object.keys(Object.assign({},a,b)).forEach(function(id){var x=a[id],y=b[id];o[id]=!x?y:!y?x:((x.t||0)>=(y.t||0)?x:y);});return o;}
 function clone(x){return JSON.parse(JSON.stringify(x));}
 /* Bons vom neueren Python-Stand, Korrekturen je Bon und Ladennamen: jeweils die jüngere Änderung */
 function merge(l,r){l=norm(clone(l));r=norm(clone(r));var n=String(l.aktualisiert||"")>=String(r.aktualisiert||"")?l:r;
-  return {aktualisiert:n.aktualisiert||"",kategorien:n.kategorien||null,bons:n.bons,korr:byT(l.korr,r.korr),laeden:byT(l.laeden,r.laeden)};}
+  return {aktualisiert:n.aktualisiert||"",kategorien:n.kategorien||null,bons:n.bons,korr:byT(l.korr,r.korr),laeden:byT(l.laeden,r.laeden),manuell:byT(l.manuell,r.manuell)};}
 /* Datei aus der Ablage übernehmen – null, wenn sich nichts geändert hat */
 function fromFile(cur,f){cur=norm(cur);if(!f||!Array.isArray(f.bons))return null;if(String(f.aktualisiert||"")===String(cur.aktualisiert||""))return null;
-  return {aktualisiert:String(f.aktualisiert||""),kategorien:Array.isArray(f.kategorien)?f.kategorien:null,bons:f.bons,korr:cur.korr,laeden:cur.laeden};}
+  return {aktualisiert:String(f.aktualisiert||""),kategorien:Array.isArray(f.kategorien)?f.kategorien:null,bons:f.bons,korr:cur.korr,laeden:cur.laeden,manuell:cur.manuell};}
 /* Eigene Ladennamen: {gelesener Name (vereinfacht) → Name}. Gilt für alle Bons dieses Ladens, auch künftige. */
 function aliase(d){d=norm(d);var o={};Object.keys(d.laeden).forEach(function(k){var x=d.laeden[k];if(x&&!x.del&&x.name)o[k]=x.name;});return o;}
 function ladenName(d,orig){var a=aliase(d)[fold(orig)];return a||orig;}
 function kats(d){return (d&&Array.isArray(d.kategorien)&&d.kategorien.length?d.kategorien:KAT);}
 function katName(d,i){var k=kats(d);return k[i]||KAT[i]||"Sonstiges";}
 
+/* Von Hand erfasster Bon → Bon-Form wie aus der Ablage. pos = eigene Positionen [Name, Betrag, Gruppe];
+   der Rest zur Summe kommt in die gewählte Warengruppe (zu viel → „Differenz“ unter Pfand & Rabatte). */
+function round2(x){return Math.round(x*100)/100;}
+function manArtikel(m){var pos=(Array.isArray(m.pos)?m.pos:[]).filter(function(a){return a&&isFinite(+a[1]);}).map(function(a){return [String(a[0]||"Artikel"),round2(+a[1]),+a[2]||0,1];});
+  var rest=round2(m.summe-pos.reduce(function(s,a){return s+a[1];},0)),kat=isFinite(+m.kat)?+m.kat:14;
+  if(rest>0.004)pos.push([pos.length?"Übrige Artikel":(m.laden||"Einkauf"),rest,kat,1]);else if(rest<-0.004)pos.push(["Differenz",rest,PFAND,1]);
+  return pos;}
+function manBons(d){return Object.keys(d.manuell).map(function(id){return d.manuell[id];}).filter(function(m){return m&&!m.del&&m.datum&&isFinite(+m.summe);})
+  .map(function(m){return {id:m.id,laden:m.laden||"Unbekannt",ort:m.ort||"",datum:m.datum,zeit:m.zeit||"",summe:round2(+m.summe),zahlart:m.zahlart||"unbekannt",artikel:manArtikel(m),manuell:true};});}
 /* Bons mit Korrekturen; aus=true → nicht mitzählen */
-function bons(d){d=norm(d);var al=aliase(d);return d.bons.filter(function(b){return b&&b.id&&b.datum&&typeof b.summe==="number";}).map(function(b){var k=d.korr[b.id]||{},a=al[fold(b.laden)];
+function bons(d){d=norm(d);var al=aliase(d);return d.bons.concat(manBons(d)).filter(function(b){return b&&b.id&&b.datum&&typeof b.summe==="number";}).map(function(b){var k=d.korr[b.id]||{},a=al[fold(b.laden)];
   return Object.assign({},b,{laden:a||b.laden,ladenOrig:b.laden,ladenNeu:!!a,zahlart:k.zahlart||b.zahlart||"unbekannt",zk:!!k.zahlart,aus:!!k.aus,artikel:Array.isArray(b.artikel)?b.artikel:[]});})
   .sort(function(a,b){return (b.datum+(b.zeit||"")).localeCompare(a.datum+(a.zeit||""));});}
 
@@ -83,6 +93,6 @@ function artikelVon(list,k){var o={};list.forEach(function(b){if(b.aus)return;b.
 function abhebungen(txs,catOf,pfx){var s=0,n=0;(txs||[]).forEach(function(t){if(!(t.b<0)||t.d.indexOf(pfx)!==0)return;if(/bargeld|geldautomat|atm\b/i.test(catOf(t))){s-=t.b;n++;}});return {sum:s,n:n};}
 
 return {KAT:KAT,PFAND:PFAND,ZA:ZA,ICON:ICON,blank:blank,norm:norm,merge:merge,fromFile:fromFile,kats:kats,katName:katName,bons:bons,aliase:aliase,ladenName:ladenName,
-  match:match,eff:eff,stats:stats,artikelVon:artikelVon,abhebungen:abhebungen,fold:fold,dDiff:dDiff};
+  manArtikel:manArtikel,match:match,eff:eff,stats:stats,artikelVon:artikelVon,abhebungen:abhebungen,fold:fold,dDiff:dDiff};
 })();
 if(typeof window!=="undefined")window.EINK=EINK;
