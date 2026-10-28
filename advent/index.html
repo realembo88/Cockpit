@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f2a1d">
+<meta name="robots" content="noindex,nofollow">
+<title>Adventskalender</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+/* Adventskalender – alle Inhalte (Namen, Bilder, Sprüche, Video) liegen nur verschlüsselt im Ordner data/.
+   Die PIN wird einmal je Gerät eingegeben; gespeichert wird der daraus abgeleitete Schlüssel, nicht die PIN. */
+:root{--bg:#0f2a1d;--bg2:#163a29;--gold:#e8c26a;--gold2:#f6dd9c;--rot:#b3262d;--rot2:#d6423f;--creme:#fbf3e4;--text:#fdf8ef;--muted:#c9d8cc;}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{margin:0;min-height:100%;}
+body{background:radial-gradient(ellipse at top,#1d4a33 0%,var(--bg) 60%) fixed,var(--bg);color:var(--text);
+  font:18px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);overflow-x:hidden;}
+#schnee{position:fixed;inset:0;pointer-events:none;z-index:0;}
+.wrap{position:relative;z-index:1;max-width:560px;margin:0 auto;padding:18px 16px 40px;}
+h1{font-family:Georgia,"Times New Roman",serif;font-weight:700;font-size:30px;margin:6px 0 2px;text-align:center;color:var(--gold2);letter-spacing:.5px;}
+.gruss{text-align:center;color:var(--muted);margin:0 0 16px;font-size:19px;}
+.hinweis{background:#ffffff14;border:1px solid #ffffff26;border-radius:14px;padding:12px 14px;margin:0 0 16px;text-align:center;}
+.raster{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+.tuer{position:relative;aspect-ratio:1/1.12;border-radius:12px;border:2px solid #f6dd9c66;cursor:pointer;
+  background:linear-gradient(145deg,var(--rot2),var(--rot));box-shadow:0 3px 0 #00000055,inset 0 0 0 4px #ffffff14;
+  display:flex;align-items:center;justify-content:center;overflow:hidden;font:700 30px/1 Georgia,serif;color:var(--creme);
+  text-shadow:0 2px 3px #0006;transition:transform .15s;user-select:none;padding:0;}
+.tuer:nth-child(3n+2){background:linear-gradient(145deg,#2f7a4f,#1f5c3a);}
+.tuer:nth-child(5n+4){background:linear-gradient(145deg,#c99a3a,#9c7224);}
+.tuer.zu{opacity:.92;}
+.tuer.heute{border-color:var(--gold2);box-shadow:0 0 0 3px var(--gold),0 0 22px 4px #f6dd9caa;animation:puls 1.8s ease-in-out infinite;}
+.tuer.heute::after{content:"heute";position:absolute;bottom:6px;left:0;right:0;font:600 12px system-ui,sans-serif;letter-spacing:1px;text-transform:uppercase;color:#fff;text-shadow:0 1px 2px #000;}
+.tuer.nach::after{content:"";position:absolute;top:7px;right:7px;width:10px;height:10px;border-radius:50%;background:var(--gold2);box-shadow:0 0 6px var(--gold);}
+.tuer.offen{background:#000 center/cover no-repeat;border-color:#ffffff55;}
+.tuer.offen span{position:absolute;left:6px;bottom:5px;font-size:15px;background:#000a;border-radius:8px;padding:2px 7px;}
+.tuer.n24{border-color:var(--gold2);}
+.tuer.wackel{animation:wackel .5s;}
+@keyframes puls{50%{box-shadow:0 0 0 3px var(--gold),0 0 30px 8px #f6dd9cdd;}}
+@keyframes wackel{20%{transform:rotate(-6deg)}40%{transform:rotate(6deg)}60%{transform:rotate(-4deg)}80%{transform:rotate(3deg)}}
+.toast{position:fixed;left:50%;bottom:calc(24px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#000d;color:#fff;padding:12px 18px;border-radius:14px;z-index:30;max-width:90%;text-align:center;font-size:18px;}
+.btn{display:block;width:100%;border:0;border-radius:14px;padding:15px 18px;font:600 20px system-ui,sans-serif;background:var(--gold);color:#2a1b05;cursor:pointer;margin-top:12px;}
+.btn.zweit{background:#ffffff1f;color:var(--text);border:1px solid #ffffff40;}
+.karte{background:#0b1f15cc;border:1px solid #ffffff26;border-radius:18px;padding:20px 18px;margin-top:18px;}
+input.pin{width:100%;font-size:24px;padding:14px;border-radius:12px;border:2px solid #ffffff55;background:#ffffff;color:#111;text-align:center;letter-spacing:2px;}
+.fehler{color:#ffb4a8;margin-top:10px;text-align:center;}
+.fuss{text-align:center;margin-top:26px;}
+.fuss a{color:#9fb8a8;font-size:14px;}
+/* Türchen-Inhalt */
+#tag{position:fixed;inset:0;z-index:20;background:#04100bf2;display:none;flex-direction:column;align-items:center;justify-content:center;padding:calc(14px + env(safe-area-inset-top)) 14px calc(14px + env(safe-area-inset-bottom));}
+#tag.auf{display:flex;animation:auf .45s ease-out;}
+@keyframes auf{from{opacity:0;transform:perspective(900px) rotateY(-70deg) scale(.7);}to{opacity:1;transform:none;}}
+#tag .nr{font:700 22px Georgia,serif;color:var(--gold2);margin-bottom:8px;}
+#tag img,#tag video{max-width:100%;max-height:62vh;border-radius:12px;box-shadow:0 8px 30px #000a;background:#000;}
+#tag .spruch{font:italic 22px/1.4 Georgia,serif;text-align:center;max-width:520px;margin:16px 6px 4px;color:var(--creme);}
+#tag .btn{max-width:420px;}
+.lade{color:var(--muted);padding:40px 0;text-align:center;}
+</style>
+</head>
+<body>
+<canvas id="schnee"></canvas>
+<div class="wrap" id="app"><div class="lade">Einen Moment …</div></div>
+<div id="tag" role="dialog" aria-modal="true"></div>
+<script>
+(function(){
+"use strict";
+var K="advent:",KEY=K+"key",WER=K+"wer",OFFEN=K+"offen";
+var app=document.getElementById("app"),tagEl=document.getElementById("tag");
+var st={key:null,m:null,wer:null,urls:{},install:null};
+function ls(k,v){try{if(v===undefined)return localStorage.getItem(k);if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v);}catch(e){return null;}}
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
+function b64(buf){var s="",a=new Uint8Array(buf);for(var i=0;i<a.length;i++)s+=String.fromCharCode(a[i]);return btoa(s);}
+function unb64(s){var b=atob(s),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a;}
+function toast(t){var d=document.createElement("div");d.className="toast";d.textContent=t;document.body.appendChild(d);setTimeout(function(){d.remove();},2600);}
+
+/* ---------- Verschlüsselung: PBKDF2-SHA256 → AES-GCM; Datei = 12 Byte IV + Geheimtext ---------- */
+function hol(p){return fetch(p,{cache:"no-cache"}).then(function(r){if(!r.ok)throw new Error("Datei fehlt: "+p);return r;});}
+function schluessel(pin,k){
+  return crypto.subtle.importKey("raw",new TextEncoder().encode(pin),"PBKDF2",false,["deriveKey"]).then(function(base){
+    return crypto.subtle.deriveKey({name:"PBKDF2",salt:unb64(k.salt),iterations:k.iter,hash:"SHA-256"},base,{name:"AES-GCM",length:256},true,["decrypt"]);});}
+function entschluessle(key,buf){var a=new Uint8Array(buf);return crypto.subtle.decrypt({name:"AES-GCM",iv:a.slice(0,12)},key,a.slice(12));}
+function ladeManifest(key){return hol("data/m.bin").then(function(r){return r.arrayBuffer();}).then(function(b){return entschluessle(key,b);})
+  .then(function(p){return JSON.parse(new TextDecoder().decode(p));});}
+function datei(id,typ){if(st.urls[id])return Promise.resolve(st.urls[id]);
+  return hol("data/"+id+".bin").then(function(r){return r.arrayBuffer();}).then(function(b){return entschluessle(st.key,b);})
+    .then(function(p){var u=URL.createObjectURL(new Blob([p],{type:typ||"image/jpeg"}));st.urls[id]=u;return u;});}
+
+/* ---------- Datum: Testen mit #tag=2026-12-07, Vorschau mit #vorschau ---------- */
+function heute(){var m=/tag=(\d{4})-(\d{2})-(\d{2})/.exec(location.hash);if(m)return new Date(+m[1],+m[2]-1,+m[3]);return new Date();}
+function vorschau(){return /vorschau/.test(location.hash);}
+/* höchster Tag, der offen sein darf: 0 = noch keiner, 24 = alle */
+function freiBis(){if(vorschau())return 24;var d=heute(),j=st.m.jahr;
+  if(d.getFullYear()>j)return 24;if(d.getFullYear()<j||d.getMonth()<11)return 0;return Math.min(24,d.getDate());}
+function tageBis(){var d=heute(),z=new Date(st.m.jahr,11,1);return Math.ceil((z-new Date(d.getFullYear(),d.getMonth(),d.getDate()))/864e5);}
+function offen(){try{return JSON.parse(ls(OFFEN)||"[]");}catch(e){return [];}}
+function merke(n){var o=offen();if(o.indexOf(n)<0){o.push(n);ls(OFFEN,JSON.stringify(o));}}
+function inhalt(n){var t=st.m.tage[n]||{},p=(st.m.indiv[st.wer]||{})[n];return {text:t.text||"",img:p||t.img||null,video:n===24&&st.m.video?st.m.video:null};}
+
+/* ---------- Einrichtung ---------- */
+function vPin(fehler){
+  app.innerHTML='<h1>🎄 Adventskalender</h1><div class="karte"><p style="margin-top:0;text-align:center">Bitte einmal die <b>PIN</b> eingeben.</p>'+
+    '<input class="pin" id="pin" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="PIN">'+
+    (fehler?'<div class="fehler">'+esc(fehler)+"</div>":"")+'<button class="btn" id="weiter">Weiter</button></div>';
+  var i=document.getElementById("pin");i.focus();
+  i.onkeydown=function(e){if(e.key==="Enter")los();};document.getElementById("weiter").onclick=los;
+  function los(){var pin=i.value.trim();if(!pin)return;var b=document.getElementById("weiter");b.disabled=true;b.textContent="Einen Moment …";
+    hol("data/k.json").then(function(r){return r.json();}).then(function(k){return schluessel(pin,k);}).then(function(key){
+      return ladeManifest(key).then(function(m){st.key=key;st.m=m;return crypto.subtle.exportKey("raw",key);}).then(function(raw){ls(KEY,b64(raw));vWer();});
+    }).catch(function(e){vPin(/Datei fehlt|Failed to fetch|NetworkError/.test(String(e))?"Keine Verbindung zum Internet – bitte später noch einmal.":"Die PIN stimmt leider nicht.");});}
+}
+function vWer(){
+  app.innerHTML='<h1>🎄 Adventskalender</h1><div class="karte"><p style="margin-top:0;text-align:center">Für wen ist dieses Handy?</p>'+
+    st.m.personen.map(function(p){return '<button class="btn" data-id="'+esc(p.id)+'">'+esc(p.name)+"</button>";}).join("")+"</div>";
+  app.querySelectorAll("[data-id]").forEach(function(b){b.onclick=function(){st.wer=b.getAttribute("data-id");ls(WER,st.wer);vKal();};});
+}
+
+/* ---------- Kalender ---------- */
+function vKal(){
+  var p=st.m.personen.filter(function(x){return x.id===st.wer;})[0];if(!p){vWer();return;}
+  var frei=freiBis(),o=offen(),h='<h1>🎄 Adventskalender</h1><p class="gruss">'+esc(p.anrede||("Für "+p.name))+"</p>";
+  if(frei===0){var t=tageBis();h+='<div class="hinweis">Am <b>1. Dezember</b> geht das erste Türchen auf'+(t>0?" – noch "+t+(t===1?" Tag":" Tage")+".":".")+"</div>";}
+  else if(frei<24&&o.indexOf(frei)<0)h+='<div class="hinweis">Heute wartet Türchen <b>'+frei+"</b> auf dich ✨</div>";
+  h+='<div class="raster">';
+  for(var n=1;n<=24;n++){var istOffen=o.indexOf(n)>-1&&n<=frei,c="tuer"+(n===24?" n24":"");
+    if(istOffen)c+=" offen";else if(n>frei)c+=" zu";else if(n===frei&&!vorschau())c+=" heute";else c+=" nach";
+    h+='<button class="'+c+'" data-n="'+n+'" aria-label="Türchen '+n+'"><span>'+n+"</span></button>";}
+  h+="</div>";
+  if(st.install)h+='<button class="btn zweit" id="inst">📲 Als App auf den Startbildschirm</button>';
+  h+='<div class="fuss"><a href="#" id="neu">Kalender neu einrichten</a></div>';
+  app.innerHTML=h;
+  app.querySelectorAll(".tuer").forEach(function(b){var n=+b.getAttribute("data-n");b.onclick=function(){tippe(n,b);};
+    if(b.classList.contains("offen")){var x=inhalt(n);if(x.img)datei(x.img).then(function(u){b.style.backgroundImage="url('"+u+"')";}).catch(function(){});
+      else if(x.video)b.style.background="linear-gradient(145deg,#c99a3a,#9c7224)";}});
+  var ib=document.getElementById("inst");if(ib)ib.onclick=function(){st.install.prompt();st.install.userChoice.then(function(){st.install=null;vKal();});};
+  document.getElementById("neu").onclick=function(e){e.preventDefault();
+    if(confirm("Kalender neu einrichten?\nDafür wird die PIN wieder gebraucht. Geöffnete Türchen bleiben offen.")){ls(KEY,null);ls(WER,null);st.key=null;st.wer=null;vPin();}};
+}
+function tippe(n,b){var frei=freiBis();
+  if(n>frei){b.classList.remove("wackel");void b.offsetWidth;b.classList.add("wackel");
+    var t=frei===0?tageBis()+(n-1):n-frei;toast(t===1?"Noch einmal schlafen 🌙":"Noch "+t+" Mal schlafen 🌙");return;}
+  zeige(n);}
+function zeige(n){var x=inhalt(n);
+  tagEl.innerHTML='<div class="nr">'+n+". Dezember</div><div class=\"lade\">Einen Moment …</div>";tagEl.className="auf";
+  var p=x.video?datei(x.video,st.m.videoTyp||"video/mp4"):x.img?datei(x.img):Promise.resolve(null);
+  p.then(function(u){
+    var m=x.video?'<video src="'+u+'" controls playsinline preload="auto"></video>':u?'<img src="'+u+'" alt="Bild zum '+n+'. Dezember">':"";
+    tagEl.innerHTML='<div class="nr">'+n+". Dezember</div>"+m+(x.text?'<div class="spruch">'+esc(x.text)+"</div>":"")+'<button class="btn" id="zu">Schließen</button>';
+    document.getElementById("zu").onclick=schliessen;merke(n);
+    var v=tagEl.querySelector("video");if(v)v.onerror=function(){var d=document.createElement("div");d.className="spruch";d.textContent="Das Video lässt sich auf diesem Gerät leider nicht abspielen.";v.replaceWith(d);};
+  }).catch(function(){tagEl.innerHTML='<div class="nr">'+n+'. Dezember</div><div class="spruch">Das Bild konnte gerade nicht geladen werden. Bitte mit Internet noch einmal versuchen.</div><button class="btn" id="zu">Schließen</button>';
+    document.getElementById("zu").onclick=schliessen;});
+  history.pushState({tag:n},"");
+}
+function schliessen(){var v=tagEl.querySelector("video");if(v)v.pause();tagEl.className="";tagEl.innerHTML="";if(history.state&&history.state.tag)history.back();vKal();}
+window.addEventListener("popstate",function(){if(tagEl.className){var v=tagEl.querySelector("video");if(v)v.pause();tagEl.className="";tagEl.innerHTML="";vKal();}});
+window.addEventListener("hashchange",function(){if(st.m&&st.wer)vKal();});
+window.addEventListener("beforeinstallprompt",function(e){e.preventDefault();st.install=e;if(st.m&&st.wer&&!tagEl.className)vKal();});
+document.addEventListener("visibilitychange",function(){if(!document.hidden&&st.m&&st.wer&&!tagEl.className)vKal();});  /* neuer Tag nach Mitternacht */
+
+/* ---------- Start ---------- */
+function start(){var raw=ls(KEY);if(!raw){vPin();return;}
+  crypto.subtle.importKey("raw",unb64(raw),{name:"AES-GCM"},true,["decrypt"]).then(function(key){st.key=key;return ladeManifest(key);})
+    .then(function(m){st.m=m;st.wer=ls(WER);if(st.wer)vKal();else vWer();})
+    .catch(function(e){if(/Datei fehlt|Failed to fetch|NetworkError/.test(String(e)))app.innerHTML='<h1>🎄 Adventskalender</h1><div class="hinweis">Keine Verbindung zum Internet. Bitte später noch einmal öffnen.</div>';
+      else{ls(KEY,null);vPin("Bitte die PIN noch einmal eingeben.");}});}
+if(!window.crypto||!crypto.subtle){app.innerHTML='<h1>🎄 Adventskalender</h1><div class="hinweis">Dieser Browser ist zu alt. Bitte mit Chrome öffnen.</div>';}else start();
+if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(function(){});
+
+/* ---------- leiser Schneefall ---------- */
+(function(){var c=document.getElementById("schnee"),x=c.getContext("2d"),f=[],w,h;
+  if(window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches)return;
+  function gr(){w=c.width=innerWidth;h=c.height=innerHeight;}gr();addEventListener("resize",gr);
+  for(var i=0;i<45;i++)f.push({x:Math.random()*w,y:Math.random()*h,r:1+Math.random()*2.6,v:.3+Math.random()*.8,d:Math.random()*6});
+  (function lauf(){x.clearRect(0,0,w,h);x.fillStyle="rgba(255,255,255,.75)";
+    f.forEach(function(s){s.y+=s.v;s.d+=.01;s.x+=Math.sin(s.d)*.4;if(s.y>h+5){s.y=-5;s.x=Math.random()*w;}x.beginPath();x.arc(s.x,s.y,s.r,0,6.283);x.fill();});
+    requestAnimationFrame(lauf);})();})();
+})();
+</script>
+</body>
+</html>
