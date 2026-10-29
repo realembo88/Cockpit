@@ -89,10 +89,18 @@ function artikelVon(list,k){var o={};list.forEach(function(b){if(b.aus)return;b.
   var A=o[ak]=o[ak]||{name:a[0],sum:0,n:0};A.sum+=+a[1]||0;A.n++;});});
   return Object.keys(o).map(function(x){return o[x];}).sort(function(a,b){return b.sum-a.sum;});}
 
+/* Preisänderungen: derselbe Artikel im selben Laden, letzter Stückpreis gegenüber dem vorherigen (ab 3 %) */
+function preisAenderungen(list,abDatum){var by={};list.slice().sort(function(a,b){return a.datum<b.datum?-1:1;}).forEach(function(b){if(b.aus)return;
+  b.artikel.forEach(function(a){var p=+a[1]||0,m=+a[3]||1;if(!(p>0)||+a[2]===PFAND||Math.abs(m-Math.round(m))>1e-6)return;var k=fold(a[0])+"|"+fold(b.laden);if(!fold(a[0]))return;
+    (by[k]=by[k]||[]).push({name:a[0],laden:b.laden,datum:b.datum,p:p/m});});});
+  var o=[];Object.keys(by).forEach(function(k){var l=by[k];if(l.length<2)return;var n=l[l.length-1],v=null;
+    for(var i=l.length-2;i>=0;i--){if(Math.abs(l[i].p-n.p)>0.004){v=l[i];break;}}
+    if(!v||n.datum<(abDatum||"")||Math.abs(n.p-v.p)/v.p<0.03)return;o.push({name:n.name,laden:n.laden,von:v.p,auf:n.p,vonD:v.datum,d:n.datum,diff:(n.p-v.p)/v.p});});
+  return o.sort(function(a,b){return b.diff-a.diff;});}
 /* Bargeld: Abhebungen laut Konto (Kategorie „Bargeld“ o. ä.) im Zeitraum */
 function abhebungen(txs,catOf,pfx){var s=0,n=0;(txs||[]).forEach(function(t){if(!(t.b<0)||t.d.indexOf(pfx)!==0)return;if(/bargeld|geldautomat|atm\b/i.test(catOf(t))){s-=t.b;n++;}});return {sum:s,n:n};}
 
 return {KAT:KAT,PFAND:PFAND,ZA:ZA,ICON:ICON,blank:blank,norm:norm,merge:merge,fromFile:fromFile,kats:kats,katName:katName,bons:bons,aliase:aliase,ladenName:ladenName,
-  manArtikel:manArtikel,match:match,eff:eff,stats:stats,artikelVon:artikelVon,abhebungen:abhebungen,fold:fold,dDiff:dDiff};
+  manArtikel:manArtikel,match:match,eff:eff,preisAenderungen:preisAenderungen,stats:stats,artikelVon:artikelVon,abhebungen:abhebungen,fold:fold,dDiff:dDiff};
 })();
 if(typeof window!=="undefined")window.EINK=EINK;

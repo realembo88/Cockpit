@@ -34,6 +34,16 @@
 .vs button i{font-style:normal;color:var(--muted);margin-left:6px;}
 .kopf{display:flex;justify-content:space-between;align-items:center;margin:0 0 4px;}
 .kopf h3{margin:0;}
+.li .tx span.pr{color:#94a3b8;}
+.li .tx span.pr i{font-style:normal;color:#4ade80;}
+.frage{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px 0;border-top:1px solid #152038;font-size:13px;}
+.frage:first-of-type{border-top:none;}
+.frage b{color:#fff;font-weight:600;}
+.bald button{background:#422006;border-color:#facc1566;color:#fde68a;}
+.bald span.x{margin-left:4px;color:#a16207;padding:0 2px;}
+.hist{font-size:12px;color:var(--muted);}
+.hist div{display:flex;justify-content:space-between;gap:8px;padding:3px 0;}
+.hist a{color:#f87171;text-decoration:none;margin-left:6px;}
 </style>
 </head>
 <body>
@@ -43,13 +53,14 @@
 <div class="content" id="main"></div>
 </div>
 <script src="../assets/cockpit.js"></script>
+<script src="../finanzen/einkauf.js"></script>
 <script src="logic.js"></script>
 <script>
 (function(){
 "use strict";
 var C=window.Cockpit,M=window.MEMO,AREA="memo";
-C.registerMerge(AREA,M.merge);
-var data=M.norm(C.getLocal(AREA,M.blank));
+C.registerMerge(AREA,M.merge);C.registerMerge("einkaeufe",EINK.merge);
+var data=M.norm(C.getLocal(AREA,M.blank)),bons=EINK.bons(C.getLocal("einkaeufe",null)),K=M.kaeufe(bons);
 var st={tab:/einkauf/.test(location.hash)?"einkauf":"memo",edit:null,flash:null,undo:null,zeigOk:false};
 if(M.pflege(data))persist();
 
@@ -75,11 +86,20 @@ function render(){
 function zeile(x){
   if(st.edit===x.id)return '<div class="ed"><input class="inp" id="eT" value="'+esc(x.text)+'" onkeydown="if(event.key===\'Enter\')M2.save(\''+x.id+'\')">'+
     '<div class="zeile">'+(x.typ==="memo"?'<input class="inp d" id="eD" type="date" value="'+esc(x.faellig||"")+'" aria-label="fällig am">':"")+
-    '<button class="btn" style="flex:1" onclick="M2.save(\''+x.id+'\')">Speichern</button><button class="mini" onclick="M2.edit(null)">Abbrechen</button><button class="mini rot" onclick="M2.del(\''+x.id+'\')">Löschen</button></div></div>';
-  var w=x.typ==="memo"?wann(x):"",rot=x.faellig&&!x.ok&&M.tage(C.today(),x.faellig)<0;
+    '<button class="btn" style="flex:1" onclick="M2.save(\''+x.id+'\')">Speichern</button><button class="mini" onclick="M2.edit(null)">Abbrechen</button><button class="mini rot" onclick="M2.del(\''+x.id+'\')">Löschen</button></div>'+(x.typ==="einkauf"?verlauf(x):"")+"</div>";
+  var w=x.typ==="memo"?wann(x):"",rot=x.faellig&&!x.ok&&M.tage(C.today(),x.faellig)<0,pz=x.typ==="einkauf"&&!x.ok?preisZeile(x):"";
   return '<div class="li'+(x.ok?" ok":"")+'"><button class="hk" onclick="M2.hak(\''+x.id+'\')" aria-label="'+(x.ok?"wieder offen":"erledigt")+'">✓</button>'+
-    '<div class="tx" onclick="M2.edit(\''+x.id+'\')"><b>'+esc(x.text)+"</b>"+(w?'<span class="'+(rot?"rot":"")+'">📅 '+esc(w)+"</span>":"")+"</div></div>";
+    '<div class="tx" onclick="M2.edit(\''+x.id+'\')"><b>'+esc(x.text)+"</b>"+(w?'<span class="'+(rot?"rot":"")+'">📅 '+esc(w)+"</span>":"")+(pz?'<span class="pr">'+pz+"</span>":"")+"</div></div>";
 }
+function eur(v){return C.eurRaw?C.eurRaw(v,2):C.eur(v,2);}
+function dk(iso){return iso.slice(8,10)+"."+iso.slice(5,7)+".";}
+function epTxt(k){return k.ep!=null?eur(k.ep)+"/"+k.eh:"";}
+function preisZeile(x){var p=M.preis(data,bons,x.text,K);if(!p)return "";var l=p.letzter,g=p.guenstiger;
+  var h="🧾 zuletzt "+esc(eur(l.betrag))+(l.stueck!=null&&Math.abs(l.stueck-l.betrag)>0.004?" ("+esc(eur(l.stueck))+"/Stk.)":"")+(p.feld==="ep"&&l.ep!=null?" · "+esc(epTxt(l)):"")+" · "+esc(l.laden)+" · "+dk(l.datum);
+  if(g)h+=" · <i>günstiger: "+esc(g.laden)+" "+esc(p.feld==="ep"?epTxt(g):eur(g.stueck))+"</i>";return h;}
+function verlauf(x){var p=M.preis(data,bons,x.text,K);if(!p)return '<div class="note">Noch keine Kassenbons zu diesem Artikel. Gescannte Bons werden automatisch zugeordnet.</div>';
+  return '<div class="hist"><div class="note" style="margin:0 0 4px">Gekauft laut Kassenbons ('+p.n+"×) – ✕ wenn ein Artikel nicht dazugehört:</div>"+p.kaeufe.slice(-8).reverse().map(function(k){
+    return "<div><span>"+dk(k.datum)+" · "+esc(k.laden)+" · "+esc(k.name)+'</span><span style="white-space:nowrap">'+esc(eur(k.betrag))+(k.ep!=null?" · "+esc(epTxt(k)):"")+'<a href="#" onclick="M2.los(\''+esc(k.ak)+'\');return false" aria-label="gehört nicht dazu">✕</a></span></div>';}).join("")+"</div>";}
 function liste(typ,titelOk){var o=M.offen(data,typ),e=M.erledigt(data,typ),h="";
   h+='<div class="panel" style="padding:6px 14px">'+(o.length?o.map(zeile).join(""):'<div class="note" style="padding:12px 0">'+(typ==="memo"?"Nichts offen. Neue Notizen erscheinen auch auf der Startseite.":"Die Einkaufsliste ist leer.")+"</div>")+"</div>";
   if(e.length){h+='<div class="panel" style="padding:10px 14px"><div class="kopf"><button class="mini" onclick="M2.zeigOk()">'+(st.zeigOk?"▾":"▸")+" "+titelOk+" ("+e.length+")</button>"+
@@ -97,7 +117,13 @@ function vEinkauf(){
     '<button class="plus" onclick="M2.add()" aria-label="Hinzufügen">＋</button></div>'+
     '<div class="note">Mehrere auf einmal mit Komma. Auf der Startseite erscheint die Liste als ein Punkt „Einkaufen“.</div>'+
     (vs.length?'<div class="note" style="margin-top:10px">Oft gekauft – antippen zum Hinzufügen:</div><div class="vs">'+vs.map(function(v,i){return '<button onclick="M2.vs('+i+')">'+esc(v.text)+(v.n>1?"<i>"+v.n+"×</i>":"")+"</button>";}).join("")+"</div>":"")+"</div>"+
-    liste("einkauf","Im Wagen");}
+    vFragen()+vBald()+liste("einkauf","Im Wagen");}
+function vFragen(){var f=st.fragen=M.fragen(data,bons,C.today(),3);if(!f.length)return "";
+  return '<div class="panel" style="padding:10px 14px"><div class="note" style="margin:0 0 4px">Kassenbon zuordnen – dann gibt es Preise und Vergleiche:</div>'+f.map(function(q,i){
+    return '<div class="frage"><span>Gehört <b>'+esc(q.name)+'</b> <span class="note">('+esc(q.laden)+')</span> zu „'+esc(q.zielText)+'“?</span><span style="display:flex;gap:6px"><button class="mini" onclick="M2.ja('+i+')">Ja</button><button class="mini" onclick="M2.nein('+i+')">Nein</button></span></div>';}).join("")+"</div>";}
+function vBald(){var b=st.bald=M.bald(data,bons,C.today(),8);if(!b.length)return "";
+  return '<div class="panel" style="padding:10px 14px"><div class="note" style="margin:0 0 4px">💡 Bald wieder fällig? (aus deinen Kassenbons)</div><div class="vs bald">'+b.map(function(v,i){
+    return '<button onclick="M2.bald('+i+')" title="kaufst du etwa alle '+v.abstand+' Tage">'+esc(v.text)+'<i>vor '+v.seit+' T.</i><span class="x" onclick="event.stopPropagation();M2.baldWeg('+i+')" aria-label="ausblenden">✕</span></button>';}).join("")+"</div></div>";}
 
 window.M2={
   tab:function(t){st.tab=t;st.edit=null;history.replaceState(null,"","#"+t);render();fokus();},
@@ -114,11 +140,16 @@ window.M2={
     flash(n+(n===1?" Eintrag":" Einträge")+" entfernt",function(){var t=Date.now();alt.forEach(function(x){x.t=t;data.items[x.id]=x;});persist();});},
   zeigOk:function(){st.zeigOk=!st.zeigOk;render();},
   vs:function(i){var v=(st.vs||[])[i],h=v&&data.haeufig[v.k];if(!h)return;M.neu(data,"einkauf",h.text);persist();render();},
+  ja:function(i){var q=(st.fragen||[])[i];if(!q)return;M.zuordnen(data,q.ak,q.ziel);persist();flash("✓ „"+q.name+"“ gehört jetzt zu „"+q.zielText+"“");},
+  nein:function(i){var q=(st.fragen||[])[i];if(!q)return;M.zuordnen(data,q.ak,"");persist();render();},
+  los:function(ak){M.zuordnen(data,ak,"");persist();render();},
+  bald:function(i){var v=(st.bald||[])[i];if(!v)return;M.neu(data,"einkauf",v.text);persist();render();},
+  baldWeg:function(i){var v=(st.bald||[])[i];if(!v)return;M.ausblenden(data,v.key,v.abstand);persist();render();},
   undo:function(){var u=st.undo;st.undo=null;st.flash=null;if(u)u();render();}
 };
 window.addEventListener("hashchange",function(){var t=/einkauf/.test(location.hash)?"einkauf":"memo";if(t!==st.tab){st.tab=t;render();}});
 render();fokus();
-C.autoPull([AREA],function(a,d){data=M.norm(d);if(!st.edit)render();});
+C.autoPull([AREA,"einkaeufe"],function(a,d){if(a===AREA)data=M.norm(d);else{bons=EINK.bons(d);K=M.kaeufe(bons);}if(!st.edit)render();});
 })();
 </script>
 </body>

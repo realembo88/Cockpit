@@ -521,6 +521,11 @@ function vEink(){
   var arts=S.artList.slice().sort(e.art==="n"?function(a,b){return b.n-a.n||b.sum-a.sum;}:function(a,b){return b.sum-a.sum;});
   h+='<div class="panel"><h3>Artikel</h3><div class="filt" style="margin-bottom:6px"><button class="pill'+(e.art!=="n"?" on":"")+'" onclick="F2.ekArt(\'sum\')">nach Ausgaben</button><button class="pill'+(e.art==="n"?" on":"")+'" onclick="F2.ekArt(\'n\')">am häufigsten</button></div>'+
     arts.slice(0,15).map(function(a){return '<div class="art"><span class="n">'+C.esc(a.name)+' <i>· '+a.n+"× · Ø "+C.eur(a.sum/a.n)+" · zuletzt "+C.eur(a.lastP)+"</i></span><span class=\"v\">"+C.eur(a.sum)+"</span></div>";}).join("")+"</div>";
+  /* Preisänderungen (alle Bons, letzte 120 Tage) */
+  var pa=E.preisAenderungen(all,new Date(Date.now()-120*864e5).toISOString().slice(0,10));
+  if(pa.length)h+='<div class="panel"><h3>📈 Preisänderungen</h3><div class="sub">Gleicher Artikel im gleichen Laden, letzter Preis gegenüber dem vorherigen.</div>'+pa.slice(0,e.allePa?99:8).map(function(x){var up=x.auf>x.von;
+      return '<div class="art"><span class="n">'+C.esc(x.name)+" <i>· "+C.esc(x.laden)+" · "+dt(x.d)+'</i></span><span class="v" style="color:'+(up?"#f87171":"#4ade80")+'">'+C.eur(x.von)+" → "+C.eur(x.auf)+" ("+(up?"+":"−")+C.num(Math.abs(x.diff*100),0)+" %)</span></div>";}).join("")+
+    (pa.length>8&&!e.allePa?'<button class="btn ghost full" style="margin-top:8px" onclick="F2.ekAllePa()">Alle '+pa.length+" anzeigen</button>":"")+'<div class="note" style="margin-top:6px">Preise je Artikel und Laden-Vergleich stehen in der <a href="../memo/index.html#einkauf" style="color:#7dd3fc">Einkaufsliste</a>.</div></div>';
   /* Bargeld-Abgleich */
   var R=rules(),ab=E.abhebungen(data.tx,function(t){return F.category(t,R);},pfx);
   if(ab.n||SA.za.bar>0){var bel=SA.za.bar,q=ab.sum>0?Math.min(1,bel/ab.sum):0;
@@ -888,6 +893,7 @@ window.F2={
   ekDel:function(id){var m=eink.manuell[id];if(!m||!confirm("Bon löschen?\n\n"+(m.laden||"")+" · "+C.eur(+m.summe)+" · "+dt(m.datum)))return;
     eink.manuell[id]={id:id,del:true,t:Date.now()};st.ek.open=null;C.save("einkaeufe",eink);flash("Bon gelöscht");},
   ekAlleL:function(){st.ek.alleL=true;render();},
+  ekAllePa:function(){st.ek.allePa=true;render();},
   ekLEdit:function(k){st.ek.lEdit=st.ek.lEdit===k?null:k;render();if(st.ek.lEdit){var i=document.getElementById("lname");if(i){i.focus();i.select();}}},
   ekLSave:function(k){var i=document.getElementById("lname"),name=i?i.value.trim():"";if(!name)return;var n=0;
     EINK.bons(eink).forEach(function(b){if(EINK.fold(b.laden)!==k)return;setAlias(b.ladenOrig,name);n++;});
