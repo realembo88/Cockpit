@@ -403,20 +403,58 @@ function tnToggle(sid,pid){var x=data.sessions[sid];if(!x)return;var m=Object.as
   x.tn=m;x.upd=Date.now();persist();}
 function tnZeile(sid){var x=data.sessions[sid];
   return Object.keys(tnOf(x)).map(function(id){var p=tnById(id);if(!p||tnOf(x)[id]!==1)return "";return '<div class="small" style="margin-top:4px">'+C.esc(p.name)+": "+kartTxt(p,tnStats(p))+"</div>";}).join("");}
+/* Meilenstein genau mit dieser Einheit erreicht → zum Gratulieren anzeigen */
+function msZeile(sid){return Object.keys(tnOf(data.sessions[sid])).map(function(id){var p=tnById(id);if(!p)return "";var x=tnStats(p),k=x.att.map(function(s){return s.id;}).indexOf(sid)+1;
+  return MS.indexOf(k)>-1?'<div class="small" style="margin-top:4px;color:#fde68a">🎉 '+C.esc(p.name)+": heute "+k+". Training – gratulieren!</div>":"";}).join("");}
 function paintFinish(){if(!hrun||!hrun.saved)return;var x=data.sessions[hrun.saved]||{},sel=Object.keys(tnOf(x));
   sheet(hrun.sumHtml+'<input placeholder="Notiz (optional), z. B. Gruppe, Gefühl" value="'+C.esc(x.note||"")+'" oninput="T.hNote(this.value)">'+
-    (!SA&&tnAll().length?'<div class="small" style="color:#cbd5e1;margin:10px 0 4px">👥 Wer war dabei?</div>'+tnChips(sel,"T.finTn")+tnZeile(hrun.saved):"")+
+    (!SA&&tnAll().length?'<div class="small" style="color:#cbd5e1;margin:10px 0 4px">👥 Wer war dabei?</div>'+tnChips(sel,"T.finTn")+tnZeile(hrun.saved)+msZeile(hrun.saved):"")+
     '<button class="btn amb" style="margin-top:10px" onclick="T.hClose()">Fertig</button>');}
-function vGruppe(){var l=tnAll(),f=st.tnf||(st.tnf={name:"",status:"karte",ab:C.today()}),h="",stats={};
+/* ---------- Bestenliste, Serien, Meilensteine, „länger nicht da“ ----------
+   Gruppentermine = HIIT-Einheiten mit mindestens einem Teilnehmer. Eine Serie zählt Wochen mit Gruppentraining in Folge;
+   Wochen ohne Training (Urlaub, Feiertag) unterbrechen sie nicht. */
+var MS=[10,25,50,75,100,150,200,250,300,400,500];
+function wkey(iso){var d=new Date(iso+"T12:00:00"),t=(d.getDay()+6)%7;d.setDate(d.getDate()-t+3);var j=new Date(d.getFullYear(),0,4);
+  return d.getFullYear()+"-"+String(1+Math.round(((d-j)/DAY-3+((j.getDay()+6)%7))/7)).padStart(2,"0");}
+function gruppenWochen(){var o={};hiitAll().forEach(function(x){if(Object.keys(tnOf(x)).length)o[wkey(x.date)]=1;});return Object.keys(o).sort();}
+function serie(x,gw){var mine={};x.att.forEach(function(s){mine[wkey(s.date)]=1;});var n=0;
+  for(var i=gw.length-1;i>=0;i--){if(mine[gw[i]])n++;else break;}return n;}
+function meilenstein(x){var m=null;MS.forEach(function(k){if(x.n>=k)m=k;});if(!m)return null;return {n:m,datum:x.att[m-1].date};}
+function vermisst(x){if(x.n<3||!x.last)return null;var t=Math.round((Date.parse(C.today())-Date.parse(x.last))/DAY);if(t<21||t>180)return null;
+  var seit=hiitAll().filter(function(s){return s.date>x.last&&Object.keys(tnOf(s)).length;}).map(function(s){return s.date;});
+  var verp=Object.keys(seit.reduce(function(o,d){o[d]=1;return o;},{})).length;return verp>=2?{tage:t,verpasst:verp}:null;}
+function treppchen(l,stats,jahr){var z=l.map(function(p){var n=stats[p.id].att.filter(function(s){return !jahr||s.date.slice(0,4)===jahr;}).length;return {p:p,n:n};})
+    .filter(function(e){return e.n>0;}).sort(function(a,b){return b.n-a.n||a.p.name.localeCompare(b.p.name,"de");});
+  var plaetze=[];z.forEach(function(e){var last=plaetze[plaetze.length-1];if(last&&last.n===e.n)last.leute.push(e.p);else if(plaetze.length<3)plaetze.push({n:e.n,leute:[e.p]});});return plaetze;}
+function vBestenliste(l,stats){var gw=gruppenWochen(),jahr=C.today().slice(0,4),modus=st.tnPod||"jahr",h="";
+  var pl=treppchen(l,stats,modus==="jahr"?jahr:null),med=["🥇","🥈","🥉"];
+  h+='<div class="panel"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h3 style="color:#f59e0b;margin:0">🏆 Bestenliste</h3><span class="chips" style="margin:0">'+
+    [["jahr",jahr],["alle","insgesamt"]].map(function(m){return '<button class="chip amb'+(modus===m[0]?" on":"")+'" onclick="T.tnPod(\''+m[0]+'\')">'+m[1]+"</button>";}).join("")+"</span></div>";
+  h+=pl.length?pl.map(function(x,i){return '<div class="pod" style="display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid #152038"><span style="font-size:22px;flex:0 0 32px">'+med[i]+'</span><span style="flex:1"><b style="color:#fff">'+x.leute.map(function(p){return C.esc(p.name);}).join(", ")+'</b></span><span class="small" style="white-space:nowrap">'+x.n+"× dabei</span></div>";}).join(""):
+    '<div class="note">Noch keine Teilnahmen '+(modus==="jahr"?"in "+jahr:"")+".</div>";
+  /* Serien ab 3 Wochen */
+  var se=l.map(function(p){return {p:p,n:serie(stats[p.id],gw)};}).filter(function(e){return e.n>=3;}).sort(function(a,b){return b.n-a.n;}).slice(0,6);
+  if(se.length)h+='<div class="small" style="margin-top:10px;color:#cbd5e1"><b>🔥 Serien</b> – Wochen in Folge dabei</div>'+se.map(function(e){return '<div class="small" style="margin-top:4px">'+C.esc(e.p.name)+": <b>"+e.n+" Wochen</b></div>";}).join("");
+  /* Meilensteine der letzten 3 Wochen */
+  var ab=new Date(Date.now()-21*DAY).toISOString().slice(0,10),mi=l.map(function(p){var m=meilenstein(stats[p.id]);return m&&m.datum>=ab?{p:p,m:m}:null;}).filter(Boolean);
+  if(mi.length)h+='<div class="small" style="margin-top:10px;color:#cbd5e1"><b>🎉 Meilensteine</b></div>'+mi.map(function(e){return '<div class="small" style="margin-top:4px">'+C.esc(e.p.name)+": <b>"+e.m.n+". Training</b> am "+dkurz(e.m.datum)+"</div>";}).join("");
+  h+="</div>";
+  var ve=l.map(function(p){var v=vermisst(stats[p.id]);return v?{p:p,v:v,x:stats[p.id]}:null;}).filter(Boolean).sort(function(a,b){return a.v.tage-b.v.tage;});
+  if(ve.length)h+='<div class="panel"><b style="color:#93c5fd">👋 Länger nicht da</b><div class="note" style="margin:2px 0 4px">Kamen vorher regelmäßig – vielleicht mal nachfragen.</div>'+ve.map(function(e){
+    return '<div class="small" style="margin-top:4px">'+C.esc(e.p.name)+": zuletzt "+dkurz(e.x.last)+" · "+e.v.verpasst+" Trainings verpasst</div>";}).join("")+"</div>";
+  return h;}
+function vGruppe(){var l=tnAll(),f=st.tnf||(st.tnf={name:"",status:"karte",ab:C.today()}),h="",stats={},gw=gruppenWochen();
   l.forEach(function(p){stats[p.id]=tnStats(p);});
   var fl=l.filter(function(p){return p.status==="karte"&&stats[p.id].rest<=1;});
   if(fl.length)h+='<div class="panel" style="border-color:#f59e0b66"><b style="color:#fbbf24">🎫 Bald oder jetzt fällig</b>'+fl.map(function(p){return '<div class="small" style="margin-top:4px">'+C.esc(p.name)+": "+kartTxt(p,stats[p.id])+"</div>";}).join("")+"</div>";
+  if(l.length)h+=vBestenliste(l,stats);
   h+='<div class="panel"><h3 style="color:#f59e0b">👥 Teilnehmer ('+l.length+")</h3>";
   if(!l.length)h+='<div class="note">Lege hier die Leute an, die beim HIIT mitmachen. Beim Training tippst du dann an, wer dabei war – bei einer 10er-Karte wird je Teilnahme 1 abgezogen.</div>';
   h+=l.map(function(p){var x=stats[p.id],op=st.tnOpen&&st.tnOpen[p.id],ed=st.tnEd===p.id,kf=st.tnK===p.id,r='<div class="pr" style="display:block;padding:10px 0">';
     r+='<div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><span><b style="color:#fff">'+C.esc(p.name)+'</b> <span class="tag">'+TN_ST[p.status||"mitglied"]+"</span></span>"+
       '<span style="white-space:nowrap"><button class="x" onclick="T.tnEdit(\''+p.id+'\')" aria-label="Bearbeiten">✏️</button><button class="x" onclick="T.tnOpen(\''+p.id+'\')" aria-label="Verlauf">'+(op?"▲":"▼")+"</button></span></div>";
-    r+='<div class="small muted" style="margin-top:3px">'+x.n+"× dabei"+(x.n?" · diesen Monat "+x.mon+" · zuletzt "+dkurz(x.last):"")+"</div>";
+    var sr=serie(x,gw),ms=meilenstein(x);
+    r+='<div class="small muted" style="margin-top:3px">'+x.n+"× dabei"+(x.n?" · zuletzt "+dkurz(x.last):"")+(sr>=2?" · 🔥 "+sr+" Wochen in Folge":"")+(ms?" · 🎖 "+ms.n+"+":"")+"</div>";
     var kt=kartTxt(p,x);if(kt)r+='<div class="small" style="margin-top:4px">'+kt+"</div>";
     if(p.status==="karte"&&x.akt)r+='<div style="height:6px;border-radius:3px;background:var(--field);margin-top:6px;overflow:hidden"><i style="display:block;height:100%;width:'+Math.round(x.akt.used/x.akt.n*100)+'%;background:#f59e0b"></i></div>';
     if(p.status==="karte"||x.cards.length)r+=kf?'<div class="row2" style="margin-top:8px"><input type="date" id="tnKd" value="'+C.today()+'"><button class="btn amb" style="flex:0 0 auto" onclick="T.tnKarteSave(\''+p.id+'\')">Karte anlegen</button><button class="mini" style="flex:0 0 auto" onclick="T.tnKarte(null)">✕</button></div>':
@@ -699,6 +737,7 @@ Object.assign(window.T,{
   tnKarteSave:function(pid){var p=tnById(pid),d=(document.getElementById("tnKd")||{}).value;if(!p)return;if(!d){flash("⚠ Bitte ein Datum wählen",true);return;}
     if(!data.karten)data.karten={};var k=uid();data.karten[k]={id:k,tn:pid,datum:d,n:10,t:Date.now()};st.tnK=null;persist();
     var x=tnStats(p);flash("✓ Neue 10er-Karte für "+p.name+" ab "+dde(d)+" – jetzt "+(x.rest>=0?"noch "+x.rest+" Einheiten":x.rest+" (wird verrechnet)"));},
+  tnPod:function(m){st.tnPod=m;render();},
   tnRest:function(kid){st.tnR=kid;render();var i=document.getElementById("tnRv");if(i){i.focus();i.select();}},
   tnRestSave:function(kid){var c=(data.karten||{})[kid],p=c&&tnById(c.tn);if(!p)return;var h=tnStats(p).cards.filter(function(x){return x.c.id===kid;})[0];if(!h)return;
     var r=parseInt((document.getElementById("tnRv")||{}).value,10),max=h.n-h.auf;
