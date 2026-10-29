@@ -35,7 +35,8 @@ h1{font-family:Georgia,"Times New Roman",serif;font-weight:700;font-size:30px;ma
   font-size:clamp(22px,7.5vw,34px);color:#fff;text-shadow:0 2px 4px #000,0 0 10px #000a;}
 .kal .tuer:nth-child(n){background-color:#ffffff1f;background-image:none;}
 .kal .tuer.n24{border-color:var(--gold2);background-color:#e8c26a33;font-size:clamp(28px,10vw,46px);}
-.kal .tuer.heute{border-color:var(--gold2);}
+.kal .tuer.heute{border-color:var(--gold2);padding-bottom:12px;}
+.kal .tuer.heute::after{font-size:9px;bottom:3px;letter-spacing:.5px;}
 .kal .tuer.offen{background:#000 center/cover no-repeat;border-color:#fffc;}
 .kal .tuer.offen span{font-size:13px;}
 .hinweis.klick{cursor:pointer;}
@@ -133,7 +134,7 @@ function vWer(){app.parentNode.classList.remove("voll");
 
 /* ---------- Kalender (Variante B: feste, verstreute Anordnung auf dem Hintergrundbild, Hochformat 9:16) ----------
    [Tag, links %, oben %, Breite %, Höhe %] */
-var LAGE=[[9,4.1,14.4,15.2,10.1],[2,28.6,13.9,18.7,9.9],[3,49.5,14.7,18.8,9.9],[12,74.3,14.2,21.6,9.5],[19,4.4,25.2,22.4,10.0],[1,37.7,25.8,22.2,10.5],[8,65.4,26.8,27.4,9.2],[22,7.2,38.7,18.2,9.0],[4,27.2,37.8,19.2,9.6],[7,55.7,38.0,19.3,10.4],[15,77.5,37.9,18.3,9.1],[20,5.1,50.6,26.8,9.4],[6,36.7,50.6,20.7,9.5],[14,68.8,49.6,26.2,9.0],[21,5.6,62.4,16.7,10.3],[18,28.9,62.1,17.8,10.4],[10,49.8,62.9,22.5,10.1],[13,75.0,62.6,20.3,9.8],[17,6.1,74.8,18.1,9.4],[16,29.1,73.5,19.1,10.0],[23,51.0,75.3,18.7,10.1],[5,73.8,75.5,20.1,9.2],[11,5.1,87.6,27.3,9.7],[24,41.3,86.1,53.0,10.9]];
+var LAGE=[[2,5.0,14.7,21.3,9.0],[7,28.5,13.9,18.9,8.6],[1,50.2,14.7,20.4,9.3],[9,72.6,15.6,21.3,8.6],[22,4.2,25.8,17.4,9.6],[18,28.0,24.5,16.0,8.9],[12,46.2,25.9,14.7,8.9],[21,63.2,25.8,15.2,9.3],[8,82.4,26.1,13.5,8.9],[15,4.7,36.5,15.3,8.8],[10,21.8,36.8,17.1,9.8],[14,42.1,35.6,18.0,9.6],[13,64.1,35.7,12.7,8.6],[5,80.0,37.0,16.9,9.0],[11,3.0,46.8,17.2,9.0],[19,6.2,58.5,16.9,9.3],[16,5.9,68.5,17.9,8.9],[4,80.2,47.9,13.5,8.6],[6,81.8,58.4,14.1,9.3],[3,80.5,68.6,14.6,9.2],[20,4.6,79.7,16.1,16.6],[17,23.8,81.1,15.3,14.5],[23,39.9,83.2,15.5,14.5],[24,59.6,79.6,35.6,16.6]];
 function vKal(){
   var p=st.m.personen.filter(function(x){return x.id===st.wer;})[0];if(!p){vWer();return;}
   var frei=freiBis(),o=offen(),h="";app.parentNode.classList.add("voll");
