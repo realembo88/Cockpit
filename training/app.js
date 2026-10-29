@@ -383,7 +383,9 @@ function tnStats(p){
   var att=hiitAll().filter(function(x){return tnOf(x)[p.id]!=null;}).sort(function(a,b){return a.date.localeCompare(b.date)||(a.upd||0)-(b.upd||0);});
   var ab=att.filter(function(x){return tnOf(x)[p.id]===1;});
   var cards=Object.keys(data.karten||{}).map(function(k){return data.karten[k];}).filter(function(c){return c&&!c.del&&c.tn===p.id;}).sort(function(a,b){return a.datum.localeCompare(b.datum)||(a.t||0)-(b.t||0);});
-  var cum=0,hist=cards.map(function(c){var n=+c.n||10,used=Math.max(0,Math.min(n,ab.length-cum)),leer=used===n?ab[cum+n-1].date:null;cum+=n;return {c:c,n:n,used:used,leer:leer};});
+  /* vorher = Einheiten, die vor den Aufzeichnungen schon von der Karte genutzt wurden (von Hand angepasst) */
+  var cum=0,hist=cards.map(function(c){var n=+c.n||10,v=Math.max(0,Math.min(n,+c.vorher||0)),ne=n-v,auf=Math.max(0,Math.min(ne,ab.length-cum)),used=v+auf,
+    leer=used===n?(ne>0?ab[cum+ne-1].date:c.datum):null;cum+=ne;return {c:c,n:n,used:used,vorher:v,auf:auf,leer:leer};});
   var heute=C.today(),rest=cum-ab.length,ab8=ab.filter(function(x){return (Date.parse(heute)-Date.parse(x.date))/DAY<=56;}).length,prog=null;
   if(rest>0&&ab8>0)prog=new Date(Date.now()+rest/(ab8/56)*DAY).toISOString().slice(0,10);
   return {att:att,n:att.length,mon:att.filter(function(x){return x.date.slice(0,7)===heute.slice(0,7);}).length,last:att.length?att[att.length-1].date:null,
@@ -423,7 +425,14 @@ function vGruppe(){var l=tnAll(),f=st.tnf||(st.tnf={name:"",status:"karte",ab:C.
       '</div><div class="row2"><button class="btn amb" onclick="T.tnSave(\''+p.id+'\')">Speichern</button><button class="mini" style="flex:0 0 auto;color:#ff8a80" onclick="T.tnDel(\''+p.id+'\')">Löschen</button></div>'+
       '<div class="note">Ein Statuswechsel gilt ab jetzt. Bisherige Teilnahmen bleiben, wie sie eingetragen wurden.</div></div>';
     if(op){r+='<div class="small" style="margin-top:8px;line-height:1.6">';
-      if(x.cards.length)r+="<b>Karten</b><br>"+x.cards.slice().reverse().map(function(c){return "🎫 ab "+dde(c.c.datum)+": "+c.used+"/"+c.n+" genutzt"+(c.leer?" · aufgebraucht am "+dde(c.leer):"")+' <button class="x" style="font-size:12px" onclick="T.tnKarteDel(\''+c.c.id+'\')" aria-label="Karte löschen">✕</button>';}).join("<br>")+"<br>";
+      if(x.cards.length)r+="<b>Karten</b><br>"+x.cards.slice().reverse().map(function(c){
+        var z="🎫 ab "+dde(c.c.datum)+": "+c.used+"/"+c.n+" genutzt"+(c.vorher?" (davon "+c.vorher+" vor der Aufzeichnung)":"")+(c.leer?" · aufgebraucht am "+dde(c.leer):"")+
+          (c.used<c.n||c.vorher?' <button class="mini" style="padding:2px 8px;font-size:11px" onclick="T.tnRest(\''+c.c.id+'\')">✎ Rest</button>':"")+
+          ' <button class="x" style="font-size:12px" onclick="T.tnKarteDel(\''+c.c.id+'\')" aria-label="Karte löschen">✕</button>';
+        if(st.tnR===c.c.id)z+='<div class="row2" style="margin:6px 0 8px;align-items:center"><span class="small" style="flex:0 0 auto">Noch übrig:</span><input id="tnRv" type="number" inputmode="numeric" min="0" max="'+(c.n-c.auf)+'" value="'+(c.n-c.used)+'" style="max-width:80px">'+
+          '<button class="btn amb" style="flex:0 0 auto" onclick="T.tnRestSave(\''+c.c.id+'\')">Speichern</button><button class="mini" style="flex:0 0 auto" onclick="T.tnRest(null)">✕</button></div>'+
+          '<div class="small muted" style="margin-bottom:6px">Für Karten, die schon vor den Aufzeichnungen liefen. '+c.auf+(c.auf===1?" Teilnahme ist":" Teilnahmen sind")+" hier schon erfasst.</div>";
+        return z;}).join("<br>")+"<br>";
       r+="<b>Teilnahmen</b><br>"+(x.att.length?x.att.slice().reverse().slice(0,30).map(function(s){return dkurz(s.date)+(tnOf(s)[p.id]===1?" · 🎫 −1":" · gezählt");}).join("<br>"):"noch keine")+"</div>";}
     return r+"</div>";}).join("");
   h+="</div>";
@@ -690,6 +699,12 @@ Object.assign(window.T,{
   tnKarteSave:function(pid){var p=tnById(pid),d=(document.getElementById("tnKd")||{}).value;if(!p)return;if(!d){flash("⚠ Bitte ein Datum wählen",true);return;}
     if(!data.karten)data.karten={};var k=uid();data.karten[k]={id:k,tn:pid,datum:d,n:10,t:Date.now()};st.tnK=null;persist();
     var x=tnStats(p);flash("✓ Neue 10er-Karte für "+p.name+" ab "+dde(d)+" – jetzt "+(x.rest>=0?"noch "+x.rest+" Einheiten":x.rest+" (wird verrechnet)"));},
+  tnRest:function(kid){st.tnR=kid;render();var i=document.getElementById("tnRv");if(i){i.focus();i.select();}},
+  tnRestSave:function(kid){var c=(data.karten||{})[kid],p=c&&tnById(c.tn);if(!p)return;var h=tnStats(p).cards.filter(function(x){return x.c.id===kid;})[0];if(!h)return;
+    var r=parseInt((document.getElementById("tnRv")||{}).value,10),max=h.n-h.auf;
+    if(isNaN(r)||r<0||r>max){flash("⚠ Bitte eine Zahl von 0 bis "+max+" eingeben ("+h.auf+" Teilnahmen sind schon erfasst)",true);return;}
+    data.karten[kid]=Object.assign({},c,{vorher:h.n-h.auf-r,t:Date.now()});st.tnR=null;persist();
+    var x=tnStats(p);flash("✓ "+p.name+": noch "+x.rest+(x.rest===1?" Einheit":" Einheiten")+" auf der Karte");},
   tnKarteDel:function(kid){var c=(data.karten||{})[kid];if(!c||!confirm("Diese 10er-Karte (ab "+dde(c.datum)+") löschen?"))return;data.karten[kid]=Object.assign({},c,{del:true,t:Date.now()});persist();render();},
   hgQuick:function(){st.hgQuick=!st.hgQuick;st.hg=null;render();if(st.hgQuick){var n=document.getElementById("hgN");if(n)setTimeout(function(){n.focus();},100);}},
   hgV:function(k,v){if(!st.hg)st.hg={n:"",icon:GEAR_ICONS[0]};st.hg[k]=v;if(k!=="n")render();},
