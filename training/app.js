@@ -404,7 +404,7 @@ function tnToggle(sid,pid){var x=data.sessions[sid];if(!x)return;var m=Object.as
 function tnZeile(sid){var x=data.sessions[sid];
   return Object.keys(tnOf(x)).map(function(id){var p=tnById(id);if(!p||tnOf(x)[id]!==1)return "";return '<div class="small" style="margin-top:4px">'+C.esc(p.name)+": "+kartTxt(p,tnStats(p))+"</div>";}).join("");}
 /* Meilenstein genau mit dieser Einheit erreicht → zum Gratulieren anzeigen */
-function msZeile(sid){return Object.keys(tnOf(data.sessions[sid])).map(function(id){var p=tnById(id);if(!p)return "";var x=tnStats(p),k=x.att.map(function(s){return s.id;}).indexOf(sid)+1;
+function msZeile(sid){return Object.keys(tnOf(data.sessions[sid])).map(function(id){var p=tnById(id);if(!p||p.ak)return "";var x=tnStats(p),k=x.att.map(function(s){return s.id;}).indexOf(sid)+1;
   return MS.indexOf(k)>-1?'<div class="small" style="margin-top:4px;color:#fde68a">🎉 '+C.esc(p.name)+": heute "+k+". Training – gratulieren!</div>":"";}).join("");}
 function paintFinish(){if(!hrun||!hrun.saved)return;var x=data.sessions[hrun.saved]||{},sel=Object.keys(tnOf(x));
   sheet(hrun.sumHtml+'<input placeholder="Notiz (optional), z. B. Gruppe, Gefühl" value="'+C.esc(x.note||"")+'" oninput="T.hNote(this.value)">'+
@@ -426,12 +426,13 @@ function vermisst(x){if(x.n<3||!x.last)return null;var t=Math.round((Date.parse(
 function treppchen(l,stats,jahr){var z=l.map(function(p){var n=stats[p.id].att.filter(function(s){return !jahr||s.date.slice(0,4)===jahr;}).length;return {p:p,n:n};})
     .filter(function(e){return e.n>0;}).sort(function(a,b){return b.n-a.n||a.p.name.localeCompare(b.p.name,"de");});
   var plaetze=[];z.forEach(function(e){var last=plaetze[plaetze.length-1];if(last&&last.n===e.n)last.leute.push(e.p);else if(plaetze.length<3)plaetze.push({n:e.n,leute:[e.p]});});return plaetze;}
-function vBestenliste(l,stats){var gw=gruppenWochen(),jahr=C.today().slice(0,4),modus=st.tnPod||"jahr",h="";
+function vBestenliste(alle,stats){var gw=gruppenWochen(),jahr=C.today().slice(0,4),modus=st.tnPod||"jahr",h="",l=alle.filter(function(p){return !p.ak;}),ak=alle.filter(function(p){return p.ak;});
   var pl=treppchen(l,stats,modus==="jahr"?jahr:null),med=["🥇","🥈","🥉"];
   h+='<div class="panel"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><h3 style="color:#f59e0b;margin:0">🏆 Bestenliste</h3><span class="chips" style="margin:0">'+
     [["jahr",jahr],["alle","insgesamt"]].map(function(m){return '<button class="chip amb'+(modus===m[0]?" on":"")+'" onclick="T.tnPod(\''+m[0]+'\')">'+m[1]+"</button>";}).join("")+"</span></div>";
   h+=pl.length?pl.map(function(x,i){return '<div class="pod" style="display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid #152038"><span style="font-size:22px;flex:0 0 32px">'+med[i]+'</span><span style="flex:1"><b style="color:#fff">'+x.leute.map(function(p){return C.esc(p.name);}).join(", ")+'</b></span><span class="small" style="white-space:nowrap">'+x.n+"× dabei</span></div>";}).join(""):
     '<div class="note">Noch keine Teilnahmen '+(modus==="jahr"?"in "+jahr:"")+".</div>";
+  if(ak.length)h+='<div class="small muted" style="margin-top:6px">Außer Konkurrenz: '+ak.map(function(p){var n=stats[p.id].att.filter(function(s){return modus!=="jahr"||s.date.slice(0,4)===jahr;}).length;return C.esc(p.name)+" "+n+"×";}).join(", ")+"</div>";
   /* Serien ab 3 Wochen */
   var se=l.map(function(p){return {p:p,n:serie(stats[p.id],gw)};}).filter(function(e){return e.n>=3;}).sort(function(a,b){return b.n-a.n;}).slice(0,6);
   if(se.length)h+='<div class="small" style="margin-top:10px;color:#cbd5e1"><b>🔥 Serien</b> – Wochen in Folge dabei</div>'+se.map(function(e){return '<div class="small" style="margin-top:4px">'+C.esc(e.p.name)+": <b>"+e.n+" Wochen</b></div>";}).join("");
@@ -451,7 +452,7 @@ function vGruppe(){var l=tnAll(),f=st.tnf||(st.tnf={name:"",status:"karte",ab:C.
   h+='<div class="panel"><h3 style="color:#f59e0b">👥 Teilnehmer ('+l.length+")</h3>";
   if(!l.length)h+='<div class="note">Lege hier die Leute an, die beim HIIT mitmachen. Beim Training tippst du dann an, wer dabei war – bei einer 10er-Karte wird je Teilnahme 1 abgezogen.</div>';
   h+=l.map(function(p){var x=stats[p.id],op=st.tnOpen&&st.tnOpen[p.id],ed=st.tnEd===p.id,kf=st.tnK===p.id,r='<div class="pr" style="display:block;padding:10px 0">';
-    r+='<div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><span><b style="color:#fff">'+C.esc(p.name)+'</b> <span class="tag">'+TN_ST[p.status||"mitglied"]+"</span></span>"+
+    r+='<div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><span><b style="color:#fff">'+C.esc(p.name)+'</b> <span class="tag">'+TN_ST[p.status||"mitglied"]+"</span>"+(p.ak?' <span class="tag">außer Konkurrenz</span>':"")+"</span>"+
       '<span style="white-space:nowrap"><button class="x" onclick="T.tnEdit(\''+p.id+'\')" aria-label="Bearbeiten">✏️</button><button class="x" onclick="T.tnOpen(\''+p.id+'\')" aria-label="Verlauf">'+(op?"▲":"▼")+"</button></span></div>";
     var sr=serie(x,gw),ms=meilenstein(x);
     r+='<div class="small muted" style="margin-top:3px">'+x.n+"× dabei"+(x.n?" · zuletzt "+dkurz(x.last):"")+(sr>=2?" · 🔥 "+sr+" Wochen in Folge":"")+(ms?" · 🎖 "+ms.n+"+":"")+"</div>";
@@ -460,7 +461,9 @@ function vGruppe(){var l=tnAll(),f=st.tnf||(st.tnf={name:"",status:"karte",ab:C.
     if(p.status==="karte"||x.cards.length)r+=kf?'<div class="row2" style="margin-top:8px"><input type="date" id="tnKd" value="'+C.today()+'"><button class="btn amb" style="flex:0 0 auto" onclick="T.tnKarteSave(\''+p.id+'\')">Karte anlegen</button><button class="mini" style="flex:0 0 auto" onclick="T.tnKarte(null)">✕</button></div>':
       '<button class="mini" style="margin-top:8px" onclick="T.tnKarte(\''+p.id+'\')">＋ neue 10er-Karte</button>';
     if(ed)r+='<div style="margin-top:8px"><div class="field"><label>Name</label><input id="tnEn" value="'+C.esc(p.name)+'"></div><div class="chips">'+Object.keys(TN_ST).map(function(k){return '<button class="chip amb'+((st.tnEs||p.status)===k?" on":"")+'" onclick="T.tnEs(\''+k+'\')">'+TN_ST[k]+"</button>";}).join("")+
-      '</div><div class="row2"><button class="btn amb" onclick="T.tnSave(\''+p.id+'\')">Speichern</button><button class="mini" style="flex:0 0 auto;color:#ff8a80" onclick="T.tnDel(\''+p.id+'\')">Löschen</button></div>'+
+      '</div><div class="chips"><button class="chip'+((st.tnAk!=null?st.tnAk:!!p.ak)?" on":"")+'" onclick="T.tnAk()">🏅 außer Konkurrenz</button></div>'+
+      '<div class="note" style="margin:-4px 0 8px">Wird gezählt (Übersicht, Karten), erscheint aber nicht in Bestenliste, Serien, Meilensteinen und „Länger nicht da“ – z. B. für dich als Trainer.</div>'+
+      '<div class="row2"><button class="btn amb" onclick="T.tnSave(\''+p.id+'\')">Speichern</button><button class="mini" style="flex:0 0 auto;color:#ff8a80" onclick="T.tnDel(\''+p.id+'\')">Löschen</button></div>'+
       '<div class="note">Ein Statuswechsel gilt ab jetzt. Bisherige Teilnahmen bleiben, wie sie eingetragen wurden.</div></div>';
     if(op){r+='<div class="small" style="margin-top:8px;line-height:1.6">';
       if(x.cards.length)r+="<b>Karten</b><br>"+x.cards.slice().reverse().map(function(c){
@@ -727,10 +730,12 @@ Object.assign(window.T,{
     if(karte&&f.ab){if(!data.karten)data.karten={};var k=uid();data.karten[k]={id:k,tn:id,datum:f.ab,n:10,t:now};}
     st.tnf=null;persist();flash("✓ „"+n+"“ angelegt"+(karte&&f.ab?" mit 10er-Karte ab "+dde(f.ab):""));},
   tnOpen:function(pid){st.tnOpen=st.tnOpen||{};st.tnOpen[pid]=!st.tnOpen[pid];render();},
-  tnEdit:function(pid){st.tnEd=st.tnEd===pid?null:pid;st.tnEs=null;render();},
+  tnEdit:function(pid){st.tnEd=st.tnEd===pid?null:pid;st.tnEs=null;st.tnAk=null;render();},
+  tnAk:function(){var p=tnById(st.tnEd),v=document.getElementById("tnEn"),nm=v?v.value:null;st.tnAk=!(st.tnAk!=null?st.tnAk:!!(p&&p.ak));render();var w=document.getElementById("tnEn");if(w&&nm!=null)w.value=nm;},
   tnEs:function(k){var v=document.getElementById("tnEn"),nm=v?v.value:null;st.tnEs=k;render();var w=document.getElementById("tnEn");if(w&&nm!=null)w.value=nm;},
   tnSave:function(pid){var p=tnById(pid);if(!p)return;var n=String((document.getElementById("tnEn")||{}).value||"").trim().replace(/\s+/g," ");if(!n){flash("⚠ Bitte einen Namen eingeben",true);return;}
-    data.teilnehmer[pid]=Object.assign({},p,{name:n,status:st.tnEs||p.status,t:Date.now()});st.tnEd=null;st.tnEs=null;persist();flash("✓ Gespeichert");},
+    var o=Object.assign({},p,{name:n,status:st.tnEs||p.status,t:Date.now()}),ak=st.tnAk!=null?st.tnAk:!!p.ak;if(ak)o.ak=true;else delete o.ak;
+    data.teilnehmer[pid]=o;st.tnEd=null;st.tnEs=null;st.tnAk=null;persist();flash("✓ Gespeichert");},
   tnDel:function(pid){var p=tnById(pid);if(!p||!confirm("„"+p.name+"“ löschen? In früheren Trainings bleibt die Teilnahme als „(gelöscht)“ stehen."))return;
     data.teilnehmer[pid]=Object.assign({},p,{del:true,t:Date.now()});st.tnEd=null;persist();render();},
   tnKarte:function(pid){st.tnK=pid;render();},
