@@ -21,9 +21,9 @@
 var C=window.Cockpit;
 document.getElementById("top").innerHTML=C.topbar({title:"Einstellungen",icon:"⚙",sub:"Sync & Daten",accent:"#00bcd4",base:""});
 var msg=null,rsv=null;
-var AREAS=["energie","auto","edelmetall","finanzen","einkaeufe","ferienwohnung","haus","steuer","dokumente","zuordnung","vertraege","zaehler","training"];
+var AREAS=["energie","auto","edelmetall","finanzen","einkaeufe","ferienwohnung","haus","steuer","dokumente","zuordnung","vertraege","zaehler","training","memo"];
 var KNAMEN={dokumente:"📂 Dokumente",finanzen:"💶 Finanzen",ferienwohnung:"🏡 Ferienwohnung",vertraege:"📑 Verträge & Fristen",haus:"🏘️ Haus",energie:"🏠 Energie",auto:"🚗 Auto",steuer:"🧾 Steuer",edelmetall:"🪙 Edelmetalle",training:"🏋️ Training",zaehler:"🎯 ThingCounter"};
-var NAMES={energie:"Energie",auto:"Auto",edelmetall:"Edelmetalle",finanzen:"Finanzen",einkaeufe:"Einkäufe",ferienwohnung:"Ferienwohnung",haus:"Haus",steuer:"Steuer",dokumente:"Dokumente",zuordnung:"Zuordnungen Buchung ↔ Dokument",vertraege:"Verträge & Fristen",zaehler:"ThingCounter",training:"Training"};
+var NAMES={energie:"Energie",auto:"Auto",edelmetall:"Edelmetalle",finanzen:"Finanzen",einkaeufe:"Einkäufe",ferienwohnung:"Ferienwohnung",haus:"Haus",steuer:"Steuer",dokumente:"Dokumente",zuordnung:"Zuordnungen Buchung ↔ Dokument",vertraege:"Verträge & Fristen",zaehler:"ThingCounter",training:"Training",memo:"Memo & Einkaufsliste"};
 
 function kopf(){document.getElementById("top").innerHTML=C.topbar({title:"Einstellungen",icon:"⚙",sub:"Sync & Daten",accent:"#00bcd4",base:""});try{C.paintStatus();}catch(e){}}
 function render(){

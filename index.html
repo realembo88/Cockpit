@@ -25,6 +25,8 @@
 .hi .go{color:var(--muted);font-size:16px;align-self:center;}
 .hi.rot .tx span{color:#f87171;}
 .hp .leer{font-size:13px;color:#4ade80;padding:4px 0;}
+.hi .mh{flex:0 0 22px;height:22px;border-radius:50%;border:2px solid #facc15;background:transparent;color:transparent;font-size:12px;font-weight:800;cursor:pointer;padding:0;margin-top:1px;}
+.hi .mh:hover,.hi .mh.ok{background:#22c55e;border-color:#22c55e;color:#04160a;}
 .hp .mehr{display:block;text-align:center;font-size:12px;color:var(--muted);margin-top:6px;cursor:pointer;background:none;border:none;width:100%;}
 </style>
 </head>
@@ -48,6 +50,7 @@
 <script src="zaehler/logic.js"></script>
 <script src="auto/logic.js"></script>
 <script src="dokumente/logic.js"></script>
+<script src="memo/logic.js"></script>
 <script>
 (function(){
 "use strict";
@@ -59,6 +62,7 @@ var AREAS=[
   {id:"finanzen",name:"Finanzen",icon:"💶",color:"var(--c-finanzen)",href:"finanzen/index.html"},
   {id:"ferienwohnung",name:"Ferienwohnung",icon:"🏡",color:"#2dd4bf",href:"ferienwohnung/index.html"},
   {id:"vertraege",name:"Verträge & Fristen",icon:"📑",color:"#f59e0b",href:"vertraege/index.html"},
+  {id:"memo",name:"Memo & Einkauf",icon:"📝",color:"#facc15",href:"memo/index.html"},
   {id:"haus",name:"Haus",icon:"🏘️",color:"#fb923c",href:"haus/index.html"},
   {id:"energie",name:"Energie",icon:"🏠",color:"var(--c-energie)",href:"energie/index.html"},
   {id:"auto",name:"Auto",icon:"🚗",color:"var(--c-auto)",href:"auto/index.html"},
@@ -73,6 +77,7 @@ function summary(area){
   var d=C.getLocal(area.id,null);
   if(area.id==="auto"&&d)return autoSummary(d);
   if(area.id==="vertraege"&&d&&window.VERTR)return VERTR.summary(d,C.getLocal("haus",null),C.getLocal("auto",null));
+  if(area.id==="memo"&&d&&window.MEMO)return MEMO.summary(d);
   if(area.id==="zaehler"&&d&&window.ZAEHLER)return ZAEHLER.summary(d,Date.now()); /* bewusst ohne Namen */
   if(d&&d._summary)return d._summary;
   return {k:"—",s:d?"Daten vorhanden":"Noch keine Daten"};
@@ -93,7 +98,9 @@ C.registerMerge("vertraege",V.merge);
 if(window.DOKS)C.registerMerge("dokumente",DOKS.dokMerge); /* PC-Abgleich: Eingang, Hausmeister, Zählerfotos */
 function heuteListe(){
   var t=V.heute(),out=[];
-  function add(ic,txt,sub,prio,href,rot){out.push({ic:ic,txt:txt,sub:sub,prio:prio,href:href,rot:!!rot});}
+  function add(ic,txt,sub,prio,href,rot,memo){out.push({ic:ic,txt:txt,sub:sub,prio:prio,href:href,rot:!!rot,memo:memo||null});}
+  /* Memo & Einkaufsliste: offene Notizen einzeln (abhakbar), Einkaufsliste als ein Punkt */
+  if(window.MEMO){try{MEMO.heute(C.getLocal("memo",null),t).forEach(function(e){add(e.ic,e.txt,e.sub,e.prio,e.href,e.rot,e.haken?e.id:null);});}catch(x){}}
   /* Fristen, Kündigungstermine, Nebenkostenabrechnungen */
   var vt=C.getLocal("vertraege",null),fin=C.getLocal("finanzen",null),fixL=null,belegt={};
   /* Preiserhöhungen bei Verträgen festhalten (Termin „Sonderkündigung prüfen“, auch für die Wochenvorschau) */
@@ -162,10 +169,14 @@ function heuteListe(){
 function heuteHtml(){var l=heuteListe(),max=offenAlle?99:6;
   var h='<div class="hp"><h2>📌 Heute & demnächst'+(l.length?"<span>"+l.length+" Punkt"+(l.length===1?"":"e")+"</span>":"")+"</h2>";
   if(!l.length)return h+'<div class="leer">✓ Nichts Dringendes – alles erledigt.</div></div>';
-  h+=l.slice(0,max).map(function(e){return '<a class="hi'+(e.rot?" rot":"")+'" href="'+C.esc(e.href)+'"><div class="ic">'+e.ic+'</div><div class="tx"><b>'+C.esc(e.txt)+"</b><span>"+C.esc(e.sub)+'</span></div><div class="go">›</div></a>';}).join("");
+  h+=l.slice(0,max).map(function(e){return '<a class="hi'+(e.rot?" rot":"")+'" href="'+C.esc(e.href)+'">'+(e.memo?'<button class="mh" data-memo="'+C.esc(e.memo)+'" aria-label="erledigt">✓</button>':'<div class="ic">'+e.ic+'</div>')+'<div class="tx"><b>'+C.esc(e.txt)+"</b><span>"+C.esc(e.sub)+'</span></div><div class="go">›</div></a>';}).join("");
   if(l.length>max)h+='<button class="mehr" onclick="window.__heuteAlle()">+ '+(l.length-max)+" weitere anzeigen</button>";
   return h+"</div>";}
 window.__heuteAlle=function(){offenAlle=true;render();};
+/* Memo direkt auf der Startseite abhaken */
+document.getElementById("heute").addEventListener("click",function(e){var b=e.target.closest&&e.target.closest("button.mh");if(!b||!window.MEMO)return;
+  e.preventDefault();e.stopPropagation();var d=MEMO.norm(C.getLocal("memo",MEMO.blank));MEMO.abhaken(d,b.getAttribute("data-memo"));d._summary=MEMO.summary(d);
+  b.classList.add("ok");setTimeout(function(){C.save("memo",d);render();},350);});
 
 function render(){
   try{document.getElementById("heute").innerHTML=heuteHtml();}catch(e){document.getElementById("heute").innerHTML="";}

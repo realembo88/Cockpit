@@ -282,7 +282,7 @@ function zstListe(f){if(!f||!Array.isArray(f.staende))return null;var w=Date.now
     return {id:x.id,art:x.art,nummer:x.nummer||null,obis:x.obis||null,stand:x.stand,einheit:x.einheit||null,datum:x.datum,zeit:x.zeit||null,unsicher:!!x.unsicher,hinweis:x.hinweis?String(x.hinweis).slice(0,120):null,foto:x.foto||null};});}
 /* Cockpit-Daten einmal täglich als _cockpit/cockpit-daten.json in die Ablage – so stecken sie in der ZIP-Sicherung des Hausmeisters.
    Alle Bereiche, ohne Zugangsdaten (Token, Schlüssel); nur wenn eine Sicherung eingerichtet ist. */
-var EXP_KEY="cockpit:dok:export",EXP_AREAS=["energie","auto","edelmetall","finanzen","einkaeufe","ferienwohnung","haus","steuer","dokumente","zuordnung","vertraege","training","zaehler"];
+var EXP_KEY="cockpit:dok:export",EXP_AREAS=["energie","auto","edelmetall","finanzen","einkaeufe","ferienwohnung","haus","steuer","dokumente","zuordnung","vertraege","training","zaehler","memo"];
 function datenExport(C,r,einst){if(!C||!r||!einst||!einst.sicherung_ziel)return;var t=0;try{t=+localStorage.getItem(EXP_KEY)||0;}catch(e){}if(Date.now()-t<20*3600e3)return;
   try{localStorage.setItem(EXP_KEY,String(Date.now()));}catch(e){}
   writeJSON(r,"_cockpit/cockpit-daten.json",C.makeBackup(EXP_AREAS,"cockpit")).catch(function(){try{localStorage.removeItem(EXP_KEY);}catch(e){}});}

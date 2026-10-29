@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0e1a">
+<title>Cockpit · Memo & Einkaufsliste</title>
+<link rel="manifest" href="../manifest.webmanifest">
+<link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/style.css">
+<style>
+.add{display:flex;gap:8px;align-items:stretch;}
+.inp{width:100%;background:var(--field);border:1px solid var(--border);border-radius:10px;padding:11px 12px;color:#fff;font-size:15px;font-family:inherit;min-width:0;}
+.inp:focus{outline:none;border-color:#facc15;}
+.inp.d{flex:0 0 140px;color-scheme:dark;}
+.plus{flex:0 0 48px;border:0;border-radius:10px;background:#facc15;color:#1a1400;font-size:24px;font-weight:800;cursor:pointer;}
+.note{font-size:11px;color:var(--muted);line-height:1.6;margin-top:6px;}
+.li{display:flex;gap:12px;align-items:center;padding:11px 2px;border-top:1px solid #152038;}
+.li:first-child{border-top:none;}
+.hk{flex:0 0 30px;height:30px;border-radius:50%;border:2px solid #64748b;background:transparent;color:transparent;font-size:16px;font-weight:800;cursor:pointer;padding:0;line-height:1;}
+.hk:hover{border-color:#facc15;}
+.li.ok .hk{background:#22c55e;border-color:#22c55e;color:#04160a;}
+.li .tx{flex:1;min-width:0;cursor:pointer;}
+.li .tx b{display:block;color:#fff;font-size:15px;font-weight:500;overflow-wrap:anywhere;}
+.li.ok .tx b{color:#64748b;text-decoration:line-through;font-weight:400;}
+.li .tx span{display:block;font-size:11px;color:var(--muted);margin-top:2px;}
+.li .tx span.rot{color:#f87171;}
+.mini{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:6px 10px;font-size:12px;cursor:pointer;white-space:nowrap;font-family:inherit;}
+.mini.rot{border-color:#ef444466;color:#f87171;}
+.ed{display:flex;flex-direction:column;gap:8px;padding:10px 0 12px;border-top:1px solid #152038;}
+.ed .zeile{display:flex;gap:8px;flex-wrap:wrap;}
+.vs{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;}
+.vs button{border:1px solid var(--border);background:#111a30;color:#e2e8f0;border-radius:16px;padding:6px 11px;font-size:13px;cursor:pointer;font-family:inherit;}
+.vs button i{font-style:normal;color:var(--muted);margin-left:6px;}
+.kopf{display:flex;justify-content:space-between;align-items:center;margin:0 0 4px;}
+.kopf h3{margin:0;}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div id="top"></div>
+<nav class="tabs" id="tabs"></nav>
+<div class="content" id="main"></div>
+</div>
+<script src="../assets/cockpit.js"></script>
+<script src="logic.js"></script>
+<script>
+(function(){
+"use strict";
+var C=window.Cockpit,M=window.MEMO,AREA="memo";
+C.registerMerge(AREA,M.merge);
+var data=M.norm(C.getLocal(AREA,M.blank));
+var st={tab:/einkauf/.test(location.hash)?"einkauf":"memo",edit:null,flash:null,undo:null,zeigOk:false};
+if(M.pflege(data))persist();
+
+function persist(){data._summary=M.summary(data);C.save(AREA,data);}
+function esc(s){return C.esc(s);}
+function flash(t,undo){st.flash=t;st.undo=undo||null;render();clearTimeout(flash.tm);flash.tm=setTimeout(function(){st.flash=null;st.undo=null;render();},5000);}
+function de(iso){var p=iso.split("-");return p[2]+"."+p[1]+"."+p[0];}
+function wann(x){if(!x.faellig)return "";var tg=M.tage(C.today(),x.faellig);
+  return tg<0?"überfällig seit "+de(x.faellig):tg===0?"heute":tg===1?"morgen":tg<7?"in "+tg+" Tagen · "+de(x.faellig):de(x.faellig);}
+function fokus(){var i=document.getElementById("neu");if(i&&matchMedia("(pointer:fine)").matches)i.focus();}
+
+function render(){
+  document.getElementById("top").innerHTML=C.topbar({title:"Memo & Einkauf",icon:"📝",sub:"Notizen · To-dos · Einkaufsliste",accent:"#facc15",accent2:"#eab308",eye:false});C.paintStatus();
+  var nm=M.offen(data,"memo").length,ne=M.offen(data,"einkauf").length;
+  document.getElementById("tabs").innerHTML=[["memo","📝 Memo"+(nm?" ("+nm+")":"")],["einkauf","🛒 Einkaufsliste"+(ne?" ("+ne+")":"")]].map(function(t){
+    return '<button class="tab'+(st.tab===t[0]?" on":"")+'" onclick="M2.tab(\''+t[0]+'\')">'+t[1]+"</button>";}).join("");
+  var h="";if(st.flash)h+='<div class="flash">'+esc(st.flash)+(st.undo?' · <a href="#" style="color:#fff" onclick="M2.undo();return false">Rückgängig</a>':"")+"</div>";
+  h+=st.tab==="einkauf"?vEinkauf():vMemo();
+  var a=document.activeElement,war=a&&a.id==="neu"?a.value:null;
+  document.getElementById("main").innerHTML=h;
+  if(war!=null){var i=document.getElementById("neu");if(i){i.value=war;i.focus();}}
+}
+function zeile(x){
+  if(st.edit===x.id)return '<div class="ed"><input class="inp" id="eT" value="'+esc(x.text)+'" onkeydown="if(event.key===\'Enter\')M2.save(\''+x.id+'\')">'+
+    '<div class="zeile">'+(x.typ==="memo"?'<input class="inp d" id="eD" type="date" value="'+esc(x.faellig||"")+'" aria-label="fällig am">':"")+
+    '<button class="btn" style="flex:1" onclick="M2.save(\''+x.id+'\')">Speichern</button><button class="mini" onclick="M2.edit(null)">Abbrechen</button><button class="mini rot" onclick="M2.del(\''+x.id+'\')">Löschen</button></div></div>';
+  var w=x.typ==="memo"?wann(x):"",rot=x.faellig&&!x.ok&&M.tage(C.today(),x.faellig)<0;
+  return '<div class="li'+(x.ok?" ok":"")+'"><button class="hk" onclick="M2.hak(\''+x.id+'\')" aria-label="'+(x.ok?"wieder offen":"erledigt")+'">✓</button>'+
+    '<div class="tx" onclick="M2.edit(\''+x.id+'\')"><b>'+esc(x.text)+"</b>"+(w?'<span class="'+(rot?"rot":"")+'">📅 '+esc(w)+"</span>":"")+"</div></div>";
+}
+function liste(typ,titelOk){var o=M.offen(data,typ),e=M.erledigt(data,typ),h="";
+  h+='<div class="panel" style="padding:6px 14px">'+(o.length?o.map(zeile).join(""):'<div class="note" style="padding:12px 0">'+(typ==="memo"?"Nichts offen. Neue Notizen erscheinen auch auf der Startseite.":"Die Einkaufsliste ist leer.")+"</div>")+"</div>";
+  if(e.length){h+='<div class="panel" style="padding:10px 14px"><div class="kopf"><button class="mini" onclick="M2.zeigOk()">'+(st.zeigOk?"▾":"▸")+" "+titelOk+" ("+e.length+")</button>"+
+      '<button class="mini rot" onclick="M2.leeren(\''+typ+'\')">Erledigte entfernen</button></div>'+(st.zeigOk?e.map(zeile).join(""):"")+"</div>";}
+  return h;}
+function vMemo(){
+  return '<div class="panel"><div class="add"><input class="inp" id="neu" placeholder="Neue Notiz oder Aufgabe …" autocomplete="off" onkeydown="if(event.key===\'Enter\')M2.add()">'+
+    '<button class="plus" onclick="M2.add()" aria-label="Hinzufügen">＋</button></div>'+
+    '<div class="add" style="margin-top:8px;align-items:center"><span class="note" style="margin:0">fällig am (optional)</span><input class="inp d" id="neuD" type="date" aria-label="fällig am"></div>'+
+    '<div class="note">Offene Memos stehen auf der Startseite unter „Heute & demnächst“ – mit Datum ab 7 Tagen vorher. Dort lassen sie sich direkt abhaken.</div></div>'+
+    liste("memo","Erledigt");}
+function vEinkauf(){
+  var vs=st.vs=M.vorschlaege(data,14);
+  return '<div class="panel"><div class="add"><input class="inp" id="neu" placeholder="z. B. Milch, Brot, 2 Gurken" autocomplete="off" onkeydown="if(event.key===\'Enter\')M2.add()">'+
+    '<button class="plus" onclick="M2.add()" aria-label="Hinzufügen">＋</button></div>'+
+    '<div class="note">Mehrere auf einmal mit Komma. Auf der Startseite erscheint die Liste als ein Punkt „Einkaufen“.</div>'+
+    (vs.length?'<div class="note" style="margin-top:10px">Oft gekauft – antippen zum Hinzufügen:</div><div class="vs">'+vs.map(function(v,i){return '<button onclick="M2.vs('+i+')">'+esc(v.text)+(v.n>1?"<i>"+v.n+"×</i>":"")+"</button>";}).join("")+"</div>":"")+"</div>"+
+    liste("einkauf","Im Wagen");}
+
+window.M2={
+  tab:function(t){st.tab=t;st.edit=null;history.replaceState(null,"","#"+t);render();fokus();},
+  add:function(){var i=document.getElementById("neu"),d=document.getElementById("neuD"),v=i?i.value.trim():"";if(!v)return;
+    var n=M.neu(data,st.tab,v,d&&d.value?d.value:null);i.value="";if(d)d.value="";
+    if(!n.length){flash("Steht schon auf der Liste");return;}persist();render();fokus();},
+  hak:function(id){var x=M.abhaken(data,id);persist();if(x&&x.ok)flash("✓ "+x.text,function(){M.abhaken(data,id);persist();});else render();},
+  edit:function(id){st.edit=id;render();var i=document.getElementById("eT");if(i){i.focus();i.setSelectionRange(i.value.length,i.value.length);}},
+  save:function(id){var t=(document.getElementById("eT")||{}).value||"",d=document.getElementById("eD");if(!t.trim()){M2.del(id);return;}
+    M.setze(data,id,{text:t.trim(),faellig:d?d.value||null:undefined});st.edit=null;persist();render();},
+  del:function(id){var alt=JSON.parse(JSON.stringify(data.items[id]||null));M.loeschen(data,id);st.edit=null;persist();
+    flash("Gelöscht",function(){if(alt){alt.t=Date.now();data.items[id]=alt;persist();}});},
+  leeren:function(typ){var alt=M.erledigt(data,typ).map(function(x){return JSON.parse(JSON.stringify(x));}),n=M.aufraeumen(data,typ);persist();
+    flash(n+(n===1?" Eintrag":" Einträge")+" entfernt",function(){var t=Date.now();alt.forEach(function(x){x.t=t;data.items[x.id]=x;});persist();});},
+  zeigOk:function(){st.zeigOk=!st.zeigOk;render();},
+  vs:function(i){var v=(st.vs||[])[i],h=v&&data.haeufig[v.k];if(!h)return;M.neu(data,"einkauf",h.text);persist();render();},
+  undo:function(){var u=st.undo;st.undo=null;st.flash=null;if(u)u();render();}
+};
+window.addEventListener("hashchange",function(){var t=/einkauf/.test(location.hash)?"einkauf":"memo";if(t!==st.tab){st.tab=t;render();}});
+render();fokus();
+C.autoPull([AREA],function(a,d){data=M.norm(d);if(!st.edit)render();});
+})();
+</script>
+</body>
+</html>
