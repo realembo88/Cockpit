@@ -23,6 +23,22 @@ h1{font-family:Georgia,"Times New Roman",serif;font-weight:700;font-size:30px;ma
 .gruss{text-align:center;color:var(--muted);margin:0 0 16px;font-size:19px;}
 .hinweis{background:#ffffff14;border:1px solid #ffffff26;border-radius:14px;padding:12px 14px;margin:0 0 16px;text-align:center;}
 .raster{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
+/* Variante B: Bild im Hochformat, Türchen verstreut darauf */
+.wrap.voll{padding:8px 8px 30px;}
+.kal{position:relative;width:min(100%,calc((100svh - 70px) * 9 / 16));aspect-ratio:9/16;margin:0 auto;border-radius:16px;overflow:hidden;
+  background:#123 center/cover no-repeat;box-shadow:0 10px 40px #000a,0 0 0 2px #f6dd9c55;}
+.kal .kopf{position:absolute;left:0;right:0;top:0;padding:3.2% 4% 0;text-align:center;background:linear-gradient(#000a,#0000);}
+.kal .kopf h1{margin:0;font-size:clamp(20px,6.5vw,30px);text-shadow:0 2px 6px #000;}
+.kal .kopf p{margin:0;color:#fff;font-size:clamp(13px,4vw,17px);text-shadow:0 1px 4px #000;}
+.kal .tuer{position:absolute;aspect-ratio:auto;border-radius:8px;border:2px solid #fff9;background:#ffffff1f;
+  -webkit-backdrop-filter:blur(1.5px);backdrop-filter:blur(1.5px);box-shadow:0 2px 8px #0007,inset 0 0 0 1px #0003;
+  font-size:clamp(22px,7.5vw,34px);color:#fff;text-shadow:0 2px 4px #000,0 0 10px #000a;}
+.kal .tuer:nth-child(n){background-color:#ffffff1f;background-image:none;}
+.kal .tuer.n24{border-color:var(--gold2);background-color:#e8c26a33;font-size:clamp(28px,10vw,46px);}
+.kal .tuer.heute{border-color:var(--gold2);}
+.kal .tuer.offen{background:#000 center/cover no-repeat;border-color:#fffc;}
+.kal .tuer.offen span{font-size:13px;}
+.hinweis.klick{cursor:pointer;}
 .tuer{position:relative;aspect-ratio:1/1.12;border-radius:12px;border:2px solid #f6dd9c66;cursor:pointer;
   background:linear-gradient(145deg,var(--rot2),var(--rot));box-shadow:0 3px 0 #00000055,inset 0 0 0 4px #ffffff14;
   display:flex;align-items:center;justify-content:center;overflow:hidden;font:700 30px/1 Georgia,serif;color:var(--creme);
@@ -98,7 +114,7 @@ function merke(n){var o=offen();if(o.indexOf(n)<0){o.push(n);ls(OFFEN,JSON.strin
 function inhalt(n){var t=st.m.tage[n]||{},p=(st.m.indiv[st.wer]||{})[n];return {text:t.text||"",img:p||t.img||null,video:n===24&&st.m.video?st.m.video:null};}
 
 /* ---------- Einrichtung ---------- */
-function vPin(fehler){
+function vPin(fehler){app.parentNode.classList.remove("voll");
   app.innerHTML='<h1>🎄 Adventskalender</h1><div class="karte"><p style="margin-top:0;text-align:center">Bitte einmal die <b>PIN</b> eingeben.</p>'+
     '<input class="pin" id="pin" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="PIN">'+
     (fehler?'<div class="fehler">'+esc(fehler)+"</div>":"")+'<button class="btn" id="weiter">Weiter</button></div>';
@@ -109,22 +125,25 @@ function vPin(fehler){
       return ladeManifest(key).then(function(m){st.key=key;st.m=m;return crypto.subtle.exportKey("raw",key);}).then(function(raw){ls(KEY,b64(raw));vWer();});
     }).catch(function(e){vPin(/Datei fehlt|Failed to fetch|NetworkError/.test(String(e))?"Keine Verbindung zum Internet – bitte später noch einmal.":"Die PIN stimmt leider nicht.");});}
 }
-function vWer(){
+function vWer(){app.parentNode.classList.remove("voll");
   app.innerHTML='<h1>🎄 Adventskalender</h1><div class="karte"><p style="margin-top:0;text-align:center">Für wen ist dieses Handy?</p>'+
     st.m.personen.map(function(p){return '<button class="btn" data-id="'+esc(p.id)+'">'+esc(p.name)+"</button>";}).join("")+"</div>";
   app.querySelectorAll("[data-id]").forEach(function(b){b.onclick=function(){st.wer=b.getAttribute("data-id");ls(WER,st.wer);vKal();};});
 }
 
-/* ---------- Kalender ---------- */
+/* ---------- Kalender (Variante B: feste, verstreute Anordnung auf dem Hintergrundbild, Hochformat 9:16) ----------
+   [Tag, links %, oben %, Breite %, Höhe %] */
+var LAGE=[[9,4.1,14.4,15.2,10.1],[2,28.6,13.9,18.7,9.9],[3,49.5,14.7,18.8,9.9],[12,74.3,14.2,21.6,9.5],[19,4.4,25.2,22.4,10.0],[1,37.7,25.8,22.2,10.5],[8,65.4,26.8,27.4,9.2],[22,7.2,38.7,18.2,9.0],[4,27.2,37.8,19.2,9.6],[7,55.7,38.0,19.3,10.4],[15,77.5,37.9,18.3,9.1],[20,5.1,50.6,26.8,9.4],[6,36.7,50.6,20.7,9.5],[14,68.8,49.6,26.2,9.0],[21,5.6,62.4,16.7,10.3],[18,28.9,62.1,17.8,10.4],[10,49.8,62.9,22.5,10.1],[13,75.0,62.6,20.3,9.8],[17,6.1,74.8,18.1,9.4],[16,29.1,73.5,19.1,10.0],[23,51.0,75.3,18.7,10.1],[5,73.8,75.5,20.1,9.2],[11,5.1,87.6,27.3,9.7],[24,41.3,86.1,53.0,10.9]];
 function vKal(){
   var p=st.m.personen.filter(function(x){return x.id===st.wer;})[0];if(!p){vWer();return;}
-  var frei=freiBis(),o=offen(),h='<h1>🎄 Adventskalender</h1><p class="gruss">'+esc(p.anrede||("Für "+p.name))+"</p>";
+  var frei=freiBis(),o=offen(),h="";app.parentNode.classList.add("voll");
   if(frei===0){var t=tageBis();h+='<div class="hinweis">Am <b>1. Dezember</b> geht das erste Türchen auf'+(t>0?" – noch "+t+(t===1?" Tag":" Tage")+".":".")+"</div>";}
-  else if(frei<24&&o.indexOf(frei)<0)h+='<div class="hinweis">Heute wartet Türchen <b>'+frei+"</b> auf dich ✨</div>";
-  h+='<div class="raster">';
-  for(var n=1;n<=24;n++){var istOffen=o.indexOf(n)>-1&&n<=frei,c="tuer"+(n===24?" n24":"");
+  else if(frei<24&&o.indexOf(frei)<0)h+='<div class="hinweis klick" id="zeigHeute">Heute wartet Türchen <b>'+frei+"</b> auf dich ✨ <u>zeigen</u></div>";
+  else if(frei===24&&o.indexOf(24)<0&&!vorschau())h+='<div class="hinweis klick" id="zeigHeute">Frohe Weihnachten! Das große Türchen <b>24</b> wartet 🎄</div>';
+  h+='<div class="kal" id="kal"><div class="kopf"><h1>🎄 Adventskalender</h1><p>'+esc(p.anrede||("Für "+p.name))+"</p></div>";
+  LAGE.forEach(function(L){var n=L[0],istOffen=o.indexOf(n)>-1&&n<=frei,c="tuer"+(n===24?" n24":"");
     if(istOffen)c+=" offen";else if(n>frei)c+=" zu";else if(n===frei&&!vorschau())c+=" heute";else c+=" nach";
-    h+='<button class="'+c+'" data-n="'+n+'" aria-label="Türchen '+n+'"><span>'+n+"</span></button>";}
+    h+='<button class="'+c+'" data-n="'+n+'" style="left:'+L[1]+"%;top:"+L[2]+"%;width:"+L[3]+"%;height:"+L[4]+'%" aria-label="Türchen '+n+'"><span>'+n+"</span></button>";});
   h+="</div>";
   if(st.install)h+='<button class="btn zweit" id="inst">📲 Als App auf den Startbildschirm</button>';
   h+='<div class="fuss"><a href="#" id="neu">Kalender neu einrichten</a></div>';
@@ -132,6 +151,9 @@ function vKal(){
   app.querySelectorAll(".tuer").forEach(function(b){var n=+b.getAttribute("data-n");b.onclick=function(){tippe(n,b);};
     if(b.classList.contains("offen")){var x=inhalt(n);if(x.img)datei(x.img).then(function(u){b.style.backgroundImage="url('"+u+"')";}).catch(function(){});
       else if(x.video)b.style.background="linear-gradient(145deg,#c99a3a,#9c7224)";}});
+  if(st.m.hg)datei(st.m.hg).then(function(u){var k=document.getElementById("kal");if(k)k.style.backgroundImage="url('"+u+"')";}).catch(function(){});
+  var zh=document.getElementById("zeigHeute");if(zh)zh.onclick=function(){var b=app.querySelector(".tuer[data-n='"+Math.min(frei,24)+"']");if(!b)return;
+    b.scrollIntoView({behavior:"smooth",block:"center"});b.classList.remove("wackel");void b.offsetWidth;b.classList.add("wackel");};
   var ib=document.getElementById("inst");if(ib)ib.onclick=function(){st.install.prompt();st.install.userChoice.then(function(){st.install=null;vKal();});};
   document.getElementById("neu").onclick=function(e){e.preventDefault();
     if(confirm("Kalender neu einrichten?\nDafür wird die PIN wieder gebraucht. Geöffnete Türchen bleiben offen.")){ls(KEY,null);ls(WER,null);st.key=null;st.wer=null;vPin();}};
