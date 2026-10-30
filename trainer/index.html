@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0b1a12">
+<meta name="robots" content="noindex,nofollow">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Trainer</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+/* Trainer-App: Spieler und Spielplan kommen verschlüsselt (Team-PIN) aus data/; danach liegt alles im Browser-Speicher des Geräts. */
+:root{--bg:#0b1a12;--panel:#12261b;--panel2:#173223;--border:#24442f;--text:#eef6f0;--muted:#9bb5a5;--acc:#facc15;--acc2:#eab308;--ok:#22c55e;--rot:#ef4444;--blau:#60a5fa;--field:#0e1f16;}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{margin:0;background:var(--bg);color:var(--text);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
+body{padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);}
+.wrap{max-width:640px;margin:0 auto;padding:0 0 70px;}
+header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px 8px;}
+header b{font-size:20px;display:block;}
+header span{font-size:12px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;}
+nav.tabs{display:flex;gap:2px;overflow-x:auto;padding:0 10px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg);z-index:5;scrollbar-width:none;}
+nav.tabs button{flex:0 0 auto;border:0;background:none;color:var(--muted);padding:12px 10px;font:600 14px inherit;font-family:inherit;border-bottom:3px solid transparent;cursor:pointer;}
+nav.tabs button.on{color:var(--acc);border-bottom-color:var(--acc);}
+main{padding:14px 12px;}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px;}
+.panel h3{margin:0 0 10px;font-size:15px;color:var(--acc);}
+.muted{color:var(--muted);}.small{font-size:13px;}.note{font-size:12px;color:var(--muted);line-height:1.5;}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.btn{border:0;border-radius:10px;padding:11px 14px;font:600 15px inherit;font-family:inherit;background:var(--acc);color:#1a1400;cursor:pointer;}
+.btn.ghost{background:transparent;border:1px solid var(--border);color:var(--text);}
+.btn.full{width:100%;}
+.mini{border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:8px;padding:6px 10px;font-size:13px;font-family:inherit;cursor:pointer;}
+.mini.rot{color:#fca5a5;border-color:#7f1d1d;}
+input,select,textarea{background:var(--field);border:1px solid var(--border);border-radius:9px;color:var(--text);padding:10px;font:15px inherit;font-family:inherit;min-width:0;color-scheme:dark;}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--acc);}
+textarea{width:100%;min-height:70px;resize:vertical;}
+label.l{display:block;font-size:12px;color:var(--muted);margin:8px 0 4px;}
+.chips{display:flex;gap:6px;flex-wrap:wrap;}
+.chip{border:1px solid var(--border);background:var(--field);color:var(--text);border-radius:20px;padding:8px 12px;font-size:14px;font-family:inherit;cursor:pointer;}
+.chip.on{background:var(--acc);border-color:var(--acc);color:#1a1400;font-weight:600;}
+.chip.ok.on{background:var(--ok);border-color:var(--ok);color:#03150a;}
+.chip.aus.on{background:var(--rot);border-color:var(--rot);color:#fff;}
+.chip.frei.on{background:var(--blau);border-color:var(--blau);color:#04142a;}
+.chip.weg{opacity:.45;text-decoration:line-through;}
+.li{display:flex;gap:10px;align-items:center;padding:11px 2px;border-top:1px solid var(--border);cursor:pointer;}
+.li:first-child{border-top:0;}
+.li .d{flex:0 0 58px;text-align:center;line-height:1.15;}
+.li .d b{display:block;font-size:17px;}
+.li .d span{font-size:11px;color:var(--muted);}
+.li .m{flex:1;min-width:0;}
+.li .m b{font-weight:600;}
+.li .m div{font-size:12px;color:var(--muted);}
+.li .r{text-align:right;font-weight:700;white-space:nowrap;}
+.li.vorbei{opacity:.75;}
+.tag{display:inline-block;font-size:11px;border-radius:8px;padding:2px 7px;margin-left:4px;background:#ffffff14;color:var(--muted);font-weight:500;}
+.tag.ok{background:#22c55e26;color:#86efac;}.tag.aus{background:#ef444426;color:#fca5a5;}.tag.frei{background:#60a5fa26;color:#bfdbfe;}.tag.offen{background:#facc1526;color:#fde68a;}
+.s{color:#86efac}.u{color:#fde68a}.n{color:#fca5a5}
+.monat{font-size:12px;color:var(--acc);text-transform:uppercase;letter-spacing:1px;margin:14px 2px 2px;}
+.detail{background:var(--panel2);border:1px solid var(--acc2);border-radius:14px;padding:14px;margin:6px 0 10px;cursor:default;}
+.kpi{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
+.kpi div{background:var(--field);border-radius:10px;padding:10px;text-align:center;}
+.kpi b{display:block;font-size:20px;}.kpi span{font-size:11px;color:var(--muted);}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th,td{padding:7px 4px;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap;}
+th:first-child,td:first-child{text-align:left;white-space:normal;}
+th{color:var(--muted);font-weight:500;cursor:pointer;}
+th.on{color:var(--acc);}
+.bar{height:6px;background:var(--field);border-radius:3px;overflow:hidden;margin-top:3px;}
+.bar i{display:block;height:100%;background:var(--ok);}
+.zahl{display:inline-flex;align-items:center;gap:6px;}
+.zahl button{width:32px;height:32px;border-radius:50%;border:1px solid var(--border);background:var(--field);color:var(--text);font-size:18px;cursor:pointer;}
+.kz{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--border);flex-wrap:wrap;}
+.flash{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#000e;color:#fff;padding:11px 16px;border-radius:12px;z-index:30;max-width:92%;font-size:14px;}
+.flash a{color:var(--acc);}
+.start{max-width:420px;margin:40px auto;padding:0 16px;text-align:center;}
+.start input{width:100%;font-size:20px;text-align:center;margin:12px 0;}
+.lade{padding:40px;text-align:center;color:var(--muted);}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="lade">Einen Moment …</div></div>
+<script src="logic.js"></script>
+<script>
+(function(){
+"use strict";
+var KEY="fb:key",DATA="fb:data",UI="fb:ui";
+var app=document.getElementById("app"),data=null,key=null;
+var st={tab:"start",open:null,edit:null,trAlle:false,spAlle:false,inaktiv:false,sort:"quote",zeit:"saison",planForm:false,freiForm:false,neuSp:false,neuTr:false,flash:null,undo:null};
+try{var u=JSON.parse(localStorage.getItem(UI)||"{}");if(u.tab)st.tab=u.tab;}catch(e){}
+function ls(k,v){try{if(v===undefined)return localStorage.getItem(k);if(v===null)localStorage.removeItem(k);else localStorage.setItem(k,v);}catch(e){return null;}}
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
+function b64(buf){var s="",a=new Uint8Array(buf);for(var i=0;i<a.length;i++)s+=String.fromCharCode(a[i]);return btoa(s);}
+function unb64(s){var b=atob(s),a=new Uint8Array(b.length);for(var i=0;i<b.length;i++)a[i]=b.charCodeAt(i);return a;}
+function heute(){var m=/tag=(\d{4}-\d\d-\d\d)/.exec(location.hash);return m?m[1]:FB.iso(new Date());}
+function dk(s){return s.slice(8,10)+"."+s.slice(5,7)+".";}
+function dl(s){return FB.WT[FB.wtag(s)]+", "+dk(s)+s.slice(2,4);}
+var MON=["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
+function speichern(){ls(DATA,JSON.stringify({data:data,updatedAt:Date.now()}));}
+function flash(t,undo){st.flash=t;st.undo=undo||null;render();clearTimeout(flash.tm);flash.tm=setTimeout(function(){st.flash=null;st.undo=null;render();},undo?6000:2600);}
+function sp(id){return data.spieler[id];}
+function name(id){var p=sp(id);return p&&!p.del?p.name:"(gelöscht)";}
+
+/* ---------- Einrichtung: Team-PIN entschlüsselt die Startdaten ---------- */
+function hol(p){return fetch(p,{cache:"no-cache"}).then(function(r){if(!r.ok)throw new Error("fehlt");return r;});}
+function vPin(fehler){
+  app.innerHTML='<div class="start"><div style="font-size:54px">⚽</div><h2 style="margin:6px 0">Trainer-App</h2><p class="muted">Bitte einmal die <b>Team-PIN</b> eingeben.</p>'+
+    '<input id="pin" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Team-PIN">'+(fehler?'<p style="color:#fca5a5">'+esc(fehler)+"</p>":"")+
+    '<button class="btn full" id="los">Weiter</button></div>';
+  var i=document.getElementById("pin");i.focus();i.onkeydown=function(e){if(e.key==="Enter")los();};document.getElementById("los").onclick=los;
+  function los(){var pin=i.value.trim();if(!pin)return;var b=document.getElementById("los");b.disabled=true;b.textContent="Einen Moment …";
+    hol("data/k.json").then(function(r){return r.json();}).then(function(k){
+      return crypto.subtle.importKey("raw",new TextEncoder().encode(pin),"PBKDF2",false,["deriveKey"]).then(function(base){
+        return crypto.subtle.deriveKey({name:"PBKDF2",salt:unb64(k.salt),iterations:k.iter,hash:"SHA-256"},base,{name:"AES-GCM",length:256},true,["encrypt","decrypt"]);});
+    }).then(function(k){key=k;return hol("data/start.bin").then(function(r){return r.arrayBuffer();});}).then(function(buf){var a=new Uint8Array(buf);
+      return crypto.subtle.decrypt({name:"AES-GCM",iv:a.slice(0,12)},key,a.slice(12));})
+    .then(function(p){var s=JSON.parse(new TextDecoder().decode(p));return crypto.subtle.exportKey("raw",key).then(function(raw){ls(KEY,b64(raw));
+      if(!data){data=ausStart(s);speichern();}st.tab="start";render();});})
+    .catch(function(e){vPin(/fehlt|fetch|Network/i.test(String(e))?"Keine Verbindung – bitte mit Internet noch einmal.":"Die PIN stimmt leider nicht.");});}
+}
+/* Startdaten → Datenbestand */
+function ausStart(s){var d=FB.blank(),t=Date.now();d.team={name:s.team||"",liga:s.liga||"",t:t};
+  (s.spieler||[]).forEach(function(n){var p=FB.spielerNeu(d,n.name||n,t);if(n.nr)p.nr=n.nr;});
+  (s.spiele||[]).forEach(function(g,i){var id="g"+(g.nr||i);d.termine[id]={id:id,typ:"spiel",datum:g.datum,zeit:g.zeit||"",heim:!!g.heim,gegner:g.gegner||"",spt:g.spt||null,
+    status:g.status||"ok",erg:g.erg||null,wettb:g.wettb||"Liga",bem:g.bem||"",kader:{},tore:{},karten:{},ausfall:{},t:t};});
+  return d;}
+
+/* ---------- Rahmen ---------- */
+var TABS=[["start","🏠 Übersicht"],["training","🏃 Training"],["spiele","⚽ Spiele"],["spieler","👥 Spieler"],["auswertung","📊 Auswertung"],["einst","⚙️"]];
+function render(){
+  if(!data){vPin();return;}
+  var a=document.activeElement,fokus=a&&a.id&&/INPUT|TEXTAREA/.test(a.tagName)?{id:a.id,v:a.value,s:a.selectionStart}:null;
+  var h='<header><div><b>⚽ '+esc(data.team.name||"Trainer-App")+"</b><span>"+esc(data.team.liga||"Training · Spiele · Auswertung")+"</span></div></header>";
+  h+='<nav class="tabs">'+TABS.map(function(t){return '<button class="'+(st.tab===t[0]?"on":"")+'" onclick="A.tab(\''+t[0]+'\')">'+t[1]+"</button>";}).join("")+"</nav><main>";
+  h+=({start:vStart,training:vTraining,spiele:vSpiele,spieler:vSpieler,auswertung:vAuswertung,einst:vEinst}[st.tab]||vStart)();
+  h+="</main>";
+  if(st.flash)h+='<div class="flash">'+esc(st.flash)+(st.undo?' · <a href="#" onclick="A.undo();return false">Rückgängig</a>':"")+"</div>";
+  app.innerHTML=h;
+  if(fokus){var e=document.getElementById(fokus.id);if(e){e.value=fokus.v;e.focus();try{e.setSelectionRange(fokus.s,fokus.s);}catch(x){}}}
+}
+
+/* ---------- Übersicht ---------- */
+function vStart(){var t=heute(),h="",of=FB.offen(data,t),nx=FB.naechste(data,t,6),tr=FB.termine(data,"training");
+  if(!tr.length)h+='<div class="panel" style="border-color:var(--acc2)"><h3>👋 Los geht\'s</h3><div class="note" style="margin-bottom:10px">Leg einmal die Trainingszeiten fest – die App trägt dann alle Trainings bis Saisonende ein.</div><button class="btn" onclick="A.tab(\'training\');A.plan()">Trainingszeiten festlegen</button></div>';
+  if(of.length)h+='<div class="panel"><h3>✍️ Noch eintragen</h3>'+of.map(function(x){return '<div class="li" onclick="A.zeige(\''+x.id+'\')"><div class="d"><b>'+dk(x.datum)+"</b><span>"+FB.WT[FB.wtag(x.datum)]+'</span></div><div class="m"><b>'+(x.typ==="training"?"Training":esc(FB.spielTitel(x,data.team.name)))+"</b><div>"+(x.typ==="training"?"Anwesenheit eintragen":"Ergebnis eintragen")+'</div></div><div class="r">›</div></div>';}).join("")+"</div>";
+  h+='<div class="panel"><h3>📅 Als Nächstes</h3>'+(nx.length?nx.map(function(x){return zeileTermin(x,true);}).join(""):'<div class="note">Keine Termine.</div>')+"</div>";
+  var a=FB.auswertung(data,null,null,t),b=a.bilanz;
+  h+='<div class="panel"><h3>📊 Saison</h3><div class="kpi"><div><b><span class="s">'+b.s+'</span>–<span class="u">'+b.u+'</span>–<span class="n">'+b.n+"</b><span>Siege–Unent.–Niederl.</span></div><div><b>"+b.tf+":"+b.tg+"</b><span>Tore</span></div><div><b>"+(a.schnitt!=null?a.schnitt.toFixed(1).replace(".",","):"–")+"</b><span>Ø im Training</span></div></div></div>";
+  return h;}
+function zeileTermin(x,kurz){var spiel=x.typ==="spiel",t=heute(),vorbei=x.datum<t,r="",info="";
+  if(spiel){var e=FB.ergebnisTxt(x),ag=FB.ausgang(x);
+    r=x.status==="frei"?'<span class="muted">spielfrei</span>':x.status==="abgesetzt"?'<span class="muted">abgesetzt</span>':e?'<span class="'+ag+'">'+e+"</span>":"";
+    info=(x.wettb&&x.wettb!=="Liga"?x.wettb+" · ":x.spt?x.spt+". Spieltag · ":"")+(x.heim?"Heimspiel":"Auswärts")+(x.zeit?" · "+x.zeit:"");}
+  else{var n=FB.anwesend(x).length;r=x.status==="ok"?(FB.erfasst(x)?n+" da":vorbei?'<span class="tag offen">offen</span>':""):'<span class="tag '+x.status+'">'+(x.status==="aus"?"ausgefallen":"trainingsfrei")+"</span>";
+    info=(x.zeit||"")+(x.notiz?" · "+x.notiz:"");}
+  if(spiel&&x.ausfall&&Object.keys(x.ausfall).length){var k=Object.keys(x.ausfall).length;info+=" · ❌ "+k+(k===1?" Ausfall":" Ausfälle");}
+  return '<div class="li'+(vorbei?" vorbei":"")+'" onclick="A.zeige(\''+x.id+'\')"><div class="d"><b>'+dk(x.datum)+"</b><span>"+FB.WT[FB.wtag(x.datum)]+'</span></div><div class="m"><b>'+(spiel?"⚽ "+esc(FB.spielTitel(x,data.team.name||"Wir")):"🏃 Training")+"</b><div>"+esc(info)+'</div></div><div class="r">'+r+"</div></div>";}
+
+/* ---------- Training ---------- */
+function vTraining(){var t=heute(),h="",alle=FB.termine(data,"training");
+  h+='<div class="row" style="margin-bottom:12px"><button class="btn ghost" onclick="A.plan()">⚙ Trainingszeiten</button><button class="btn ghost" onclick="A.freiForm()">🏖 trainingsfrei</button><button class="btn ghost" onclick="A.neuTr()">＋ Training</button></div>';
+  if(st.planForm)h+=vPlan();
+  if(st.freiForm)h+='<div class="panel"><h3>🏖 Zeitraum trainingsfrei</h3><div class="row"><div><label class="l">von</label><input type="date" id="fv" value="'+t+'"></div><div><label class="l">bis</label><input type="date" id="fb" value="'+t+'"></div></div>'+
+    '<label class="l">Grund (optional)</label><input id="fg" placeholder="z. B. Winterpause, Ferien" style="width:100%"><div class="row" style="margin-top:10px"><button class="btn" onclick="A.freiSave()">Übernehmen</button><button class="mini" onclick="A.freiForm()">Abbrechen</button></div>'+
+    '<div class="note" style="margin-top:6px">Gilt für alle Trainings im Zeitraum, bei denen noch keine Anwesenheit eingetragen ist. Einzelne Trainings lassen sich jederzeit wieder ändern.</div></div>';
+  if(st.neuTr)h+='<div class="panel"><h3>＋ Zusätzliches Training</h3><div class="row"><input type="date" id="nd" value="'+t+'"><input type="time" id="nz" value="19:00"><button class="btn" onclick="A.neuTrSave()">Anlegen</button><button class="mini" onclick="A.neuTr()">Abbrechen</button></div></div>';
+  if(!alle.length)return h+'<div class="panel"><div class="note">Noch keine Trainings. Über „Trainingszeiten“ legst du fest, an welchen Tagen trainiert wird – die App trägt dann alle Termine ein.</div></div>';
+  var ab=FB.plusT(t,-28),bis=FB.plusT(t,56),liste=st.trAlle?alle:alle.filter(function(x){return x.datum>=ab&&x.datum<=bis;});
+  if(!st.trAlle&&liste.length<alle.length)h+='<button class="mini" style="margin-bottom:8px" onclick="A.trAlle()">Alle '+alle.length+" Trainings der Saison zeigen</button>";
+  h+=gruppiert(liste)+(st.trAlle?'<button class="mini" onclick="A.trAlle()">Nur die nächsten Wochen</button>':"");
+  return h;}
+function gruppiert(liste){var h="",m="";liste.forEach(function(x){var mm=x.datum.slice(0,7);if(mm!==m){if(m)h+="</div>";m=mm;h+='<div class="monat">'+MON[+mm.slice(5,7)-1]+" "+mm.slice(0,4)+'</div><div class="panel" style="padding:2px 12px">';}
+  h+=zeileTermin(x)+(st.open===x.id?(x.typ==="training"?vTrDetail(x):vSpDetail(x)):"");});return h+(m?"</div>":"");}
+function vPlan(){var p=data.plan||{},sl=st.slots||(st.slots=(p.slots&&p.slots.length?p.slots:[{wt:1,zeit:"19:00"},{wt:3,zeit:"19:00"}]).map(function(x){return {wt:x.wt,zeit:x.zeit};}));
+  var letztes=FB.termine(data,"spiel").map(function(x){return x.datum;}).pop()||FB.plusT(heute(),180);
+  return '<div class="panel"><h3>⚙ Trainingszeiten</h3><div class="note">An welchen Tagen und um wie viel Uhr wird trainiert? Die App trägt alle Trainings im Zeitraum ein. Bereits vorhandene Tage bleiben, wie sie sind.</div>'+
+    sl.map(function(s,i){return '<div class="row" style="margin-top:8px"><select onchange="A.slot('+i+',\'wt\',this.value)">'+FB.WT.map(function(w,j){return '<option value="'+j+'"'+(+s.wt===j?" selected":"")+">"+["Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag","Sonntag"][j]+"</option>";}).join("")+
+      '</select><input type="time" value="'+esc(s.zeit)+'" onchange="A.slot('+i+',\'zeit\',this.value)"><button class="mini rot" onclick="A.slotWeg('+i+')" aria-label="entfernen">✕</button></div>';}).join("")+
+    '<button class="mini" style="margin-top:8px" onclick="A.slotNeu()">＋ weiterer Trainingstag</button>'+
+    '<div class="row"><div><label class="l">ab</label><input type="date" id="pv" value="'+esc(p.von||heute())+'"></div><div><label class="l">bis</label><input type="date" id="pb" value="'+esc(p.bis||letztes)+'"></div></div>'+
+    '<div class="row" style="margin-top:12px"><button class="btn" onclick="A.planSave()">Trainings eintragen</button><button class="mini" onclick="A.plan()">Abbrechen</button></div></div>';}
+function vTrDetail(x){var ps=FB.spieler(data),n=FB.anwesend(x).length,h='<div class="detail" onclick="event.stopPropagation()">';
+  h+='<div class="chips">'+[["ok","durchgeführt"],["aus","ausgefallen"],["frei","trainingsfrei"]].map(function(s){return '<button class="chip '+s[0]+(x.status===s[0]?" on":"")+'" onclick="A.trStatus(\''+x.id+'\',\''+s[0]+'\')">'+s[1]+"</button>";}).join("")+"</div>";
+  h+='<div class="row" style="margin-top:8px"><input type="time" value="'+esc(x.zeit||"")+'" onchange="A.trFeld(\''+x.id+'\',\'zeit\',this.value)"><input id="tn'+x.id+'" placeholder="Notiz (optional)" value="'+esc(x.notiz||"")+'" onchange="A.trFeld(\''+x.id+'\',\'notiz\',this.value)" style="flex:1"></div>';
+  if(x.status==="ok"){h+='<div class="row" style="justify-content:space-between;margin:12px 0 6px"><b>Wer ist da? ('+n+")</b><span><button class=\"mini\" onclick=\"A.alle('"+x.id+"',1)\">alle</button> <button class=\"mini\" onclick=\"A.alle('"+x.id+"',0)\">keiner</button></span></div>";
+    h+='<div class="chips">'+ps.map(function(p){return '<button class="chip ok'+(x.anw&&x.anw[p.id]?" on":"")+'" onclick="A.anw(\''+x.id+'\',\''+p.id+'\')">'+(p.nr?p.nr+" · ":"")+esc(p.name)+"</button>";}).join("")+"</div>";
+    if(!ps.length)h+='<div class="note">Noch keine Spieler – unter 👥 Spieler anlegen.</div>';}
+  h+='<div class="row" style="margin-top:12px;justify-content:space-between"><button class="btn" onclick="A.zu()">Fertig</button><button class="mini rot" onclick="A.trWeg(\''+x.id+'\')">Training löschen</button></div></div>';
+  return h;}
+
+/* ---------- Spiele ---------- */
+function vSpiele(){var t=heute(),alle=FB.termine(data,"spiel"),h="";
+  h+='<div class="row" style="margin-bottom:12px"><button class="btn ghost" onclick="A.neuSp()">＋ Spiel (Pokal, Testspiel …)</button></div>';
+  if(st.neuSp)h+='<div class="panel"><h3>＋ Spiel</h3><div class="row"><input type="date" id="gd" value="'+t+'"><input type="time" id="gz" value="15:00"></div><label class="l">Gegner</label><input id="gg" style="width:100%">'+
+    '<div class="row" style="margin-top:8px"><select id="gh"><option value="1">Heimspiel</option><option value="0">Auswärts</option></select><select id="gw"><option>Testspiel</option><option>Pokal</option><option>Liga</option><option>Turnier</option></select></div>'+
+    '<div class="row" style="margin-top:10px"><button class="btn" onclick="A.neuSpSave()">Anlegen</button><button class="mini" onclick="A.neuSp()">Abbrechen</button></div></div>';
+  var vorbei=alle.filter(function(x){return x.datum<t;}),liste=st.spAlle?alle:vorbei.slice(-3).concat(alle.filter(function(x){return x.datum>=t;}));
+  if(!st.spAlle&&liste.length<alle.length)h+='<button class="mini" style="margin-bottom:8px" onclick="A.spAlle()">Alle '+alle.length+" Spiele der Saison zeigen</button>";
+  return h+gruppiert(liste)+(st.spAlle?'<button class="mini" onclick="A.spAlle()">Nur die letzten und kommenden</button>':"");}
+function vSpDetail(x){var ps=FB.spieler(data),h='<div class="detail" onclick="event.stopPropagation()">',au=x.ausfall||{},kad=x.kader||{};
+  h+='<div class="chips">'+[["ok","findet statt"],["frei","spielfrei"],["abgesetzt","abgesetzt"]].map(function(s){return '<button class="chip'+((x.status||"ok")===s[0]?" on":"")+'" onclick="A.spFeld(\''+x.id+'\',\'status\',\''+s[0]+'\')">'+s[1]+"</button>";}).join("")+"</div>";
+  if(x.status==="frei"||x.status==="abgesetzt")return h+'<label class="l">Bemerkungen</label><textarea id="gb'+x.id+'" onchange="A.spFeld(\''+x.id+'\',\'bem\',this.value)">'+esc(x.bem||"")+'</textarea><button class="btn" style="margin-top:10px" onclick="A.zu()">Fertig</button></div>';
+  /* Ergebnis */
+  var e=x.erg||{};
+  h+='<label class="l">Ergebnis</label><div class="row"><span class="small">'+esc(x.heim?(data.team.name||"Wir"):x.gegner)+'</span><input type="number" inputmode="numeric" min="0" style="width:60px;text-align:center" id="e1'+x.id+'" value="'+(x.heim?(e.wir!=null?e.wir:""):(e.sie!=null?e.sie:""))+'" onchange="A.erg(\''+x.id+'\')">'+
+    ':<input type="number" inputmode="numeric" min="0" style="width:60px;text-align:center" id="e2'+x.id+'" value="'+(x.heim?(e.sie!=null?e.sie:""):(e.wir!=null?e.wir:""))+'" onchange="A.erg(\''+x.id+'\')"><span class="small">'+esc(x.heim?x.gegner:(data.team.name||"Wir"))+"</span></div>";
+  h+='<div class="row" style="margin-top:6px"><input type="date" value="'+esc(x.datum)+'" onchange="A.spFeld(\''+x.id+'\',\'datum\',this.value)"><input type="time" value="'+esc(x.zeit||"")+'" onchange="A.spFeld(\''+x.id+'\',\'zeit\',this.value)"></div>';
+  h+='<label class="l">Bemerkungen</label><textarea id="gb'+x.id+'" placeholder="z. B. Aufstellung, Taktik, Platz, Schiri …" onchange="A.spFeld(\''+x.id+'\',\'bem\',this.value)">'+esc(x.bem||"")+"</textarea>";
+  /* Ausfälle */
+  h+='<label class="l">❌ Fällt aus</label>'+Object.keys(au).map(function(id){var a=au[id];return '<div class="kz"><span><b>'+esc(name(id))+"</b> · "+esc(FB.GRUENDE[a.grund]||a.grund||"")+(a.notiz?" · "+esc(a.notiz):"")+'</span><button class="mini rot" onclick="A.auWeg(\''+x.id+'\',\''+id+'\')">✕</button></div>';}).join("");
+  h+='<div class="row"><select id="as'+x.id+'"><option value="">Spieler …</option>'+ps.filter(function(p){return !au[p.id];}).map(function(p){return '<option value="'+p.id+'">'+esc(p.name)+"</option>";}).join("")+'</select><select id="ag'+x.id+'">'+Object.keys(FB.GRUENDE).map(function(k){return '<option value="'+k+'">'+FB.GRUENDE[k]+"</option>";}).join("")+
+    '</select><input id="an'+x.id+'" placeholder="Notiz" style="flex:1;min-width:90px"><button class="mini" onclick="A.auNeu(\''+x.id+'\')">＋</button></div>';
+  /* Kader */
+  var nk=Object.keys(kad).filter(function(k){return kad[k];}).length;
+  h+='<label class="l" style="margin-top:12px">👕 Kader / eingesetzt ('+nk+")</label><div class=\"chips\">"+ps.map(function(p){var weg=!!au[p.id];return '<button class="chip'+(kad[p.id]?" on":"")+(weg?" weg":"")+'" onclick="A.kader(\''+x.id+'\',\''+p.id+'\')">'+(p.nr?p.nr+" · ":"")+esc(p.name)+"</button>";}).join("")+"</div>";
+  /* Tore und Karten für Spieler im Kader */
+  var ks=ps.filter(function(p){return kad[p.id];});
+  if(ks.length)h+='<label class="l" style="margin-top:12px">⚽ Tore · 🟨 Karten</label>'+ks.map(function(p){var g=(x.tore||{})[p.id]||0,k=(x.karten||{})[p.id]||"";
+    return '<div class="kz"><span>'+esc(p.name)+'</span><span class="row"><span class="zahl"><button onclick="A.tor(\''+x.id+'\',\''+p.id+'\',-1)" aria-label="Tor weniger">−</button><b style="min-width:18px;text-align:center">'+g+'</b><button onclick="A.tor(\''+x.id+'\',\''+p.id+'\',1)" aria-label="Tor mehr">＋</button></span>'+
+      '<select onchange="A.karte(\''+x.id+'\',\''+p.id+'\',this.value)"><option value="">keine Karte</option>'+Object.keys(FB.KARTEN).map(function(c){return '<option value="'+c+'"'+(k===c?" selected":"")+">"+FB.KARTEN[c]+"</option>";}).join("")+"</select></span></div>";}).join("");
+  h+='<div class="row" style="margin-top:12px;justify-content:space-between"><button class="btn" onclick="A.zu()">Fertig</button>'+(x.wettb&&x.wettb!=="Liga"?'<button class="mini rot" onclick="A.spWeg(\''+x.id+'\')">Spiel löschen</button>':"")+"</div></div>";
+  return h;}
+
+/* ---------- Spieler ---------- */
+function vSpieler(){var t=heute(),a=FB.auswertung(data,null,null,t),alle=FB.spieler(data,true),liste=alle.filter(function(p){return st.inaktiv||p.aktiv!==false;}),h="";
+  h+='<div class="panel"><div class="row"><input id="sn" placeholder="Neuer Spieler: Vor- und Nachname" style="flex:1" onkeydown="if(event.key===\'Enter\')A.spNeu()"><button class="btn" onclick="A.spNeu()">＋</button></div></div>';
+  h+='<div class="row" style="justify-content:space-between;margin:0 2px 6px"><b>'+liste.length+" Spieler</b>"+(alle.length>liste.length||st.inaktiv?'<button class="mini" onclick="A.inaktiv()">'+(st.inaktiv?"nur aktive":"auch inaktive ("+(alle.length-FB.spieler(data).length)+")")+"</button>":"")+"</div>";
+  h+='<div class="panel" style="padding:2px 12px">'+liste.map(function(p){var r=a.spieler[p.id];
+    var z='<div class="li" onclick="A.spEdit(\''+p.id+'\')"><div class="m"><b>'+(p.nr?'<span class="muted">'+esc(p.nr)+"</span> ":"")+esc(p.name)+"</b>"+(p.pos?'<span class="tag">'+esc(p.pos)+"</span>":"")+(p.aktiv===false?'<span class="tag">inaktiv</span>':"")+
+      "<div>Training "+(r.quote!=null?Math.round(r.quote*100)+" % ("+r.training+"/"+r.trMoeglich+")":"–")+" · "+r.einsaetze+" Spiele · "+r.tore+" Tore</div>"+(r.quote!=null?'<div class="bar"><i style="width:'+Math.round(r.quote*100)+'%"></i></div>':"")+'</div><div class="r muted">›</div></div>';
+    if(st.edit===p.id)z+='<div class="detail"><label class="l">Name</label><input id="en" value="'+esc(p.name)+'" style="width:100%"><div class="row"><div><label class="l">Rückennummer</label><input id="er" value="'+esc(p.nr||"")+'" inputmode="numeric" style="width:90px"></div>'+
+      '<div><label class="l">Position</label><select id="ep">'+["","Tor","Abwehr","Mittelfeld","Sturm"].map(function(o){return '<option'+((p.pos||"")===o?" selected":"")+">"+o+"</option>";}).join("")+'</select></div><div><label class="l">dabei seit</label><input type="date" id="es" value="'+esc(p.seit||"")+'"></div></div>'+
+      '<div class="chips" style="margin-top:10px"><button class="chip'+(p.aktiv!==false?" on":"")+'" id="ea" onclick="A.spAktiv(this)">'+(p.aktiv!==false?"✓ aktiv":"inaktiv")+'</button></div><div class="note" style="margin-top:4px">Inaktive Spieler erscheinen nicht in Anwesenheit und Kader, ihre Daten bleiben. „dabei seit“: Trainings davor zählen nicht in die Quote.</div>'+
+      spielerInfo(p)+'<div class="row" style="margin-top:12px;justify-content:space-between"><button class="btn" onclick="A.spSave(\''+p.id+'\')">Speichern</button><button class="mini rot" onclick="A.spWeg(\''+p.id+'\')">Löschen</button></div></div>';
+    return z;}).join("")+"</div>";
+  return h;}
+function spielerInfo(p){var a=FB.termine(data,"spiel").filter(function(x){return x.ausfall&&x.ausfall[p.id];}).slice(-5).reverse();
+  return a.length?'<div class="note" style="margin-top:10px"><b>Ausfälle:</b> '+a.map(function(x){return dk(x.datum)+" "+esc(FB.GRUENDE[x.ausfall[p.id].grund]||"");}).join(" · ")+"</div>":"";}
+
+/* ---------- Auswertung ---------- */
+function vAuswertung(){var t=heute(),von=st.zeit==="4w"?FB.plusT(t,-28):st.zeit==="8w"?FB.plusT(t,-56):null,a=FB.auswertung(data,von,null,t),h="";
+  h+='<div class="chips" style="margin-bottom:12px">'+[["saison","Saison"],["8w","letzte 8 Wochen"],["4w","letzte 4 Wochen"]].map(function(z){return '<button class="chip'+(st.zeit===z[0]?" on":"")+'" onclick="A.zeit(\''+z[0]+'\')">'+z[1]+"</button>";}).join("")+"</div>";
+  var b=a.bilanz;
+  h+='<div class="panel"><div class="kpi"><div><b>'+a.trainings+"</b><span>Trainings erfasst</span></div><div><b>"+(a.schnitt!=null?a.schnitt.toFixed(1).replace(".",","):"–")+"</b><span>Ø Spieler im Training</span></div><div><b>"+b.s+"–"+b.u+"–"+b.n+"</b><span>S–U–N ("+b.tf+":"+b.tg+")</span></div></div></div>";
+  var rows=FB.spieler(data).map(function(p){return a.spieler[p.id];});
+  var warn=rows.filter(function(r){return r.fehltLetzte4>=3;});
+  if(warn.length)h+='<div class="panel" style="border-color:#7f1d1d"><h3 style="color:#fca5a5">⚠ Zuletzt oft gefehlt</h3><div class="note" style="margin-bottom:4px">Bei mindestens 3 der letzten 4 Trainings nicht da.</div>'+warn.map(function(r){return '<div class="small">'+esc(r.p.name)+" – "+r.fehltLetzte4+" von 4 gefehlt</div>";}).join("")+"</div>";
+  var tor=rows.filter(function(r){return r.tore>0;}).sort(function(x,y){return y.tore-x.tore;}).slice(0,5);
+  if(tor.length)h+='<div class="panel"><h3>⚽ Torschützen</h3>'+tor.map(function(r,i){return '<div class="kz"><span>'+(i+1)+". "+esc(r.p.name)+"</span><b>"+r.tore+"</b></div>";}).join("")+"</div>";
+  var S={quote:function(r){return r.quote==null?-1:r.quote;},einsaetze:function(r){return r.einsaetze;},tore:function(r){return r.tore;},karten:function(r){return r.g+r.gr*2+r.r*3;},name:null};
+  rows.sort(st.sort==="name"?function(x,y){return x.p.name.localeCompare(y.p.name,"de");}:function(x,y){return S[st.sort](y)-S[st.sort](x)||x.p.name.localeCompare(y.p.name,"de");});
+  function th(k,t){return '<th class="'+(st.sort===k?"on":"")+'" onclick="A.sort(\''+k+'\')">'+t+"</th>";}
+  h+='<div class="panel" style="overflow-x:auto"><h3>👥 Je Spieler</h3><table><thead><tr>'+th("name","Spieler")+th("quote","Training")+th("einsaetze","Spiele")+th("tore","Tore")+th("karten","Karten")+"</tr></thead><tbody>"+
+    rows.map(function(r){return "<tr><td>"+esc(r.p.name)+"</td><td>"+(r.quote!=null?Math.round(r.quote*100)+' %<div class="muted" style="font-size:11px">'+r.training+"/"+r.trMoeglich+"</div>":"–")+"</td><td>"+r.einsaetze+"</td><td>"+r.tore+"</td><td>"+(r.g?"🟨"+(r.g>1?r.g:""):"")+(r.gr?"🟨🟥":"")+(r.r?"🟥":"")+"</td></tr>";}).join("")+
+    '</tbody></table><div class="note" style="margin-top:8px">Training: anwesend / durchgeführte Trainings mit eingetragener Anwesenheit (ab „dabei seit“). Spiele: im Kader.</div></div>';
+  return h;}
+
+/* ---------- Einstellungen ---------- */
+function vEinst(){
+  return '<div class="panel"><h3>Team</h3><label class="l">Name</label><input id="tn" value="'+esc(data.team.name||"")+'" style="width:100%"><label class="l">Liga</label><input id="tl" value="'+esc(data.team.liga||"")+'" style="width:100%"><button class="btn" style="margin-top:10px" onclick="A.team()">Speichern</button></div>'+
+    '<div class="panel"><h3>🤝 Co-Trainer</h3><div class="note">Der Abgleich zwischen mehreren Handys kommt in einem nächsten Schritt. Bis dahin: Sicherung hier speichern und auf dem anderen Handy einlesen.</div></div>'+
+    '<div class="panel"><h3>💾 Sicherung</h3><div class="row"><button class="btn" onclick="A.export()">Sicherung speichern</button><label class="btn ghost">Sicherung einlesen<input type="file" accept=".json,application/json" style="display:none" onchange="A.import(this)"></label></div>'+
+    '<div class="note" style="margin-top:6px">Die Daten liegen nur auf diesem Gerät. Ab und zu eine Sicherung speichern.</div></div>'+
+    '<div class="panel"><h3>Gerät</h3><button class="mini rot" onclick="A.reset()">App auf diesem Gerät zurücksetzen</button></div>';}
+
+/* ---------- Aktionen ---------- */
+function T(id){return data.termine[id];}
+function set(id,w){FB.setze(data,"termine",id,w);speichern();}
+window.A={
+  tab:function(t){st.tab=t;st.open=null;st.edit=null;ls(UI,JSON.stringify({tab:t}));render();window.scrollTo(0,0);},
+  zeige:function(id){var x=T(id);if(!x)return;var tab=x.typ==="spiel"?"spiele":"training";if(st.tab!==tab){st.tab=tab;}
+    if(tab==="spiele"&&!st.spAlle){var vb=FB.termine(data,"spiel").filter(function(g){return g.datum<heute();}).slice(-3);if(x.datum<heute()&&vb.indexOf(x)<0)st.spAlle=true;}
+    if(tab==="training"&&!st.trAlle){var t=heute();if(x.datum<FB.plusT(t,-28)||x.datum>FB.plusT(t,56))st.trAlle=true;}
+    st.open=st.open===id&&st.tab===tab?null:id;render();var e=document.querySelector(".detail");if(e)e.scrollIntoView({block:"center"});},
+  zu:function(){st.open=null;render();},
+  plan:function(){st.planForm=!st.planForm;st.slots=null;st.freiForm=false;st.neuTr=false;render();},
+  slot:function(i,k,v){st.slots[i][k]=k==="wt"?+v:v;},
+  slotNeu:function(){st.slots.push({wt:4,zeit:"19:00"});render();},
+  slotWeg:function(i){st.slots.splice(i,1);render();},
+  planSave:function(){var v=document.getElementById("pv").value,b=document.getElementById("pb").value;if(!v||!b||b<v||!st.slots.length){flash("⚠ Bitte Zeitraum und mindestens einen Tag angeben");return;}
+    var n=FB.trainingsplan(data,v,b,st.slots.map(function(s){return {wt:+s.wt,zeit:s.zeit};}));speichern();st.planForm=false;flash("✓ "+n+" Trainings eingetragen");},
+  freiForm:function(){st.freiForm=!st.freiForm;st.planForm=false;st.neuTr=false;render();},
+  freiSave:function(){var v=document.getElementById("fv").value,b=document.getElementById("fb").value,g=document.getElementById("fg").value.trim();if(!v||!b||b<v)return;
+    var n=FB.frei(data,v,b,g);speichern();st.freiForm=false;flash(n?"✓ "+n+" Trainings trainingsfrei":"Keine offenen Trainings im Zeitraum");},
+  neuTr:function(){st.neuTr=!st.neuTr;st.planForm=false;st.freiForm=false;render();},
+  neuTrSave:function(){var d=document.getElementById("nd").value;if(!d)return;var x={id:FB.uid("t"),typ:"training",datum:d,zeit:document.getElementById("nz").value,status:"ok",anw:{},t:Date.now()};data.termine[x.id]=x;speichern();st.neuTr=false;st.open=x.id;if(!st.trAlle)st.trAlle=true;render();},
+  trAlle:function(){st.trAlle=!st.trAlle;render();},
+  trStatus:function(id,s){set(id,{status:s});render();},
+  trFeld:function(id,k,v){var w={};w[k]=v.trim?v.trim():v;set(id,w);},
+  anw:function(id,pid){var a=Object.assign({},T(id).anw||{});if(a[pid])delete a[pid];else a[pid]=1;set(id,{anw:a});render();},
+  alle:function(id,an){var a={};if(an)FB.spieler(data).forEach(function(p){a[p.id]=1;});set(id,{anw:a});render();},
+  trWeg:function(id){var alt=JSON.parse(JSON.stringify(T(id)));data.termine[id]={id:id,del:true,t:Date.now()};speichern();st.open=null;flash("Training gelöscht",function(){alt.t=Date.now();data.termine[id]=alt;speichern();});},
+  neuSp:function(){st.neuSp=!st.neuSp;render();},
+  spAlle:function(){st.spAlle=!st.spAlle;render();},
+  neuSpSave:function(){var d=document.getElementById("gd").value,g=document.getElementById("gg").value.trim();if(!d||!g){flash("⚠ Bitte Datum und Gegner angeben");return;}
+    var x={id:FB.uid("g"),typ:"spiel",datum:d,zeit:document.getElementById("gz").value,heim:document.getElementById("gh").value==="1",gegner:g,wettb:document.getElementById("gw").value,status:"ok",erg:null,kader:{},tore:{},karten:{},ausfall:{},bem:"",t:Date.now()};
+    data.termine[x.id]=x;speichern();st.neuSp=false;st.open=x.id;render();},
+  spFeld:function(id,k,v){var w={};w[k]=v;set(id,w);if(k!=="bem")render();},
+  erg:function(id){var x=T(id),a=document.getElementById("e1"+id).value,b=document.getElementById("e2"+id).value;
+    if(a===""&&b===""){set(id,{erg:null});render();return;}if(a===""||b==="")return;var h=+a,g=+b;set(id,{erg:x.heim?{wir:h,sie:g}:{wir:g,sie:h}});render();},
+  auNeu:function(id){var s=document.getElementById("as"+id).value;if(!s){flash("⚠ Bitte einen Spieler wählen");return;}
+    var au=Object.assign({},T(id).ausfall||{}),k=Object.assign({},T(id).kader||{});au[s]={grund:document.getElementById("ag"+id).value,notiz:document.getElementById("an"+id).value.trim()};delete k[s];set(id,{ausfall:au,kader:k});render();},
+  auWeg:function(id,pid){var au=Object.assign({},T(id).ausfall||{});delete au[pid];set(id,{ausfall:au});render();},
+  kader:function(id,pid){var k=Object.assign({},T(id).kader||{});if(k[pid]){delete k[pid];var to=Object.assign({},T(id).tore||{}),ka=Object.assign({},T(id).karten||{});delete to[pid];delete ka[pid];set(id,{kader:k,tore:to,karten:ka});}
+    else{k[pid]=1;var au=Object.assign({},T(id).ausfall||{});delete au[pid];set(id,{kader:k,ausfall:au});}render();},
+  tor:function(id,pid,d){var to=Object.assign({},T(id).tore||{});to[pid]=Math.max(0,(to[pid]||0)+d);if(!to[pid])delete to[pid];set(id,{tore:to});render();},
+  karte:function(id,pid,v){var ka=Object.assign({},T(id).karten||{});if(v)ka[pid]=v;else delete ka[pid];set(id,{karten:ka});},
+  spWeg:function(id){if(!confirm("Spiel löschen?"))return;data.termine[id]={id:id,del:true,t:Date.now()};speichern();st.open=null;render();},
+  spNeu:function(){var i=document.getElementById("sn"),n=i.value.trim().replace(/\s+/g," ");if(!n)return;FB.spielerNeu(data,n);speichern();i.value="";flash("✓ "+n+" angelegt");},
+  spEdit:function(id){st.edit=st.edit===id?null:id;render();},
+  spAktiv:function(b){var an=!b.classList.contains("on");b.classList.toggle("on",an);b.textContent=an?"✓ aktiv":"inaktiv";},
+  spSave:function(id){var n=document.getElementById("en").value.trim().replace(/\s+/g," ");if(!n)return;
+    FB.setze(data,"spieler",id,{name:n,nr:document.getElementById("er").value.trim()||undefined,pos:document.getElementById("ep").value||undefined,seit:document.getElementById("es").value||undefined,aktiv:document.getElementById("ea").classList.contains("on")});speichern();st.edit=null;flash("✓ Gespeichert");},
+  spWeg:function(id){var p=sp(id);if(!confirm("„"+p.name+"“ löschen?\nBesser „inaktiv“, wenn er nur pausiert – dann bleibt die Statistik vollständig."))return;
+    FB.setze(data,"spieler",id,{del:true});speichern();st.edit=null;flash("Gelöscht",function(){FB.setze(data,"spieler",id,{del:undefined});speichern();});},
+  inaktiv:function(){st.inaktiv=!st.inaktiv;render();},
+  zeit:function(z){st.zeit=z;render();},
+  sort:function(k){st.sort=k;render();},
+  team:function(){data.team={name:document.getElementById("tn").value.trim(),liga:document.getElementById("tl").value.trim(),t:Date.now()};speichern();flash("✓ Gespeichert");},
+  export:function(){var b=new Blob([JSON.stringify({app:"trainer",stand:new Date().toISOString(),data:data},null,1)],{type:"application/json"}),n="trainer-sicherung-"+heute()+".json",f=new File([b],n,{type:"application/json"});
+    if(navigator.canShare&&navigator.canShare({files:[f]}))navigator.share({files:[f],title:n}).catch(function(){});
+    else{var a=document.createElement("a");a.href=URL.createObjectURL(b);a.download=n;document.body.appendChild(a);a.click();a.remove();}},
+  import:function(inp){var f=inp.files&&inp.files[0];inp.value="";if(!f)return;f.text().then(function(t){var o=JSON.parse(t);if(!o||o.app!=="trainer"||!o.data)throw 0;
+    data=FB.merge(data,o.data);speichern();flash("✓ Sicherung eingelesen und zusammengeführt");}).catch(function(){flash("⚠ Das ist keine Sicherung dieser App");});},
+  reset:function(){if(!confirm("Wirklich alle Daten auf diesem Gerät löschen?\nVorher eine Sicherung speichern!"))return;ls(DATA,null);ls(KEY,null);data=null;render();},
+  undo:function(){var u=st.undo;st.undo=null;st.flash=null;if(u)u();render();}
+};
+window.addEventListener("hashchange",render);
+
+/* ---------- Start ---------- */
+try{var g=JSON.parse(ls(DATA)||"null");if(g&&g.data)data=FB.norm(g.data);}catch(e){}
+if(!window.crypto||!crypto.subtle)app.innerHTML='<div class="start">Dieser Browser ist zu alt.</div>';else render();
+if("serviceWorker" in navigator)navigator.serviceWorker.register("sw.js").catch(function(){});
+})();
+</script>
+</body>
+</html>
