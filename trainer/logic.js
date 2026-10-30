@@ -59,7 +59,9 @@ function auswertung(d,von,bis,heute){d=norm(d);heute=heute||iso(new Date());von=
   var stand=d.bfv&&d.bfv.stand,mitBfv=stand&&von<=stand;   /* BFV-Werte nur, wenn der Zeitraum die Zeit bis zum BFV-Stand umfasst */
   var res={};spieler(d,true).forEach(function(p){
     var moeglich=tr.filter(function(x){return !p.seit||x.datum>=p.seit;}),da=moeglich.filter(function(x){return x.anw[p.id];});
-    var letzte=moeglich.slice(-4),fehlt=letzte.filter(function(x){return !x.anw[p.id];}).length;
+    /* „zuletzt oft gefehlt“ nur für Spieler, die vorher regelmäßig da waren (mind. 2 der 8 Trainings davor) – nicht für Reservisten, die nie trainieren */
+    var letzte=moeglich.slice(-4),fehlt=letzte.filter(function(x){return !x.anw[p.id];}).length,vorher=moeglich.slice(-12,-4).filter(function(x){return x.anw[p.id];}).length;
+    if(vorher<2)fehlt=0;
     var r={p:p,training:da.length,trMoeglich:moeglich.length,quote:moeglich.length?da.length/moeglich.length:null,fehltLetzte4:letzte.length>=3?fehlt:0,
       einsaetze:0,tore:0,min:0,ein:0,aus:0,g:0,gr:0,r:0,ausfaelle:0,letztesTraining:da.length?da[da.length-1].datum:null};
     var b=p.bfv;if(mitBfv&&b){r.einsaetze+=b[0]||0;r.min+=b[1]||0;r.tore+=b[2]||0;r.ein+=b[3]||0;r.aus+=b[4]||0;r.g+=b[5]||0;r.gr+=b[6]||0;r.r+=b[7]||0;}

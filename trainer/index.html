@@ -102,7 +102,8 @@ function dk(s){return s.slice(8,10)+"."+s.slice(5,7)+".";}
 function dl(s){return FB.WT[FB.wtag(s)]+", "+dk(s)+s.slice(2,4);}
 var MON=["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
 function speichern(){ls(DATA,JSON.stringify({data:data,updatedAt:Date.now()}));}
-function flash(t,undo){st.flash=t;st.undo=undo||null;render();clearTimeout(flash.tm);flash.tm=setTimeout(function(){st.flash=null;st.undo=null;render();},undo?6000:2600);}
+/* Hinweis unten einblenden; beim Ausblenden nur den Hinweis entfernen, nicht neu zeichnen (sonst gingen halb ausgefüllte Felder verloren) */
+function flash(t,undo){st.flash=t;st.undo=undo||null;render();clearTimeout(flash.tm);flash.tm=setTimeout(function(){st.flash=null;st.undo=null;var f=document.querySelector(".flash");if(f)f.remove();},undo?6000:2600);}
 function sp(id){return data.spieler[id];}
 function name(id){var p=sp(id);return p&&!p.del?p.name:"(gelöscht)";}
 
@@ -261,7 +262,7 @@ function vAuswertung(){var t=heute(),von=st.zeit==="4w"?FB.plusT(t,-28):st.zeit=
   h+='<div class="panel"><div class="kpi"><div><b>'+a.trainings+"</b><span>Trainings erfasst</span></div><div><b>"+(a.schnitt!=null?a.schnitt.toFixed(1).replace(".",","):"–")+"</b><span>Ø Spieler im Training</span></div><div><b>"+b.s+"–"+b.u+"–"+b.n+"</b><span>S–U–N ("+b.tf+":"+b.tg+")</span></div></div></div>";
   var rows=FB.spieler(data).map(function(p){return a.spieler[p.id];});
   var warn=rows.filter(function(r){return r.fehltLetzte4>=3;});
-  if(warn.length)h+='<div class="panel" style="border-color:#7f1d1d"><h3 style="color:#fca5a5">⚠ Zuletzt oft gefehlt</h3><div class="note" style="margin-bottom:4px">Bei mindestens 3 der letzten 4 Trainings nicht da.</div>'+warn.map(function(r){return '<div class="small">'+esc(r.p.name)+" – "+r.fehltLetzte4+" von 4 gefehlt</div>";}).join("")+"</div>";
+  if(warn.length)h+='<div class="panel" style="border-color:#7f1d1d"><h3 style="color:#fca5a5">⚠ Zuletzt oft gefehlt</h3><div class="note" style="margin-bottom:4px">Vorher regelmäßig da, jetzt bei mindestens 3 der letzten 4 Trainings gefehlt.</div>'+warn.map(function(r){return '<div class="small">'+esc(r.p.name)+" – "+r.fehltLetzte4+" von 4 gefehlt</div>";}).join("")+"</div>";
   var tor=rows.filter(function(r){return r.tore>0;}).sort(function(x,y){return y.tore-x.tore;}).slice(0,5);
   if(tor.length)h+='<div class="panel"><h3>⚽ Torschützen</h3>'+tor.map(function(r,i){return '<div class="kz"><span>'+(i+1)+". "+esc(r.p.name)+"</span><b>"+r.tore+"</b></div>";}).join("")+"</div>";
   var S={quote:function(r){return r.quote==null?-1:r.quote;},einsaetze:function(r){return r.einsaetze;},min:function(r){return r.min;},tore:function(r){return r.tore;},karten:function(r){return r.g+r.gr*2+r.r*3;},name:null};
