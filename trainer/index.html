@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#0b1a12">
+<meta name="theme-color" content="#0e0e0e">
 <meta name="robots" content="noindex,nofollow">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -13,12 +13,14 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <style>
 /* Trainer-App: Spieler und Spielplan kommen verschlüsselt (Team-PIN) aus data/; danach liegt alles im Browser-Speicher des Geräts. */
-:root{--bg:#0b1a12;--panel:#12261b;--panel2:#173223;--border:#24442f;--text:#eef6f0;--muted:#9bb5a5;--acc:#facc15;--acc2:#eab308;--ok:#22c55e;--rot:#ef4444;--blau:#60a5fa;--field:#0e1f16;}
+:root{--bg:#0e0e0e;--panel:#1a1a1a;--panel2:#222;--border:#333;--text:#f5f5f5;--muted:#b3b3b3;--acc:#fef200;--acc2:#ff7b04;--ok:#22c55e;--rot:#ef4444;--blau:#60a5fa;--field:#121212;}
+/* Vereinsfarben: Gelb #FEF200, Orange #FF7B04, Schwarz */
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
 html,body{margin:0;background:var(--bg);color:var(--text);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;}
 body{padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);}
 .wrap{max-width:640px;margin:0 auto;padding:0 0 70px;}
-header{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 16px 8px;}
+header{display:flex;align-items:center;gap:12px;padding:14px 16px 10px;border-bottom:3px solid var(--acc);background:linear-gradient(90deg,#000 0%,#000 70%,#1a1100 100%);}
+header img{width:44px;height:auto;flex:0 0 auto;}
 header b{font-size:20px;display:block;}
 header span{font-size:12px;color:var(--muted);letter-spacing:.5px;text-transform:uppercase;}
 nav.tabs{display:flex;gap:2px;overflow-x:auto;padding:0 10px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg);z-index:5;scrollbar-width:none;}
@@ -27,9 +29,10 @@ nav.tabs button.on{color:var(--acc);border-bottom-color:var(--acc);}
 main{padding:14px 12px;}
 .panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px;}
 .panel h3{margin:0 0 10px;font-size:15px;color:var(--acc);}
+.panel{border-left:3px solid var(--acc2);}
 .muted{color:var(--muted);}.small{font-size:13px;}.note{font-size:12px;color:var(--muted);line-height:1.5;}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
-.btn{border:0;border-radius:10px;padding:11px 14px;font:600 15px inherit;font-family:inherit;background:var(--acc);color:#1a1400;cursor:pointer;}
+.btn{border:0;border-radius:10px;padding:11px 14px;font:600 15px inherit;font-family:inherit;background:var(--acc);color:#000;cursor:pointer;}
 .btn.ghost{background:transparent;border:1px solid var(--border);color:var(--text);}
 .btn.full{width:100%;}
 .mini{border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:8px;padding:6px 10px;font-size:13px;font-family:inherit;cursor:pointer;}
@@ -40,7 +43,7 @@ textarea{width:100%;min-height:70px;resize:vertical;}
 label.l{display:block;font-size:12px;color:var(--muted);margin:8px 0 4px;}
 .chips{display:flex;gap:6px;flex-wrap:wrap;}
 .chip{border:1px solid var(--border);background:var(--field);color:var(--text);border-radius:20px;padding:8px 12px;font-size:14px;font-family:inherit;cursor:pointer;}
-.chip.on{background:var(--acc);border-color:var(--acc);color:#1a1400;font-weight:600;}
+.chip.on{background:var(--acc);border-color:var(--acc);color:#000;font-weight:600;}
 .chip.ok.on{background:var(--ok);border-color:var(--ok);color:#03150a;}
 .chip.aus.on{background:var(--rot);border-color:var(--rot);color:#fff;}
 .chip.frei.on{background:var(--blau);border-color:var(--blau);color:#04142a;}
@@ -58,7 +61,7 @@ label.l{display:block;font-size:12px;color:var(--muted);margin:8px 0 4px;}
 .tag{display:inline-block;font-size:11px;border-radius:8px;padding:2px 7px;margin-left:4px;background:#ffffff14;color:var(--muted);font-weight:500;}
 .tag.ok{background:#22c55e26;color:#86efac;}.tag.aus{background:#ef444426;color:#fca5a5;}.tag.frei{background:#60a5fa26;color:#bfdbfe;}.tag.offen{background:#facc1526;color:#fde68a;}
 .s{color:#86efac}.u{color:#fde68a}.n{color:#fca5a5}
-.monat{font-size:12px;color:var(--acc);text-transform:uppercase;letter-spacing:1px;margin:14px 2px 2px;}
+.monat{font-size:12px;color:var(--acc2);text-transform:uppercase;letter-spacing:1px;margin:14px 2px 2px;}
 .detail{background:var(--panel2);border:1px solid var(--acc2);border-radius:14px;padding:14px;margin:6px 0 10px;cursor:default;}
 .kpi{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;}
 .kpi div{background:var(--field);border-radius:10px;padding:10px;text-align:center;}
@@ -106,7 +109,7 @@ function name(id){var p=sp(id);return p&&!p.del?p.name:"(gelöscht)";}
 /* ---------- Einrichtung: Team-PIN entschlüsselt die Startdaten ---------- */
 function hol(p){return fetch(p,{cache:"no-cache"}).then(function(r){if(!r.ok)throw new Error("fehlt");return r;});}
 function vPin(fehler){
-  app.innerHTML='<div class="start"><div style="font-size:54px">⚽</div><h2 style="margin:6px 0">Trainer-App</h2><p class="muted">Bitte einmal die <b>Team-PIN</b> eingeben.</p>'+
+  app.innerHTML='<div class="start"><img src="logo.png" alt="" style="width:110px;height:auto"><h2 style="margin:6px 0">Trainer-App</h2><p class="muted">Bitte einmal die <b>Team-PIN</b> eingeben.</p>'+
     '<input id="pin" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Team-PIN">'+(fehler?'<p style="color:#fca5a5">'+esc(fehler)+"</p>":"")+
     '<button class="btn full" id="los">Weiter</button></div>';
   var i=document.getElementById("pin");i.focus();i.onkeydown=function(e){if(e.key==="Enter")los();};document.getElementById("los").onclick=los;
@@ -142,7 +145,7 @@ var TABS=[["start","🏠 Übersicht"],["training","🏃 Training"],["spiele","�
 function render(){
   if(!data){vPin();return;}
   var a=document.activeElement,fokus=a&&a.id&&/INPUT|TEXTAREA/.test(a.tagName)?{id:a.id,v:a.value,s:a.selectionStart}:null;
-  var h='<header><div><b>⚽ '+esc(data.team.name||"Trainer-App")+"</b><span>"+esc(data.team.liga||"Training · Spiele · Auswertung")+"</span></div></header>";
+  var h='<header><img src="logo.png" alt=""><div><b>'+esc(data.team.name||"Trainer-App")+"</b><span>"+esc(data.team.liga||"Training · Spiele · Auswertung")+"</span></div></header>";
   h+='<nav class="tabs">'+TABS.map(function(t){return '<button class="'+(st.tab===t[0]?"on":"")+'" onclick="A.tab(\''+t[0]+'\')">'+t[1]+"</button>";}).join("")+"</nav><main>";
   h+=({start:vStart,training:vTraining,spiele:vSpiele,spieler:vSpieler,auswertung:vAuswertung,einst:vEinst}[st.tab]||vStart)();
   h+="</main>";
