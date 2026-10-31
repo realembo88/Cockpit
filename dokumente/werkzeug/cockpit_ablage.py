@@ -122,7 +122,10 @@ ZUSATZ = """
            "Aldi Sued", "Lidl", "dm", "Rossmann", "Baeckerei Mueller"
   "ort": Ort der Filiale oder null
   "datum": Kaufdatum "YYYY-MM-DD"; "zeit": Uhrzeit "HH:MM" oder null
-  "summe": zu zahlender Gesamtbetrag in Euro als Zahl (nach Rabatten, inkl. Pfand)
+  "summe": zu zahlender Gesamtbetrag in Euro als Zahl (Zeile SUMME / Zu zahlen / Gesamt, nach Rabatten, inkl. Pfand).
+           NICHT der gegebene Betrag (Zeile "Gegeben", "Bar", "BAR EUR") und nicht das Rueckgeld!
+  "gegeben": bei Barzahlung der gegebene Betrag laut Bon als Zahl, sonst null
+  "rueckgeld": bei Barzahlung das Rueckgeld laut Bon als Zahl, sonst null
   "zahlart": "bar" (Bar, Gegeben, Rueckgeld), "karte" (girocard, EC-Cash, Maestro, V PAY, Visa, Mastercard,
              Kreditkarte, Kartenzahlung, kontaktlos, Apple Pay, Google Pay), "sonstiges" (Gutschein, App,
              PayPal, Rechnung) oder "unbekannt"
@@ -493,6 +496,16 @@ def normalisiere_bon(b, meta: dict, ref=None, info=None):
     summe = zahl(b.get("summe"))
     if summe is None and artikel:
         summe = round(sum(x[1] for x in artikel), 2)
+    # Barzahlung: wurde der gegebene Betrag als Summe gelesen? -> Gegeben minus Rueckgeld bzw. Summe der Positionen
+    gegeben, rueck = zahl(b.get("gegeben")), zahl(b.get("rueckgeld"))
+    korrigiert = None
+    if summe is not None and gegeben and abs(summe - gegeben) < 0.01:
+        if rueck and rueck > 0:
+            summe, korrigiert = round(gegeben - rueck, 2), "gegeben-rueckgeld"
+        elif artikel:
+            pos = round(sum(x[1] for x in artikel), 2)
+            if 0 < pos < summe - 0.5:
+                summe, korrigiert = pos, "positionen"
     if summe is None:
         return None
     zeit = re.match(r"\s*(\d{1,2})[:.](\d{2})", str(b.get("zeit") or ""))
@@ -509,6 +522,8 @@ def normalisiere_bon(b, meta: dict, ref=None, info=None):
         "karte": "" if A.is_empty(karte) else str(karte).strip()[:20],
         "artikel": artikel,
     }
+    if korrigiert:
+        out["korrigiert"] = korrigiert  # Summe war der gegebene Betrag -> korrigiert
     if artikel:
         diff = round(sum(x[1] for x in artikel) - summe, 2)
         if abs(diff) > 0.05:

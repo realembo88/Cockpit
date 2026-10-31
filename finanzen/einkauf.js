@@ -43,7 +43,10 @@ function manBons(d){return Object.keys(d.manuell).map(function(id){return d.manu
   .map(function(m){return {id:m.id,laden:m.laden||"Unbekannt",ort:m.ort||"",datum:m.datum,zeit:m.zeit||"",summe:round2(+m.summe),zahlart:m.zahlart||"unbekannt",artikel:manArtikel(m),manuell:true};});}
 /* Bons mit Korrekturen; aus=true → nicht mitzählen */
 function bons(d){d=norm(d);var al=aliase(d);return d.bons.concat(manBons(d)).filter(function(b){return b&&b.id&&b.datum&&typeof b.summe==="number";}).map(function(b){var k=d.korr[b.id]||{},a=al[fold(b.laden)];
-  return Object.assign({},b,{laden:a||b.laden,ladenOrig:b.laden,ladenNeu:!!a,zahlart:k.zahlart||b.zahlart||"unbekannt",zk:!!k.zahlart,aus:!!k.aus,artikel:Array.isArray(b.artikel)?b.artikel:[]});})
+  /* korrigierter Betrag (korr.summe) gilt vor dem gelesenen; Abweichung der Positionen neu berechnen */
+  var art=Array.isArray(b.artikel)?b.artikel:[],summe=k.summe!=null&&isFinite(+k.summe)?+k.summe:b.summe,pos=art.reduce(function(s,a){return s+(+a[1]||0);},0),df=art.length?Math.round((pos-summe)*100)/100:0;
+  return Object.assign({},b,{laden:a||b.laden,ladenOrig:b.laden,ladenNeu:!!a,zahlart:k.zahlart||b.zahlart||"unbekannt",zk:!!k.zahlart,aus:!!k.aus,artikel:art,
+    summe:summe,summeOrig:b.summe,sk:k.summe!=null,posSumme:Math.round(pos*100)/100,diff:Math.abs(df)>0.05?df:0});})
   .sort(function(a,b){return (b.datum+(b.zeit||"")).localeCompare(a.datum+(a.zeit||""));});}
 
 function dDiff(a,b){return Math.round((new Date(b+"T12:00:00")-new Date(a+"T12:00:00"))/DAY);}

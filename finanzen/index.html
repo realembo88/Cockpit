@@ -549,10 +549,14 @@ function bonRow(b,m){
   var h='<div class="tx'+(b.aus?" aus":"")+'"><div style="min-width:0;flex:1"><div class="p" style="cursor:pointer" onclick="F2.ekOpen(\''+id+'\')">'+C.esc(b.laden||"Unbekannt")+(b.ort?' <span class="small muted">'+C.esc(b.ort)+"</span>":"")+"</div>"+
     '<div class="z">'+dt(b.datum)+(b.zeit?" "+C.esc(b.zeit):"")+" · "+b.artikel.length+" Artikel"+(b.karte&&z==="karte"?" · "+C.esc(b.karte):"")+"</div>"+
     '<button class="cat z-'+z+'" onclick="F2.ekOpen(\''+id+'\')">'+E.ICON[z]+" "+E.ZA[z]+(b.zk?" ✎":"")+"</button>"+
-    (t?'<span class="cat ok" title="'+C.esc((t.p||t.t||"")+" · "+t.d)+'">✓ Konto '+dt(t.d)+"</span>":"")+(b.diff?'<span class="cat u" title="Die Positionen ergeben nicht die Summe">⚠ Positionen</span>':"")+(b.aus?'<span class="cat u">nicht gezählt</span>':"")+(b.manuell?'<span class="cat d">✍ manuell</span>':"");
+    (t?'<span class="cat ok" title="'+C.esc((t.p||t.t||"")+" · "+t.d)+'">✓ Konto '+dt(t.d)+"</span>":"")+(b.diff?'<span class="cat u" title="Die Positionen ergeben nicht die Summe">⚠ Positionen</span>':"")+(b.sk?'<span class="cat d">✎ Betrag</span>':"")+(b.aus?'<span class="cat u">nicht gezählt</span>':"")+(b.manuell?'<span class="cat d">✍ manuell</span>':"");
   if(op){
     h+='<div class="bonbox">'+(b.artikel.length?b.artikel.map(function(a){var mg=+a[3];return '<div class="art"><span class="n">'+C.esc(a[0])+(mg&&mg!==1?" <i>× "+C.num(mg,mg%1?3:0)+"</i>":"")+" <i>· "+C.esc(E.katName(eink,+a[2]))+'</i></span><span class="v">'+C.eur(+a[1])+"</span></div>";}).join(""):'<div class="note">Keine Positionen erkannt.</div>')+
-      (b.diff?'<div class="note" style="color:#ffb74d;margin-top:6px">Die Positionen ergeben '+C.eur(b.summe+b.diff)+" statt "+C.eur(b.summe)+" – die Summe des Bons zählt.</div>":"")+
+      (b.diff?'<div class="note" style="color:#ffb74d;margin-top:6px">Die Positionen ergeben '+C.eur(b.posSumme)+" statt "+C.eur(b.summe)+" – die Summe des Bons zählt. Falsch gelesen (z. B. „Gegeben“ statt Summe)? Unten korrigieren.</div>":"")+
+      (b.korrigiert&&!b.sk?'<div class="note" style="margin-top:6px">Beim Auslesen korrigiert: '+(b.korrigiert==="positionen"?"Summe der Positionen statt gegebenem Betrag":"gegeben minus Rückgeld")+".</div>":"")+
+      '<div style="display:flex;gap:6px;align-items:center;margin-top:10px;flex-wrap:wrap"><span class="small muted" style="white-space:nowrap">Betrag</span><input class="search" id="bs'+id+'" inputmode="decimal" style="margin:0;padding:7px 10px;font-size:13px;width:110px" value="'+String(b.summe.toFixed(2)).replace(".",",")+'" onchange="F2.ekSumme(\''+id+'\',this.value)">'+
+        (b.diff&&b.posSumme>0?'<button class="pill" onclick="F2.ekSumme(\''+id+'\',\''+b.posSumme+'\')">Summe der Positionen übernehmen ('+C.eurRaw(b.posSumme)+')</button>':"")+
+        (b.sk?'<button class="pill" onclick="F2.ekSumme(\''+id+'\',null)">gelesenen Betrag ('+C.eurRaw(b.summeOrig)+') wiederherstellen</button>':"")+"</div>"+
       '<div style="display:flex;gap:6px;align-items:center;margin-top:10px"><span class="small muted" style="white-space:nowrap">Geschäft</span><input class="search" style="margin:0;padding:7px 10px;font-size:13px" value="'+C.esc(b.laden||"")+'" onchange="F2.ekLaden(\''+id+'\',this.value)"></div>'+
       (b.ladenNeu?'<div class="note">gelesen als „'+C.esc(b.ladenOrig)+'“</div>':"")+
       '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:10px"><select class="inl" onchange="F2.ekSetZa(\''+id+'\',this.value)">'+Object.keys(E.ZA).map(function(k){return '<option value="'+k+'"'+(k===b.zahlart?" selected":"")+">"+E.ICON[k]+" "+E.ZA[k]+"</option>";}).join("")+"</select>"+
@@ -867,6 +871,9 @@ window.F2={
   ekMore:function(){st.ek.limit+=30;render();},
   ekSetZa:function(id,z){var b=eink.bons.filter(function(x){return x.id===id;})[0],k=Object.assign({},eink.korr[id]);
     if(b&&b.zahlart===z)delete k.zahlart;else k.zahlart=z;k.t=Date.now();eink.korr[id]=k;C.save("einkaeufe",eink);render();},
+  ekSumme:function(id,v){if(eink.manuell[id]){var n0=v==null?null:C.parseNum(String(v));if(n0==null||isNaN(n0)||!(n0>0))return;eink.manuell[id]=Object.assign({},eink.manuell[id],{summe:Math.round(n0*100)/100,t:Date.now()});C.save("einkaeufe",eink);flash("✓ Betrag geändert");return;}
+    var k=Object.assign({},eink.korr[id]);if(v==null)delete k.summe;else{var n=C.parseNum(String(v));if(isNaN(n)||!(n>0)){flash("⚠ Bitte einen gültigen Betrag eingeben",true);return;}k.summe=Math.round(n*100)/100;}
+    k.t=Date.now();eink.korr[id]=k;C.save("einkaeufe",eink);flash(v==null?"✓ Gelesener Betrag wiederhergestellt":"✓ Betrag auf "+C.eur(k.summe)+" korrigiert");},
   ekAus:function(id){var k=Object.assign({},eink.korr[id]);if(k.aus)delete k.aus;else k.aus=true;k.t=Date.now();eink.korr[id]=k;C.save("einkaeufe",eink);render();},
   ekNeu:function(){st.ek.form=ekBlank();render();var x=document.getElementById("ekForm");if(x)x.scrollIntoView({block:"start"});},
   ekAbbr:function(){st.ek.form=null;render();},
