@@ -81,6 +81,17 @@ function render(){syncGear();syncCustom();
   h+=({uebersicht:vDash,kraft:vKraft,hiit:vHiit,lauf:vLauf,koerper:vBody,einst:vEinst,counter:vCounter,prozent:vProzent,verlauf:vList,fortschritt:vProg,gruppe:vGruppe}[st.tab]||vDash)();
   document.getElementById("main").innerHTML=h;
 }
+var MON_L=["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"],MON_K=["Jan","Feb","März","Apr","Mai","Juni","Juli","Aug","Sep","Okt","Nov","Dez"];
+function monVor(m){var y=+m.slice(0,4),n=+m.slice(5,7)-1;if(n<1){n=12;y--;}return y+"-"+String(n).padStart(2,"0");}
+function monNach(m){var y=+m.slice(0,4),n=+m.slice(5,7)+1;if(n>12){n=1;y++;}return y+"-"+String(n).padStart(2,"0");}
+/* Kennzahlen eines Monats (für den Monatsbericht) */
+function monWerte(l,m){var mm=l.filter(function(s){return s.date.slice(0,7)===m;}),runs=mm.filter(function(s){return s.type==="lauf";}),kr=mm.filter(function(s){return s.type==="kraft";}),
+  hm=mm.filter(function(s){return s.type==="hiit";}),cm=mm.filter(function(s){return s.type==="counter";}),sum=function(a,f){return a.reduce(function(x,s){return x+(f(s)||0);},0);};
+  var w3=0,ws=weekStart(m+"-01");if(ws<m+"-01")ws=new Date(new Date(ws+"T12:00:00").getTime()+7*DAY).toISOString().slice(0,10);
+  for(;ws.slice(0,7)===m;ws=new Date(new Date(ws+"T12:00:00").getTime()+7*DAY).toISOString().slice(0,10)){var we=new Date(new Date(ws+"T12:00:00").getTime()+7*DAY).toISOString().slice(0,10);
+    if(l.filter(function(s){return s.date>=ws&&s.date<we;}).length>=3)w3++;}
+  return {n:mm.length,kr:kr.length,hi:hm.length,hiMin:Math.round(sum(hm,function(s){return s.secs;})/60),runs:runs.length,km:sum(runs,function(s){return s.dist;}),dur:sum(runs,function(s){return s.dur;}),
+    hm:sum(runs,function(s){return s.hm;}),kcal:sum(runs,function(s){return s.kcal;}),vol:sum(kr,volume),cn:cm.length,cnS:sum(cm,function(s){return s.count;}),w3:w3};}
 function kpi(i,l,v){return '<div class="kpi"><div class="ico">'+i+'</div><div class="val">'+v+'</div><div class="lab">'+l+"</div></div>";}
 
 /* ---------- Übersicht ---------- */
@@ -97,15 +108,23 @@ function vDash(){
   h+='</div><div class="note">Gestrichelt: geplant laut '+(Object.keys(plan()).length?"deinem Wochenplan":'Wochenplan – <a href="#" style="color:#fb7185" onclick="T.tab(\'einst\');return false">jetzt festlegen</a>')+'. Rot: '+(SA?"Training erledigt":"Kraft erledigt, gelb: HIIT, blau: gelaufen")+'.</div>';
   if(plan()[new Date().getDay()]==="HIIT"&&!l.some(function(s){return s.date===today&&s.type==="hiit";}))h+='<button class="btn amb full" style="margin-top:12px" onclick="T.tab(\'hiit\')">⚡ Heute ist HIIT-Tag – Training erstellen</button>';
   h+='</div>';
-  var m=today.slice(0,7),mm=l.filter(function(s){return s.date.slice(0,7)===m;});
-  var runs=mm.filter(function(s){return s.type==="lauf";}),kr=mm.filter(function(s){return s.type==="kraft";}),hm=mm.filter(function(s){return s.type==="hiit";});
-  /* Serie: Wochen in Folge mit mindestens 3 Einheiten */
+  /* Monatsbericht – mit ‹ › zwischen den Monaten wechseln, Vergleich zum Vormonat */
+  var mAkt=today.slice(0,7),mErst=l.length?l[l.length-1].date.slice(0,7):mAkt;
+  if(!st.mon||st.mon>mAkt||st.mon<mErst)st.mon=mAkt;
+  var m=st.mon,mv=monVor(m),W=monWerte(l,m),V=monWerte(l,mv),istAkt=m===mAkt;
   var streak=0;for(var w=0;w<52;w++){var a=new Date(new Date(ws+"T12:00:00").getTime()-w*7*DAY).toISOString().slice(0,10),b=new Date(new Date(a+"T12:00:00").getTime()+7*DAY).toISOString().slice(0,10);
     var n=l.filter(function(s){return s.date>=a&&s.date<b;}).length;if(n>=3)streak++;else if(w>0)break;}
-  var cm=mm.filter(function(s){return s.type==="counter";});
-  if(SA)h+='<div class="grid2" style="margin-bottom:14px">'+kpi("🏋️","Krafteinheiten im Monat",kr.length)+kpi("🔢","Zählungen im Monat",cm.length+(cm.length?' <span class="small muted">· '+C.int(cm.reduce(function(a,s){return a+s.count;},0))+" gesamt</span>":""))+kpi("⚖️","Volumen im Monat",C.int(kr.reduce(function(a,s){return a+volume(s);},0))+" kg")+kpi("🔥","Wochen mit ≥ 3 Einheiten",streak+" in Folge")+"</div>";
-  else h+='<div class="grid2" style="margin-bottom:14px">'+kpi("🏋️","Krafteinheiten im Monat",kr.length)+kpi("⚡","HIIT im Monat",hm.length+(hm.length?' <span class="small muted">· '+Math.round(hm.reduce(function(a,s){return a+(s.secs||0);},0)/60)+" min</span>":""))+kpi("🏃","Kilometer im Monat",C.num(runs.reduce(function(a,s){return a+(s.dist||0);},0),1)+" km"+(runs.length?' <span class="small muted">· '+runs.length+"× · "+fmtDur(runs.reduce(function(a,s){return a+(s.dur||0);},0))+(runs.some(function(s){return s.hm;})?" · ↗ "+C.int(runs.reduce(function(a,s){return a+(s.hm||0);},0))+" m":"")+(runs.some(function(s){return s.kcal;})?" · "+C.int(runs.reduce(function(a,s){return a+(s.kcal||0);},0))+" kcal":"")+"</span>":""))+
-    kpi("⚖️","Volumen im Monat",C.int(kr.reduce(function(a,s){return a+volume(s);},0))+" kg")+kpi("🔥","Wochen mit ≥ 3 Einheiten",streak+" in Folge")+kpi("🗓️","Einheiten im Monat",mm.length)+"</div>";
+  var vk=MON_K[+mv.slice(5,7)-1]+".";
+  function dl(x,y,f){if(!V.n&&!y)return "";var d=x-y;if(Math.abs(d)<1e-9)return '<div class="mdl">= '+vk+"</div>";
+    return '<div class="mdl '+(d>0?"up":"dn")+'">'+(d>0?"▲ +":"▼ ")+(f?f(d):C.int(d))+" ggü. "+vk+"</div>";}
+  function kp(i,lab,v,x,y,f){return kpi(i,lab,v+(y==null?"":dl(x,y,f)));}
+  var km1=function(d){return C.num(d,1).replace(/^-/,"−")+" km";};
+  h+='<div class="monnav"><button class="btn sec" onclick="T.mon(-1)"'+(m<=mErst?" disabled":"")+'>‹</button><b>'+MON_L[+m.slice(5,7)-1]+" "+m.slice(0,4)+'</b><button class="btn sec" onclick="T.mon(1)"'+(istAkt?" disabled":"")+'>›</button>'+(istAkt?"":'<button class="btn sec akt" onclick="T.mon(0)">Aktuell</button>')+"</div>";
+  var wochen=istAkt?kp("🔥","Wochen mit ≥ 3 Einheiten",streak+" in Folge",streak,null):kp("🔥","Wochen mit ≥ 3 Einheiten",W.w3+" im Monat",W.w3,V.w3);
+  if(SA)h+='<div class="grid2" style="margin-bottom:14px">'+kp("🏋️","Krafteinheiten im Monat",W.kr,W.kr,V.kr)+kp("🔢","Zählungen im Monat",W.cn+(W.cn?' <span class="small muted">· '+C.int(W.cnS)+" gesamt</span>":""),W.cn,V.cn)+kp("⚖️","Volumen im Monat",C.int(W.vol)+" kg",W.vol,V.vol,function(d){return C.int(d)+" kg";})+wochen+"</div>";
+  else h+='<div class="grid2" style="margin-bottom:14px">'+kp("🏋️","Krafteinheiten im Monat",W.kr,W.kr,V.kr)+kp("⚡","HIIT im Monat",W.hi+(W.hi?' <span class="small muted">· '+W.hiMin+" min</span>":""),W.hi,V.hi)+
+    kp("🏃","Kilometer im Monat",C.num(W.km,1)+" km"+(W.runs?' <span class="small muted">· '+W.runs+"× · "+fmtDur(W.dur)+(W.hm?" · ↗ "+C.int(W.hm)+" m":"")+(W.kcal?" · "+C.int(W.kcal)+" kcal":"")+(W.km&&W.dur?" · Ø "+fmtPace(W.dur/W.km):"")+"</span>":""),W.km,V.km,km1)+
+    kp("⚖️","Volumen im Monat",C.int(W.vol)+" kg",W.vol,V.vol,function(d){return C.int(d)+" kg";})+wochen+kp("🗓️","Einheiten im Monat",W.n,W.n,V.n)+"</div>";
   if(!l.length)return h+'<div class="empty"><div class="big">🏋️</div>Noch kein Training erfasst.<br><button class="btn" style="margin-top:14px" onclick="T.tab(\'kraft\')">Erstes Training eintragen</button></div>';
   /* 12 Wochen */
   var weeks=[];for(w=11;w>=0;w--){var a2=new Date(new Date(ws+"T12:00:00").getTime()-w*7*DAY).toISOString().slice(0,10),b2=new Date(new Date(a2+"T12:00:00").getTime()+7*DAY).toISOString().slice(0,10);
@@ -704,7 +723,8 @@ window.T={
     render();window.scrollTo(0,0);},
   cancel:function(){st.editId=null;st.form=null;st.run=null;st.tab="verlauf";render();},
   del:function(id){if(!confirm("Einheit löschen?"))return;delete data.sessions[id];if(data.deleted.indexOf(id)<0)data.deleted.push(id);persist();render();},
-  exSel:function(v){st.exSel=v||null;render();}
+  exSel:function(v){st.exSel=v||null;render();},
+  mon:function(d){var a=C.today().slice(0,7);st.mon=d===0?a:d<0?monVor(st.mon||a):monNach(st.mon||a);render();}
 };
 Object.assign(window.T,{
   hMode:function(m){hset("mode",m);render();},
