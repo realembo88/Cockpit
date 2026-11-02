@@ -779,7 +779,7 @@ function rDashboard(){
   </div>
   <div class="cg">
     <div class="ecw ch-big"><div class="ecw-t"><span>Monatliche Kosten nach Energieträger</span>
-      <div class="eleg" style="margin:0"><div class="eli"><div class="els" style="background:${C.gas}"></div>Gas</div><div class="eli"><div class="els" style="background:${C.wat}"></div>Wasser/AW</div><div class="eli"><div class="els" style="background:${C.stb}"></div>Strom (netto)</div></div>
+      <div class="eleg" style="margin:0"><div class="eli"><div class="els" style="background:${C.wat}"></div>Wasser/AW</div><div class="eli"><div class="els" style="background:${C.gas}"></div>Gas</div><div class="eli"><div class="els" style="background:${C.stb}"></div>Strom (netto)</div></div>
     </div><div class="canvas-wrap"><canvas id="chCost"></canvas></div></div>
     <div class="ecw"><div class="ecw-t"><span>Gasverbrauch</span></div><div class="canvas-wrap"><canvas id="chGas"></canvas></div></div>
     <div class="ecw"><div class="ecw-t"><span>Wasserverbrauch</span></div><div class="canvas-wrap"><canvas id="chWas"></canvas></div></div>
@@ -814,8 +814,8 @@ function doCharts(){
     scales:{x:{ticks:{color:C.tx,font:{size:10},autoSkip:false,maxRotation:0},grid:{color:C.gr}},
             y:{ticks:{color:C.tx,font:{size:10}},grid:{color:C.gr},beginAtZero:true}}};
   mkC('chCost',{type:'bar',data:{labels:MO,datasets:[
-    {label:'Gas',data:a.gc.map(c=>c.tot),backgroundColor:C.gas,stack:'k'},
     {label:'Wasser',data:a.wc.map(c=>c.tot),backgroundColor:C.wat,stack:'k'},
+    {label:'Gas',data:a.gc.map(c=>c.tot),backgroundColor:C.gas,stack:'k'},
     {label:'Strom',data:a.sc.map(c=>c.net),backgroundColor:C.stb,stack:'k'}]},
     options:{...base,scales:{x:{...base.scales.x,stacked:true},y:{...base.scales.y,stacked:true,ticks:{...base.scales.y.ticks,callback:v=>v+'€'}}}}});
   mkC('chGas',{type:'bar',data:{labels:MO,datasets:[{label:'kWh',data:a.gc.map(c=>c.v),backgroundColor:C.gas}]},
