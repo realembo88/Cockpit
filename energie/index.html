@@ -554,6 +554,9 @@ function minusTag(ds,n){const x=new Date(ds+'T12:00:00');x.setDate(x.getDate()-n
 /* Monatswerte aus Haus → Technik (synchronisiert), falls keine Tageswerte da sind */
 function wMonat(ym){const h=Cockpit.getLocal('haus',null),w=h&&h.technik&&h.technik.wetter;return w&&w[ym]&&w[ym].voll?w[ym]:null;}
 function tTag(ds){const o=wOrt();if(WT.t&&o&&WT.key===wKey(o)&&WT.t[ds]!=null)return WT.t[ds];const m=wMonat(ds.slice(0,7));return m&&m.tm!=null?m.tm:null;}
+/* Monatsmittel der Außentemperatur (laufender Monat: bis gestern), null wenn keine Werte */
+function tMonat(y,k){const heute=new Date().toISOString().slice(0,10);let s=0,n=0;for(let t=1;t<=DIM(y,k);t++){const ds=isoD(y,k,t);if(ds>=heute)break;const v=tTag(ds);if(v!=null){s+=v;n++;}}return n?s/n:null;}
+function tLabels(y){return MO.map((m,k)=>{const t=tMonat(y,k);return t==null?m:[m,(Math.round(t*10)/10).toLocaleString('de-DE',{minimumFractionDigits:1})+' °C'];});}
 function tGeo(ds){let s=0,n=0;const g=[1,.5,.25,.125];for(let i=0;i<4;i++){const v=tTag(minusTag(ds,i));if(v==null){if(!i)return null;continue;}s+=g[i]*v;n+=g[i];}return s/n;}
 function hgtMonat(y,k){let s=0;const n=DIM(y,k);for(let t=1;t<=n;t++){const T=tTag(isoD(y,k,t));if(T==null){const m=wMonat(y+'-'+String(k+1).padStart(2,'0'));return m?m.hgt:null;}if(T<15)s+=20-T;}return s;}
 function hgtJahr(){const l=[];Object.keys(S.data).map(Number).forEach(y=>{let s=0,ok=true;for(let k=0;k<12&&ok;k++){const h=hgtMonat(y,k);if(h==null)ok=false;else s+=h;}if(ok&&s>0)l.push(s);});
@@ -813,7 +816,7 @@ function doCharts(){
   const base={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{titleFont:{size:11},bodyFont:{size:11}}},
     scales:{x:{ticks:{color:C.tx,font:{size:10},autoSkip:false,maxRotation:0},grid:{color:C.gr}},
             y:{ticks:{color:C.tx,font:{size:10}},grid:{color:C.gr},beginAtZero:true}}};
-  mkC('chCost',{type:'bar',data:{labels:MO,datasets:[
+  mkC('chCost',{type:'bar',data:{labels:tLabels(S.year),datasets:[
     {label:'Wasser',data:a.wc.map(c=>c.tot),backgroundColor:C.wat,stack:'k'},
     {label:'Gas',data:a.gc.map(c=>c.tot),backgroundColor:C.gas,stack:'k'},
     {label:'Strom',data:a.sc.map(c=>c.net),backgroundColor:C.stb,stack:'k'}]},
