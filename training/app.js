@@ -37,6 +37,9 @@ C.registerMerge(AREA,merge);
 var data=norm(C.getLocal(AREA,blank));
 var st={tab:SA?"counter":"uebersicht",flash:null,form:null,run:null,open:{},exSel:null,editId:null};
 function tpls(){return data.templates||DEF_TPL;}
+/* Vorlagenzeile „Übung | 4×6–8“: Name, Ziel (Sätze × Wiederholungen bzw. Sekunden), Satzzahl, obere Wiederholungszahl */
+function tplEx(line){var p=String(line||"").split("|"),n=p[0].trim(),z=(p.slice(1).join("|")||"").trim(),m=z.match(/^(\d+)\s*[×xX]\s*(\d+)(?:\s*[–\-]\s*(\d+))?/);
+  return {n:n,z:z,s:m?+m[1]:0,top:m?+(m[3]||m[2]):0};}
 function list(){return Object.keys(data.sessions).map(function(k){return data.sessions[k];}).sort(function(a,b){return b.date.localeCompare(a.date)||(b.upd||0)-(a.upd||0);});}
 function persist(){data._summary=summaryFor(data);C.save(AREA,data);}
 function flash(t,warn){st.flash={t:t,warn:!!warn};render();clearTimeout(flash.tm);flash.tm=setTimeout(function(){st.flash=null;render();},warn?3500:2400);}
@@ -68,7 +71,7 @@ function summaryFor(d){
 function lastOf(name,before){var n=String(name||"").toLowerCase().trim();if(!n)return null;
   var l=list().filter(function(s){return s.type==="kraft"&&(!before||s.date<before||(s.date===before&&s.id!==st.editId))&&s.id!==st.editId;});
   for(var i=0;i<l.length;i++){var e=(l[i].exercises||[]).filter(function(x){return x.name.toLowerCase().trim()===n;})[0];if(e)return {date:l[i].date,e:e};}return null;}
-function allExercises(){var s={};Object.keys(tpls()).forEach(function(t){tpls()[t].forEach(function(n){s[n]=1;});});list().forEach(function(x){(x.exercises||[]).forEach(function(e){if(e.name)s[e.name]=1;});});return Object.keys(s).sort(function(a,b){return a.localeCompare(b,"de");});}
+function allExercises(){var s={};Object.keys(tpls()).forEach(function(t){tpls()[t].forEach(function(n){n=tplEx(n).n;if(n)s[n]=1;});});list().forEach(function(x){(x.exercises||[]).forEach(function(e){if(e.name)s[e.name]=1;});});return Object.keys(s).sort(function(a,b){return a.localeCompare(b,"de");});}
 
 /* ---------- Rahmen ---------- */
 function render(){syncGear();syncCustom();
@@ -139,8 +142,9 @@ function vDash(){
 /* ---------- Kraft erfassen ---------- */
 function newForm(tpl){
   var names=tpl&&tpls()[tpl]?tpls()[tpl].slice():[""];
-  return {date:C.today(),tpl:tpl||"",note:"",exercises:names.map(function(n){var last=lastOf(n,C.today());
-    return {name:n,unit:last?unitOf(last.e):(isTimed(n)?"s":"r"),sets:last?last.e.sets.map(function(x){return {r:"",w:""};}):[{r:"",w:""},{r:"",w:""},{r:"",w:""}]};})};
+  return {date:C.today(),tpl:tpl||"",note:"",exercises:names.map(function(line){var x=tplEx(line),n=x.n,last=lastOf(n,C.today()),k=x.s||(last?last.e.sets.length:3),sets=[];
+    for(var i=0;i<k;i++)sets.push({r:"",w:""});
+    var o={name:n,unit:last?unitOf(last.e):(isTimed(n)?"s":"r"),sets:sets};if(x.z){o.ziel=x.z;o.top=x.top;}return o;})};
 }
 function vKraft(){
   if(!st.form){var wd=new Date().getDay();st.form=newForm(tpls()[plan()[wd]]?plan()[wd]:"");}
@@ -150,6 +154,8 @@ function vKraft(){
   if(!st.editId)h+='<div class="small muted" style="margin-bottom:6px">Vorlage</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">'+Object.keys(tpls()).map(function(t){return '<button class="chip'+(f.tpl===t?" on":"")+'" onclick="T.tpl(\''+C.esc(t)+'\')">'+C.esc(t)+"</button>";}).join("")+'<button class="chip'+(!f.tpl?" on":"")+'" onclick="T.tpl(\'\')">Frei</button></div>';
   f.exercises.forEach(function(e,i){var last=lastOf(e.name,f.date);
     h+='<div class="ex"><div class="hd"><input list="exList" placeholder="Übung" value="'+C.esc(e.name)+'" onchange="T.en('+i+',this.value)"><button class="x" onclick="T.rmEx('+i+')" aria-label="Übung entfernen">✕</button></div>';
+    if(e.ziel){var hoch=last&&e.top&&unitOf(last.e)!=="s"&&last.e.sets.length&&last.e.sets.every(function(x){return +x.r>=e.top;});
+      h+='<div class="last" style="color:#fbbf24">🎯 Ziel: '+C.esc(e.ziel)+(hoch?' · <b>💪 letztes Mal alle Sätze ≥ '+e.top+' – Gewicht erhöhen</b>':"")+"</div>";}
     if(last)h+='<div class="last">Letztes Mal ('+new Date(last.date).toLocaleDateString("de-DE",{day:"numeric",month:"numeric"})+'): '+setsTxt(last.e)+"</div>";
     var tm=unitOf(e)==="s";
     h+='<div class="set"><span>Satz</span><span>'+(tm?"Sek.":"Wdh.")+'</span><span>'+(tm?"+ kg":"kg")+'</span><span></span></div>';
@@ -580,12 +586,12 @@ function vEinst(){
   h+="</div>";
   /* Vorlagen */
   h+='<div class="panel"><h3>📝 Kraft-Vorlagen</h3>';
-  if(!st.te){h+=names.map(function(n){return '<div class="pr"><span><b style="color:#fff">'+C.esc(n)+'</b><br><span class="small muted">'+tpls()[n].map(C.esc).join(" · ")+"</span></span></div>";}).join("")+
+  if(!st.te){h+=names.map(function(n){return '<div class="pr"><span><b style="color:#fff">'+C.esc(n)+'</b><br><span class="small muted">'+tpls()[n].map(function(l){var x=tplEx(l);return C.esc(x.n)+(x.z?' <span style="color:#fbbf24">'+C.esc(x.z)+"</span>":"");}).join(" · ")+"</span></span></div>";}).join("")+
     '<button class="btn ghost full" style="margin-top:10px" onclick="T.teOpen()">Vorlagen bearbeiten</button>';}
   else{st.te.forEach(function(t,i){h+='<div class="ex"><div class="hd"><input value="'+C.esc(t.name)+'" placeholder="Name, z. B. Oberkörper" oninput="T.teV('+i+',\'name\',this.value)"><button class="x" onclick="T.teRm('+i+')" aria-label="Vorlage löschen">✕</button></div>'+
       '<textarea rows="'+Math.max(4,t.list.split("\n").length+1)+'" style="width:100%;background:var(--field);border:1px solid var(--border);border-radius:8px;color:#fff;padding:9px;font-size:14px;line-height:1.5" placeholder="Eine Übung pro Zeile" oninput="T.teV('+i+',\'list\',this.value)">'+C.esc(t.list)+"</textarea></div>";});
     h+='<button class="btn ghost full" style="margin-bottom:10px" onclick="T.teAdd()">＋ Vorlage</button><div class="row2"><button class="btn grad" onclick="T.teSave()">Vorlagen speichern</button><button class="btn ghost" style="flex:0 0 auto" onclick="T.teCancel()">Abbrechen</button></div>'+
-      '<div class="note" style="margin-top:8px">Eine Übung pro Zeile. Haltezeit-Übungen (Plank, Wandsitz …) werden automatisch in Sekunden gezählt.</div>';}
+      '<div class="note" style="margin-top:8px">Eine Übung pro Zeile, optional mit Ziel nach einem senkrechten Strich, z. B. „Bankdrücken | 4×6–8“ (legt auch die Zahl der Sätze fest). Haltezeit-Übungen (Plank, Wandsitz …) werden automatisch in Sekunden gezählt.</div>';}
   h+="</div>";
   /* Eigene HIIT-Geräte */
   if(H&&!SA)h+=vGear();
@@ -699,7 +705,7 @@ window.T={
   tab:function(t){if(t!=="kraft"&&t!=="lauf"&&st.editId){st.editId=null;st.form=null;st.run=null;}if(t!=="einst")st.te=null;if(t!=="prozent")st.pzEdit=null;st.tab=t;render();window.scrollTo(0,0);},
   fd:function(v){st.form.date=v;render();},
   tpl:function(t){var keep=st.form.date;st.form=newForm(t);st.form.date=keep;render();},
-  en:function(i,v){var e=st.form.exercises[i];e.name=v.trim();var l=lastOf(e.name,st.form.date);e.unit=l?unitOf(l.e):(isTimed(e.name)?"s":"r");render();},
+  en:function(i,v){var e=st.form.exercises[i];if(e.name!==v.trim()){delete e.ziel;delete e.top;}e.name=v.trim();var l=lastOf(e.name,st.form.date);e.unit=l?unitOf(l.e):(isTimed(e.name)?"s":"r");render();},
   sv:function(i,j,k,v){st.form.exercises[i].sets[j][k]=v;},
   addSet:function(i){var s=st.form.exercises[i].sets,l=s[s.length-1]||{r:"",w:""};s.push({r:l.r,w:l.w});render();},
   rmSet:function(i,j){st.form.exercises[i].sets.splice(j,1);render();},
