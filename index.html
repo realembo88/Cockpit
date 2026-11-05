@@ -51,6 +51,7 @@
 <script src="auto/logic.js"></script>
 <script src="dokumente/logic.js"></script>
 <script src="memo/logic.js"></script>
+<script src="vorsorge/logic.js"></script>
 <script>
 (function(){
 "use strict";
@@ -69,6 +70,7 @@ var AREAS=[
   {id:"steuer",name:"Steuer",icon:"🧾",color:"#a78bfa",href:"steuer/index.html"},
   {id:"edelmetall",name:"Edelmetalle",icon:"🪙",color:"var(--c-edelmetall)",href:"edelmetall/index.html"},
   {id:"training",name:"Training",icon:"🏋️",color:"#f43f5e",href:"training/index.html"},
+  {id:"vorsorge",name:"Notvorrat",icon:"🎒",color:"#f97316",href:"vorsorge/index.html"},
   {id:"zaehler",name:"ThingCounter",icon:"🎯",color:"#14b8a6",href:"zaehler/index.html"}
 ];
 
@@ -78,6 +80,7 @@ function summary(area){
   if(area.id==="auto"&&d)return autoSummary(d);
   if(area.id==="vertraege"&&d&&window.VERTR)return VERTR.summary(d,C.getLocal("haus",null),C.getLocal("auto",null));
   if(area.id==="memo"&&d&&window.MEMO)return MEMO.summary(d);
+  if(area.id==="vorsorge"&&d&&window.VORS)return VORS.summary(d);
   if(area.id==="zaehler"&&d&&window.ZAEHLER)return ZAEHLER.summary(d,Date.now()); /* bewusst ohne Namen */
   if(d&&d._summary)return d._summary;
   return {k:"—",s:d?"Daten vorhanden":"Noch keine Daten"};
@@ -101,6 +104,8 @@ function heuteListe(){
   function add(ic,txt,sub,prio,href,rot,memo){out.push({ic:ic,txt:txt,sub:sub,prio:prio,href:href,rot:!!rot,memo:memo||null});}
   /* Memo & Einkaufsliste: offene Notizen einzeln (abhakbar), Einkaufsliste als ein Punkt */
   if(window.MEMO){try{MEMO.heute(C.getLocal("memo",null),t).forEach(function(e){add(e.ic,e.txt,e.sub,e.prio,e.href,e.rot,e.haken?e.id:null);});}catch(x){}}
+  /* Notvorrat: Durchsicht etwa halbjährlich (erst, wenn der Bereich genutzt wird) */
+  if(window.VORS){try{var vo=C.getLocal("vorsorge",null);if(vo&&vo.durchsicht&&VORS.faellig(vo,t))add("🎒","Notvorrat durchsehen","zuletzt "+V.de(vo.durchsicht)+" · Haltbarkeit prüfen, Wasser tauschen",12,"vorsorge/index.html");}catch(x){}}
   /* Fristen, Kündigungstermine, Nebenkostenabrechnungen */
   var vt=C.getLocal("vertraege",null),fin=C.getLocal("finanzen",null),fixL=null,belegt={};
   /* Preiserhöhungen bei Verträgen festhalten (Termin „Sonderkündigung prüfen“, auch für die Wochenvorschau) */

@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0e1a">
+<title>Cockpit · Notvorrat & Notgepäck</title>
+<link rel="manifest" href="../manifest.webmanifest">
+<link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/style.css">
+<style>
+.bar{display:flex;flex-wrap:wrap;gap:12px 18px;align-items:center;}
+.ctrl{display:flex;align-items:center;gap:8px;}
+.ctrl span.l{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);}
+.stp{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+.stp button{width:36px;height:36px;border:0;background:transparent;color:#fff;font-size:19px;cursor:pointer;}
+.stp b{min-width:30px;text-align:center;align-self:center;color:#fff;}
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+.seg button{border:0;background:transparent;color:#e2e8f0;height:36px;padding:0 12px;font-weight:600;cursor:pointer;font-family:inherit;}
+.seg button+button{border-left:1px solid var(--border);}
+.seg button.on{background:#f97316;color:#1a0b00;}
+.prog{flex:1 1 160px;display:flex;align-items:center;gap:10px;min-width:0;}
+.trk{flex:1;height:8px;background:var(--border);border-radius:4px;overflow:hidden;}
+.trk i{display:block;height:100%;background:#22c55e;transition:width .25s;}
+.prog b{color:#fff;font-size:13px;white-space:nowrap;}
+.figs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0 4px;}
+.fig{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px 14px;min-width:0;}
+.fig b{display:block;font-size:24px;color:#fff;line-height:1.1;}
+.fig.w b{color:#fb923c;}
+.fig span{font-size:11px;color:var(--muted);}
+.hint{font-size:11px;color:var(--muted);line-height:1.6;margin:6px 0 0;}
+details.sec{background:var(--panel);border:1px solid var(--border);border-radius:14px;margin-top:12px;padding:0 14px;}
+details.sec>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:13px 0;}
+details.sec>summary::-webkit-details-marker{display:none;}
+details.sec>summary h3{margin:0;flex:1;min-width:0;font-size:15px;color:#fff;}
+.tal{font-size:12px;color:var(--muted);font-weight:700;white-space:nowrap;}
+.tal.ok{color:#4ade80;}
+.chev{width:9px;height:9px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg);transition:transform .2s;}
+details[open] .chev{transform:rotate(-135deg);}
+.sn{font-size:12px;color:var(--muted);margin:-4px 0 6px;line-height:1.5;}
+.it{display:grid;grid-template-columns:26px minmax(0,1fr) auto;gap:4px 10px;padding:10px 0;border-top:1px solid #152038;cursor:pointer;align-items:start;}
+.it input{position:absolute;opacity:0;pointer-events:none;}
+.bx{width:22px;height:22px;border:2px solid #64748b;border-radius:6px;display:grid;place-items:center;margin-top:1px;}
+.bx::after{content:"";width:6px;height:11px;border:solid #04160a;border-width:0 2.5px 2.5px 0;transform:rotate(45deg) translate(-1px,-1px);opacity:0;}
+.it input:checked+.bx{background:#22c55e;border-color:#22c55e;}
+.it input:checked+.bx::after{opacity:1;}
+.it input:focus-visible+.bx{outline:2px solid #f97316;outline-offset:2px;}
+.it .tx b{display:block;color:#fff;font-weight:500;font-size:14px;}
+.it input:checked~.tx b{color:#64748b;}
+.it .tx small{display:block;color:var(--muted);font-size:12px;line-height:1.45;margin-top:2px;}
+.it .tx small.warn{color:#fb923c;}
+.it .q{font-weight:700;color:#fb923c;white-space:nowrap;font-size:14px;}
+.it input:checked~.q{color:#64748b;}
+.g2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:20px;}
+.now{background:#2a1608;border:1px solid #f9731688;border-radius:14px;padding:14px 16px;margin-top:16px;}
+.now h3{margin:0 0 6px;color:#fed7aa;}
+.now ul{margin:0;padding-left:18px;font-size:13px;line-height:1.6;color:#e2e8f0;}
+.nr{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:12px;color:var(--muted);margin:16px 0 8px;}
+.nr b{color:#fff;font-size:15px;margin-right:5px;}
+.foot{font-size:12px;color:var(--muted);line-height:1.6;}
+.foot a{color:#cbd5e1;}
+.durch{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:space-between;}
+.durch.rot{border-color:#f9731688;}
+.mini{background:transparent;border:1px solid var(--border);color:#e2e8f0;border-radius:8px;padding:7px 11px;font-size:12px;cursor:pointer;font-family:inherit;}
+.mini.rot{border-color:#ef444466;color:#f87171;}
+@media(max-width:560px){.g2{grid-template-columns:1fr;}.figs{grid-template-columns:1fr 1fr;}.fig:last-child{grid-column:1/-1;}}
+@media print{.bar,.mini{display:none;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div id="top"></div>
+<div class="content" id="main"></div>
+</div>
+<script src="../assets/cockpit.js"></script>
+<script src="logic.js"></script>
+<script>
+(function(){
+"use strict";
+var C=window.Cockpit,V=window.VORS,AREA="vorsorge",ZU="cockpit:vorsorge:zu";
+C.registerMerge(AREA,V.merge);
+var data=V.norm(C.getLocal(AREA,V.blank)),st={reset:false,flash:null};
+var zu={};try{zu=JSON.parse(localStorage.getItem(ZU))||{};}catch(e){}   /* auf-/zugeklappte Abschnitte: nur je Gerät */
+function persist(){data._summary=V.summary(data);C.save(AREA,data);}
+var esc=C.esc;
+function n1(x){return x.toLocaleString("de-DE",{minimumFractionDigits:1,maximumFractionDigits:1});}
+function kg(x){return x<1?Math.round(x*100)*10+" g":n1(x)+" kg";}
+function qty(q){var m=V.menge(data,q);return m==null?"":q==="water"?C.int(m)+" l":kg(m);}
+function de(iso){return iso.split("-").reverse().join(".");}
+
+function render(){
+  document.getElementById("top").innerHTML=C.topbar({title:"Notvorrat & Notgepäck",icon:"🎒",sub:"Krisenvorsorge · BBK-Ratgeber 2025",accent:"#f97316",accent2:"#ea580c",eye:false});C.paintStatus();
+  var f=V.fortschritt(data),h="";
+  if(st.flash)h+='<div class="flash">'+esc(st.flash)+"</div>";
+  h+='<div class="panel"><div class="bar">'+
+    '<div class="ctrl"><span class="l">Personen</span><div class="stp"><button aria-label="Eine Person weniger" onclick="VO.p(-1)">−</button><b>'+data.p+'</b><button aria-label="Eine Person mehr" onclick="VO.p(1)">+</button></div></div>'+
+    '<div class="ctrl"><span class="l">Tage</span><div class="seg">'+V.TAGE.map(function(t){return '<button class="'+(data.t===t?"on":"")+'" onclick="VO.t('+t+')">'+t+"</button>";}).join("")+"</div></div>"+
+    '<div class="prog"><div class="trk"><i style="width:'+(f.von?f.n/f.von*100:0)+'%"></i></div><b>'+f.n+" / "+f.von+" erledigt</b></div></div>"+
+    '<div class="figs"><div class="fig w"><b>'+C.int(V.wasser(data))+' l</b><span>Trinkwasser</span></div><div class="fig"><b>'+n1(V.essenKg(data))+' kg</b><span>Lebensmittel</span></div><div class="fig"><b>2.200</b><span>kcal pro Person und Tag</span></div></div>'+
+    '<p class="hint">Das Bundesamt für Bevölkerungsschutz empfiehlt als Ziel 10 Tage, 3 Tage sind ein guter Anfang. Mengen nach der Vorratstabelle der Bundesanstalt für Landwirtschaft und Ernährung, gerechnet für Erwachsene. Kinder brauchen weniger, der Rest ist Puffer.</p></div>';
+  var heute=C.today(),fl=V.faellig(data,heute);
+  h+='<div class="panel durch'+(fl?" rot":"")+'"><div><b style="color:#fff">🔄 Vorrat durchsehen</b><div class="small muted">'+(data.durchsicht?"Zuletzt am "+de(data.durchsicht)+(fl?" – wieder fällig":" · nächste Durchsicht in etwa "+Math.max(1,Math.round((V.DURCHSICHT-V.tageSeit(data.durchsicht,heute))/30))+" Monaten"):"Noch nicht erfasst")+'. Neues nach hinten, Älteres zuerst aufbrauchen. Am einfachsten bei der Zeitumstellung.</div></div><button class="mini" onclick="VO.durch()">✓ Heute durchgesehen</button></div>';
+  V.SECTIONS.forEach(function(s){var n=s.items.filter(function(i){return V.ok(data,i.id);}).length;
+    h+='<details class="sec" data-s="'+s.id+'"'+(zu[s.id]?"":" open")+'><summary><h3>'+s.icon+" "+esc(s.title)+'</h3><span class="tal'+(n===s.items.length?" ok":"")+'">'+n+" / "+s.items.length+'</span><span class="chev" aria-hidden="true"></span></summary>';
+    if(s.note)h+='<p class="sn">'+esc(s.note)+"</p>";
+    h+='<div class="'+(s.grid?"g2":"")+'">'+s.items.map(function(i){var w=i.note&&i.note.charAt(0)==="!";
+      return '<label class="it"><input type="checkbox" data-id="'+i.id+'"'+(V.ok(data,i.id)?" checked":"")+'><span class="bx" aria-hidden="true"></span><span class="tx"><b>'+esc(i.name)+"</b>"+
+        (i.note?'<small class="'+(w?"warn":"")+'">'+esc(w?i.note.slice(1):i.note)+"</small>":"")+'</span><span class="q">'+(i.qty?qty(i.qty):"")+"</span></label>";}).join("")+"</div></details>";});
+  h+='<div class="now"><h3>⚠️ Sobald eine Warnung kommt</h3><ul>'+
+    "<li>Badewanne, Eimer und Töpfe mit Leitungswasser füllen (Brauchwasser für Toilette und Waschen).</li>"+
+    "<li>Handys, Powerbanks und Akkus laden, Auto laden bzw. tanken.</li>"+
+    "<li>Radio an und Warn-App im Blick behalten.</li>"+
+    "<li>Bei Stromausfall erst Frisches aus dem Kühlschrank essen, dann Tiefgekühltes, zuletzt den Vorrat. Aufgetautes nicht wieder einfrieren.</li>"+
+    "<li>Grill und Campingkocher nur im Freien oder gut belüftet benutzen, Kerzen nie unbeaufsichtigt lassen.</li></ul></div>";
+  h+='<div class="nr"><span><b>112</b>Feuerwehr &amp; Rettung</span><span><b>110</b>Polizei</span><span><b>116 117</b>Ärztlicher Bereitschaftsdienst</span><span><b>089 19240</b>Giftnotruf München</span></div>';
+  h+='<div class="foot">Quellen: <a href="https://www.bbk.bund.de/DE/Warnung-Vorsorge/Vorsorge/Ratgeber-Checkliste/ratgeber-checkliste_node.html" target="_blank" rel="noopener">BBK-Ratgeber „Vorsorgen für Krisen und Katastrophen“</a> · <a href="https://www.ernaehrungsvorsorge.de/private-vorsorge/notvorrat/vorratstabelle" target="_blank" rel="noopener">BLE-Vorratstabelle</a> · <a href="https://www.ernaehrungsvorsorge.de/private-vorsorge/notvorrat/vorratskalkulator" target="_blank" rel="noopener">Vorratskalkulator</a></div>';
+  h+='<div style="margin:16px 0 30px">'+(st.reset?'<button class="mini rot" onclick="VO.resetJa()">Ja, alle Haken entfernen</button> <button class="mini" onclick="VO.reset(false)">Abbrechen</button>':'<button class="mini" onclick="VO.reset(true)">Alle Haken entfernen</button>')+"</div>";
+  document.getElementById("main").innerHTML=h;
+}
+document.getElementById("main").addEventListener("change",function(e){var id=e.target&&e.target.getAttribute("data-id");if(!id)return;V.setze(data,id,e.target.checked);persist();render();});
+document.getElementById("main").addEventListener("toggle",function(e){var s=e.target&&e.target.getAttribute&&e.target.getAttribute("data-s");if(!s)return;
+  if(e.target.open)delete zu[s];else zu[s]=1;try{localStorage.setItem(ZU,JSON.stringify(zu));}catch(x){}},true);
+function flash(t){st.flash=t;render();clearTimeout(flash.tm);flash.tm=setTimeout(function(){st.flash=null;render();},4000);}
+window.VO={
+  p:function(d){var n=Math.min(12,Math.max(1,data.p+d));if(n===data.p)return;data.p=n;data.pT=Date.now();persist();render();},
+  t:function(t){data.t=t;data.pT=Date.now();persist();render();},
+  durch:function(){data.durchsicht=C.today();data.dT=Date.now();persist();flash("✓ Durchsicht eingetragen – nächste in etwa einem halben Jahr");},
+  reset:function(v){st.reset=v;render();},
+  resetJa:function(){V.zuruecksetzen(data);st.reset=false;persist();flash("Alle Haken entfernt");}
+};
+render();
+C.autoPull([AREA],function(a,d){data=V.norm(d);render();});
+})();
+</script>
+</body>
+</html>
