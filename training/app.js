@@ -29,6 +29,7 @@ function merge(l,r,lU,rU){l=norm(JSON.parse(JSON.stringify(l)));r=norm(JSON.pars
   var hcu={};[r.hiitCustom||{},l.hiitCustom||{}].forEach(function(m){Object.keys(m).forEach(function(k){if(!hcu[k]||(m[k].t||0)>(hcu[k].t||0))hcu[k]=m[k];});});if(Object.keys(hcu).length)out.hiitCustom=hcu;
   var hgr={};[r.hiitGear||{},l.hiitGear||{}].forEach(function(m){Object.keys(m).forEach(function(k){if(!hgr[k]||(m[k].t||0)>(hgr[k].t||0))hgr[k]=m[k];});});if(Object.keys(hgr).length)out.hiitGear=hgr;
   ["teilnehmer","karten"].forEach(function(f){var o={};[r[f]||{},l[f]||{}].forEach(function(m){Object.keys(m).forEach(function(k){if(!o[k]||(m[k].t||0)>(o[k].t||0))o[k]=m[k];});});if(Object.keys(o).length)out[f]=o;});
+  var hd=[l.hiitDraft,r.hiitDraft].filter(Boolean).sort(function(a,b){return (b.t||0)-(a.t||0);})[0];if(hd)out.hiitDraft=hd;
   var hc=[l.hiitCfg,r.hiitCfg].filter(Boolean).sort(function(a,b){return (b.t||0)-(a.t||0);})[0];if(hc)out.hiitCfg=hc;
   Object.keys(Object.assign({},r.sessions,l.sessions)).forEach(function(i){if(del[i])return;var a=l.sessions[i],b=r.sessions[i];out.sessions[i]=!a?b:!b?a:((a.upd||0)>=(b.upd||0)?a:b);});
   out._summary=summaryFor(out);return out;}
@@ -259,8 +260,10 @@ var HDEF={work:40,rest:20,rounds:3,prep:10,voice:true,mode:"eigen",focus:"gesamt
 var DKEY="cockpit:hiit:draft",hrun=null;
 function hcfg(){var c=Object.assign({},HDEF,data.hiitCfg||{});c.gear=Object.assign({},c.gear||{});return c;}
 function hset(k,v){var c=hcfg();c[k]=v;c.t=Date.now();data.hiitCfg=c;persist();}
-function draft(){if(st.hd)return st.hd;try{var d=JSON.parse(localStorage.getItem(DKEY)||"null");if(d&&Array.isArray(d.list))st.hd=d;}catch(e){}return st.hd||(st.hd={list:[]});}
-function saveDraft(){try{localStorage.setItem(DKEY,JSON.stringify(st.hd));}catch(e){}}
+/* Erstelltes HIIT: lokal und synchronisiert (data.hiitDraft, jüngeres t gewinnt) – am PC erstellt, am Handy starten */
+function draft(){if(st.hd)return st.hd;var d=null;try{d=JSON.parse(localStorage.getItem(DKEY)||"null");}catch(e){}if(!(d&&Array.isArray(d.list)))d=null;
+  var r=data.hiitDraft;if(r&&Array.isArray(r.list)&&(!d||(r.t||0)>(d.t||0)))d=JSON.parse(JSON.stringify(r));if(d)st.hd=d;return st.hd||(st.hd={list:[]});}
+function saveDraft(){st.hd.t=Date.now();try{localStorage.setItem(DKEY,JSON.stringify(st.hd));}catch(e){}data.hiitDraft=JSON.parse(JSON.stringify(st.hd));persist();}
 function hopt(){var c=hcfg(),d=draft();return {mode:d.mode||c.mode,focus:d.focus||c.focus,gear:c.gear,recent:recentHiit()};}
 function recentHiit(){var r=[];list().filter(function(s){return s.type==="hiit";}).slice(0,2).forEach(function(s){r=r.concat(s.ex||[]);});return r;}
 function nMax(m){return m==="stationen"?10:14;}
@@ -890,5 +893,5 @@ Object.assign(window.T,{
 });
 setInterval(function(){if(st.tab==="prozent"&&!st.pzEdit&&!document.hidden)render();},60000);
 render();
-C.autoPull([AREA],function(a,d){data=norm(d);render();});
+C.autoPull([AREA],function(a,d){data=norm(d);var r=data.hiitDraft;if(r&&st.hd&&(r.t||0)>(st.hd.t||0)&&!(hrun&&!hrun.saved))st.hd=null;render();});
 })();
