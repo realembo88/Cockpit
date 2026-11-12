@@ -362,18 +362,22 @@ function topbar(o){
 }
 
 /* ---------------- Diagramme (SVG, ohne Bibliothek) ---------------- */
-function axisFmt(v){var a=Math.abs(v);return a>=1000?int(v):num(v,a>=50?0:1);}
+function axisFmt(v,step){var a=Math.abs(v);if(step!=null){var d=step>=1?0:step>=0.1?1:2;return a>=1000&&d===0?int(v):num(v,d);}return a>=1000?int(v):num(v,a>=50?0:1);}
+/* runde Achsenwerte: Schrittweite 1/2/5 × 10^k, Grenzen auf ganze Schritte, 3–6 Linien */
+function niceAxis(mn,mx,ziel){ziel=ziel||3;var roh=(mx-mn)/ziel,p=Math.pow(10,Math.floor(Math.log10(roh))),f=roh/p,
+  step=(f<=1?1:f<=2?2:f<=5?5:10)*p;var a=Math.floor(mn/step+1e-9)*step,b=Math.ceil(mx/step-1e-9)*step;if(b===a)b=a+step;
+  var t=[];for(var v=a;v<=b+step/2;v+=step)t.push(Math.round(v/step)*step);return {mn:a,mx:b,step:step,ticks:t};}
 function lineChart(points,o){
   o=o||{};var W=340,H=o.h||200,pL=40,pR=12,pT=14,pB=32;
   var vals=points.map(function(p){return p.value;}).filter(function(v){return v!=null&&!isNaN(v);});
   if(!vals.length)return '<div class="small muted">Noch keine Daten</div>';
   if(o.ref!=null)vals.push(o.ref);
   var mn=Math.min.apply(null,vals),mx=Math.max.apply(null,vals);if(mn===mx){mn-=1;mx+=1;}
-  var pd=(mx-mn)*0.15;mn-=pd;mx+=pd;if(o.zero&&mn>0)mn=0;
+  var pd=(mx-mn)*0.08;mn-=pd;mx+=pd;if(o.zero&&mn>0)mn=0;var ax=niceAxis(mn,mx);mn=ax.mn;mx=ax.mx;
   var iW=W-pL-pR,iH=H-pT-pB,n=points.length;
   function x(i){return pL+(n===1?iW/2:iW*i/(n-1));} function y(v){return pT+iH*(1-(v-mn)/(mx-mn));}
   var col=o.color||"var(--accent)",s='<svg viewBox="0 0 '+W+" "+H+'" width="100%" role="img">';
-  for(var g=0;g<=3;g++){var gv=mn+(mx-mn)*g/3,gy=y(gv);s+='<line x1="'+pL+'" y1="'+gy+'" x2="'+(W-pR)+'" y2="'+gy+'" stroke="#1e2a4a" stroke-dasharray="3 3"/><text x="'+(pL-5)+'" y="'+(gy+3)+'" fill="#5c7aaa" font-size="9" text-anchor="end">'+(o.money&&priv()?"":axisFmt(gv))+"</text>";}
+  ax.ticks.forEach(function(gv){var gy=y(gv);s+='<line x1="'+pL+'" y1="'+gy+'" x2="'+(W-pR)+'" y2="'+gy+'" stroke="#1e2a4a" stroke-dasharray="3 3"/><text x="'+(pL-5)+'" y="'+(gy+3)+'" fill="#5c7aaa" font-size="9" text-anchor="end">'+(o.money&&priv()?"":axisFmt(gv,ax.step))+"</text>";});
   if(o.ref!=null){var ry=y(o.ref);s+='<line x1="'+pL+'" y1="'+ry+'" x2="'+(W-pR)+'" y2="'+ry+'" stroke="#ff9800" stroke-opacity=".6" stroke-dasharray="4 4"/><text x="'+(W-pR)+'" y="'+(ry-4)+'" fill="#ff9800" font-size="9" text-anchor="end">'+esc(o.refLabel||"")+"</text>";}
   var d="",st=false;points.forEach(function(p,i){if(p.value==null||isNaN(p.value)){st=false;return;}d+=(st?" L":" M")+x(i).toFixed(1)+" "+y(p.value).toFixed(1);st=true;});
   s+='<path d="'+d+'" fill="none" stroke="'+col+'" stroke-width="2"/>';
@@ -387,11 +391,11 @@ function barChart(points,o){
   if(!points.length)return '<div class="small muted">Noch keine Daten</div>';
   var vals=points.map(function(p){return p.value||0;});
   var mx=Math.max.apply(null,vals.concat([0])),mn=Math.min.apply(null,vals.concat([0]));if(mx===mn)mx=mn+1;
-  var span=(mx-mn)*1.12;mx=mn+span;if(o.ganz){mx=Math.max(3,Math.ceil(mx/3)*3);}
+  var span=(mx-mn)*1.05;mx=mn+span;var ax=null;if(o.ganz){mx=Math.max(3,Math.ceil(mx/3)*3);}else{ax=niceAxis(mn,mx);mn=ax.mn;mx=ax.mx;}
   var iW=W-pL-pR,iH=H-pT-pB,n=points.length,bw=Math.max(3,Math.min(40,iW/n*0.62));
   function cx(i){return pL+iW*(i+.5)/n;} function y(v){return pT+iH*(1-(v-mn)/(mx-mn));}
   var s='<svg viewBox="0 0 '+W+" "+H+'" width="100%" role="img">';
-  for(var g=0;g<=3;g++){var gv=mn+(mx-mn)*g/3,gy=y(gv);s+='<line x1="'+pL+'" y1="'+gy+'" x2="'+(W-pR)+'" y2="'+gy+'" stroke="#1e2a4a" stroke-dasharray="3 3"/><text x="'+(pL-5)+'" y="'+(gy+3)+'" fill="#5c7aaa" font-size="9" text-anchor="end">'+(o.money&&priv()?"":(o.ganz?String(Math.round(gv)):axisFmt(gv)))+"</text>";}
+  (ax?ax.ticks:[0,1,2,3].map(function(g){return mn+(mx-mn)*g/3;})).forEach(function(gv){var gy=y(gv);s+='<line x1="'+pL+'" y1="'+gy+'" x2="'+(W-pR)+'" y2="'+gy+'" stroke="#1e2a4a" stroke-dasharray="3 3"/><text x="'+(pL-5)+'" y="'+(gy+3)+'" fill="#5c7aaa" font-size="9" text-anchor="end">'+(o.money&&priv()?"":(o.ganz?String(Math.round(gv)):axisFmt(gv,ax?ax.step:null)))+"</text>";});
   var every=Math.ceil(n/8),y0=y(0);
   points.forEach(function(p,i){var v=p.value||0,top=Math.min(y(v),y0),h=Math.abs(y(v)-y0);
     s+='<rect x="'+(cx(i)-bw/2)+'" y="'+top+'" width="'+bw+'" height="'+Math.max(0,h)+'" rx="3" fill="'+(p.color||o.color||"var(--accent2)")+'"><title>'+esc(p.label+": "+(o.fmt?o.fmt(v):num(v,2)))+"</title></rect>";
