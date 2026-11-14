@@ -63,6 +63,28 @@ details[open] .chev{transform:rotate(-135deg);}
 .durch.rot{border-color:#f9731688;}
 .mini{background:transparent;border:1px solid var(--border);color:#e2e8f0;border-radius:8px;padding:7px 11px;font-size:12px;cursor:pointer;font-family:inherit;}
 .mini.rot{border-color:#ef444466;color:#f87171;}
+.pl{padding:0 0 8px 36px;}
+.g2 .pl{padding-left:36px;}
+.pd{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:2px 8px;align-items:center;padding:7px 0;border-top:1px dashed #1a2744;}
+.pd .n{min-width:0;font-size:13px;color:#e2e8f0;overflow-wrap:anywhere;}
+.pd .n a{color:#fdba74;text-decoration:none;}
+.pd .n small{display:block;color:var(--muted);font-size:11.5px;margin-top:1px;}
+.pd .n small .rot{color:#f87171;font-weight:600;}
+.pd .n small .gelb{color:#fbbf24;font-weight:600;}
+.bst{display:inline-flex;align-items:center;border:1px solid var(--border);border-radius:8px;overflow:hidden;}
+.bst button{width:30px;height:30px;border:0;background:transparent;color:#fff;font-size:17px;cursor:pointer;}
+.bst b{min-width:44px;text-align:center;font-size:12.5px;color:#fff;font-variant-numeric:tabular-nums;}
+.bst b.fehlt{color:#fb923c;}
+.ed{border:0;background:transparent;color:var(--muted);font-size:15px;cursor:pointer;padding:6px;}
+.addp{background:transparent;border:0;color:#7dd3fc;font-size:12px;cursor:pointer;padding:4px 0;font-family:inherit;}
+.pf{border:1px solid #f9731666;border-radius:12px;padding:12px;margin:6px 0 8px;background:#0c1426;}
+.pf .field{margin-bottom:10px;}
+.pf .r{display:flex;gap:10px;}
+.pf .r>*{flex:1;min-width:0;}
+.pf .btn{padding:10px 12px;font-size:14px;}
+.fl{display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:6px 0;border-top:1px solid #152038;color:#e2e8f0;}
+.fl span:last-child{white-space:nowrap;color:var(--muted);}
+.auto{color:#4ade80;font-size:11.5px;display:block;margin-top:2px;}
 @media(max-width:560px){.g2{grid-template-columns:1fr;}.figs{grid-template-columns:1fr 1fr;}.fig:last-child{grid-column:1/-1;}}
 @media print{.bar,.mini{display:none;}}
 </style>
@@ -73,13 +95,14 @@ details[open] .chev{transform:rotate(-135deg);}
 <div class="content" id="main"></div>
 </div>
 <script src="../assets/cockpit.js"></script>
+<script src="../memo/logic.js"></script>
 <script src="logic.js"></script>
 <script>
 (function(){
 "use strict";
 var C=window.Cockpit,V=window.VORS,AREA="vorsorge",ZU="cockpit:vorsorge:zu";
-C.registerMerge(AREA,V.merge);
-var data=V.norm(C.getLocal(AREA,V.blank)),st={reset:false,flash:null};
+C.registerMerge(AREA,V.merge);if(window.MEMO)C.registerMerge("memo",MEMO.merge);
+var data=V.norm(C.getLocal(AREA,V.blank)),st={reset:false,flash:null,pf:null,fehlAuf:false};
 var zu={};try{zu=JSON.parse(localStorage.getItem(ZU))||{};}catch(e){}   /* auf-/zugeklappte Abschnitte: nur je Gerät */
 function persist(){data._summary=V.summary(data);C.save(AREA,data);}
 var esc=C.esc;
@@ -87,6 +110,32 @@ function n1(x){return x.toLocaleString("de-DE",{minimumFractionDigits:1,maximumF
 function kg(x){return x<1?Math.round(x*100)*10+" g":n1(x)+" kg";}
 function qty(q){var m=V.menge(data,q);return m==null?"":q==="water"?C.int(m)+" l":kg(m);}
 function de(iso){return iso.split("-").reverse().join(".");}
+function eu(x){return Number(x).toLocaleString("de-DE",{minimumFractionDigits:2,maximumFractionDigits:2})+" €";}   /* Ladenpreise sind nicht privat: nicht ausblenden */
+function mng(x,e){return e==="l"?(x>=10||Math.abs(x-Math.round(x))<1e-9?C.int(x):n1(x))+" l":kg(x);}
+function inh(p){return p.inhalt?String(p.inhalt).replace(".",",")+" "+p.einh:"";}
+function qtyHtml(i){var soll=V.menge(data,i.qty),e=V.einheit(i.id);if(!V.produkte(data,i.id).length)return qty(i.qty);
+  var b=V.bestand(data,i.id);return '<span style="color:'+(b>=soll-1e-6?"#4ade80":"#fb923c")+'">'+mng(b,e).replace(/ (l|kg|g)$/,"")+"</span> / "+qty(i.qty);}
+/* ein Produkt unter einem Punkt */
+function prodRow(p,heute){var t=[],tg=p.mhd?V.tageSeit(heute,p.mhd):null;
+  if(p.laden)t.push(esc(p.laden));if(p.inhalt)t.push(inh(p)+" je Pck.");if(p.preis!=null)t.push(eu(p.preis));
+  if(p.mhd)t.push('<span class="'+(tg<0?"rot":tg<=30?"gelb":"")+'">MHD '+de(p.mhd)+(tg<0?" – abgelaufen":tg<=30?" – noch "+tg+(tg===1?" Tag":" Tage"):"")+"</span>");
+  var fehlt=(p.soll||0)>(p.vorh||0);
+  return '<div class="pd"><span class="n">'+(p.link?'<a href="'+esc(p.link)+'" target="_blank" rel="noopener noreferrer">'+esc(p.name)+" ↗</a>":esc(p.name))+(t.length?"<small>"+t.join(" · ")+"</small>":"")+"</span>"+
+    '<span class="bst"><button aria-label="Eins weniger vorhanden" onclick="VO.pb(\''+p.id+'\',-1)">−</button><b class="'+(fehlt?"fehlt":"")+'" title="vorhanden / geplant">'+(p.vorh||0)+" / "+(p.soll||0)+'</b><button aria-label="Eins mehr vorhanden" onclick="VO.pb(\''+p.id+'\',1)">+</button></span>'+
+    '<button class="ed" aria-label="Produkt bearbeiten" onclick="VO.pe(\''+p.id+'\')">✎</button></div>';}
+function prodForm(){var f=st.pf,eh=V.einheiten(f.item),v=function(k){return esc(f[k]==null?"":String(f[k]));};
+  var h='<div class="pf" id="pf"><div class="field"><label>Produkt</label><input id="pfName" value="'+v("name")+'" placeholder="'+(f.item==="w_trink"?"z. B. Mineralwasser 6 × 1,5 l":"Name des Produkts")+'" oninput="VO.pv(\'name\',this.value)"></div>'+
+    '<div class="field"><label>Link zum Produkt (optional)</label><input type="url" inputmode="url" value="'+v("link")+'" placeholder="https://…" oninput="VO.pv(\'link\',this.value)"></div>'+
+    '<div class="r"><div class="field"><label>Preis je Packung (€)</label><input inputmode="decimal" value="'+v("preis")+'" placeholder="0,00" oninput="VO.pv(\'preis\',this.value)"></div>'+
+    '<div class="field"><label>Laden (optional)</label><input value="'+v("laden")+'" oninput="VO.pv(\'laden\',this.value)"></div></div>';
+  if(eh.length)h+='<div class="r"><div class="field"><label>Inhalt je Packung</label><input inputmode="decimal" value="'+v("inhalt")+'" placeholder="'+(eh[0]==="l"?"z. B. 9":"z. B. 0,5")+'" oninput="VO.pv(\'inhalt\',this.value)"></div>'+
+    '<div class="field"><label>Einheit</label><select onchange="VO.pv(\'einh\',this.value)">'+eh.map(function(e){return '<option'+((f.einh||eh[0])===e?" selected":"")+">"+e+"</option>";}).join("")+"</select></div></div>";
+  h+='<div class="r"><div class="field"><label>Vorhanden (Pck.)</label><input inputmode="numeric" value="'+v("vorh")+'" placeholder="0" oninput="VO.pv(\'vorh\',this.value)"></div>'+
+    '<div class="field"><label>Geplant (Pck.)</label><input inputmode="numeric" value="'+v("soll")+'" placeholder="1" oninput="VO.pv(\'soll\',this.value)"></div></div>'+
+    '<div class="field"><label>Mindesthaltbarkeit (optional, das früheste Datum)</label><input type="date" value="'+v("mhd")+'" oninput="VO.pv(\'mhd\',this.value)"></div>'+
+    '<div class="r"><button class="btn" style="background:#f97316;color:#1a0b00" onclick="VO.ps()">Speichern</button><button class="btn ghost" onclick="VO.pa()">Abbrechen</button></div>'+
+    (f.id?'<button class="mini rot" style="margin-top:10px" onclick="VO.pd()">'+(f.del?"Wirklich löschen?":"Produkt löschen")+"</button>":"")+"</div>";
+  return h;}
 
 function render(){
   document.getElementById("top").innerHTML=C.topbar({title:"Notvorrat & Notgepäck",icon:"🎒",sub:"Krisenvorsorge · BBK-Ratgeber 2025",accent:"#f97316",accent2:"#ea580c",eye:false});C.paintStatus();
@@ -100,12 +149,27 @@ function render(){
     '<p class="hint">Das Bundesamt für Bevölkerungsschutz empfiehlt als Ziel 10 Tage, 3 Tage sind ein guter Anfang. Mengen nach der Vorratstabelle der Bundesanstalt für Landwirtschaft und Ernährung, gerechnet für Erwachsene. Kinder brauchen weniger, der Rest ist Puffer.</p></div>';
   var heute=C.today(),fl=V.faellig(data,heute);
   h+='<div class="panel durch'+(fl?" rot":"")+'"><div><b style="color:#fff">🔄 Vorrat durchsehen</b><div class="small muted">'+(data.durchsicht?"Zuletzt am "+de(data.durchsicht)+(fl?" – wieder fällig":" · nächste Durchsicht in etwa "+Math.max(1,Math.round((V.DURCHSICHT-V.tageSeit(data.durchsicht,heute))/30))+" Monaten"):"Noch nicht erfasst")+'. Neues nach hinten, Älteres zuerst aufbrauchen. Am einfachsten bei der Zeitumstellung.</div></div><button class="mini" onclick="VO.durch()">✓ Heute durchgesehen</button></div>';
+  var alleP=V.produkte(data),fe=V.fehlend(data),fk=V.fehlKosten(data),ab=V.ablauf(data,heute,60);
+  if(!alleP.length)h+='<p class="hint" style="margin:10px 2px 0">💡 Unter jedem Punkt kannst du mit „＋ Produkt“ hinterlegen, was du dafür kaufst: Link, Preis, Packungsgröße, Bestand und Mindesthaltbarkeit. Daraus ergeben sich Bestand, fehlende Kosten und die Einkaufsliste.</p>';
+  else{
+    h+='<div class="panel" style="margin-top:12px"><div class="durch"><div><b style="color:#fff">🛒 Was noch fehlt</b><div class="small muted">'+(fe.length?fe.length+(fe.length===1?" Produkt":" Produkte")+" · ca. "+eu(fk.summe)+(fk.ohnePreis?" (+ "+fk.ohnePreis+" ohne Preis)":""):"Alles Geplante ist vorhanden")+" · Vorrat im Wert von ca. "+eu(V.wert(data))+"</div></div>"+
+      (fe.length?'<button class="mini" onclick="VO.fehlAuf()">'+(st.fehlAuf?"▲ zuklappen":"▼ anzeigen")+"</button>":"")+"</div>";
+    if(fe.length&&st.fehlAuf){h+='<div style="margin-top:8px">'+fe.map(function(x){return '<div class="fl"><span>'+esc(V.einkaufText(x))+(x.p.laden?' <span class="small muted">· '+esc(x.p.laden)+"</span>":"")+"</span><span>"+(x.kosten!=null?eu(x.kosten):"–")+"</span></div>";}).join("")+"</div>"+
+      (window.MEMO?'<button class="btn full" style="margin-top:10px;background:#f97316;color:#1a0b00" onclick="VO.einkauf()">🛒 Fehlendes auf die Einkaufsliste</button>':"");}
+    h+="</div>";
+    if(ab.length)h+='<div class="panel durch rot" style="margin-top:12px;display:block"><b style="color:#fff">⏳ Haltbarkeit</b>'+ab.map(function(x){var it=V.punkt(x.p.item);
+      return '<div class="fl"><span>'+esc(x.p.name)+' <span class="small muted">· '+esc(it?it.name:"")+'</span></span><span style="color:'+(x.tage<0?"#f87171":x.tage<=30?"#fbbf24":"var(--muted)")+'">'+(x.tage<0?"abgelaufen seit "+de(x.p.mhd):x.tage===0?"läuft heute ab":"bis "+de(x.p.mhd))+"</span></div>";}).join("")+
+      '<div class="small muted" style="margin-top:6px">Bald Ablaufendes aufbrauchen und nachkaufen. Danach beim Produkt das neue Datum eintragen.</div></div>';
+  }
   V.SECTIONS.forEach(function(s){var n=s.items.filter(function(i){return V.ok(data,i.id);}).length;
     h+='<details class="sec" data-s="'+s.id+'"'+(zu[s.id]?"":" open")+'><summary><h3>'+s.icon+" "+esc(s.title)+'</h3><span class="tal'+(n===s.items.length?" ok":"")+'">'+n+" / "+s.items.length+'</span><span class="chev" aria-hidden="true"></span></summary>';
     if(s.note)h+='<p class="sn">'+esc(s.note)+"</p>";
-    h+='<div class="'+(s.grid?"g2":"")+'">'+s.items.map(function(i){var w=i.note&&i.note.charAt(0)==="!";
-      return '<label class="it"><input type="checkbox" data-id="'+i.id+'"'+(V.ok(data,i.id)?" checked":"")+'><span class="bx" aria-hidden="true"></span><span class="tx"><b>'+esc(i.name)+"</b>"+
-        (i.note?'<small class="'+(w?"warn":"")+'">'+esc(w?i.note.slice(1):i.note)+"</small>":"")+'</span><span class="q">'+(i.qty?qty(i.qty):"")+"</span></label>";}).join("")+"</div></details>";});
+    h+='<div class="'+(s.grid?"g2":"")+'">'+s.items.map(function(i){var w=i.note&&i.note.charAt(0)==="!",pl=V.produkte(data,i.id),auto=!V.haken(data,i.id)&&V.gedeckt(data,i.id);
+      var r='<div><label class="it"><input type="checkbox" data-id="'+i.id+'"'+(V.ok(data,i.id)?" checked":"")+'><span class="bx" aria-hidden="true"></span><span class="tx"><b>'+esc(i.name)+"</b>"+
+        (i.note?'<small class="'+(w?"warn":"")+'">'+esc(w?i.note.slice(1):i.note)+"</small>":"")+(auto?'<span class="auto">✓ durch den Bestand gedeckt</span>':"")+'</span><span class="q">'+(i.qty?qtyHtml(i):"")+"</span></label>";
+      r+='<div class="pl">'+pl.map(function(p){return st.pf&&st.pf.id===p.id?prodForm():prodRow(p,heute);}).join("")+
+        (st.pf&&!st.pf.id&&st.pf.item===i.id?prodForm():'<button class="addp" onclick="VO.pn(\''+i.id+'\')">＋ Produkt</button>')+"</div></div>";
+      return r;}).join("")+"</div></details>";});
   h+='<div class="now"><h3>⚠️ Sobald eine Warnung kommt</h3><ul>'+
     "<li>Badewanne, Eimer und Töpfe mit Leitungswasser füllen (Brauchwasser für Toilette und Waschen).</li>"+
     "<li>Handys, Powerbanks und Akkus laden, Auto laden bzw. tanken.</li>"+
@@ -120,12 +184,29 @@ function render(){
 document.getElementById("main").addEventListener("change",function(e){var id=e.target&&e.target.getAttribute("data-id");if(!id)return;V.setze(data,id,e.target.checked);persist();render();});
 document.getElementById("main").addEventListener("toggle",function(e){var s=e.target&&e.target.getAttribute&&e.target.getAttribute("data-s");if(!s)return;
   if(e.target.open)delete zu[s];else zu[s]=1;try{localStorage.setItem(ZU,JSON.stringify(zu));}catch(x){}},true);
-function flash(t){st.flash=t;render();clearTimeout(flash.tm);flash.tm=setTimeout(function(){st.flash=null;render();},4000);}
+function flash(t){st.flash=t;render();clearTimeout(flash.tm);flash.tm=setTimeout(function(){st.flash=null;var e=document.querySelector("#main .flash");if(e)e.remove();},4000);}   /* kein Neuzeichnen: ein offenes Formular behält den Fokus */
 window.VO={
   p:function(d){var n=Math.min(12,Math.max(1,data.p+d));if(n===data.p)return;data.p=n;data.pT=Date.now();persist();render();},
   t:function(t){data.t=t;data.pT=Date.now();persist();render();},
   durch:function(){data.durchsicht=C.today();data.dT=Date.now();persist();flash("✓ Durchsicht eingetragen – nächste in etwa einem halben Jahr");},
   reset:function(v){st.reset=v;render();},
+  /* Produkte */
+  pn:function(item){st.pf={item:item,name:"",einh:V.einheiten(item)[0]||"",soll:"1",vorh:"0"};render();var e=document.getElementById("pfName");if(e)e.focus();},
+  pe:function(id){var p=data.prod[id];if(!p||p.del)return;st.pf=Object.assign({},p,{preis:p.preis!=null?String(p.preis).replace(".",","):"",inhalt:p.inhalt!=null?String(p.inhalt).replace(".",","):""});render();
+    var e=document.getElementById("pf");if(e&&e.scrollIntoView)e.scrollIntoView({block:"center"});},
+  pv:function(k,v){if(st.pf){st.pf[k]=v;delete st.pf.del;}},
+  pa:function(){st.pf=null;render();},
+  ps:function(){var f=st.pf;if(!f)return;if(!String(f.name||"").trim()){flash("Bitte einen Namen für das Produkt eintragen");return;}
+    if(String(f.link||"").trim()&&!V.linkOk(f.link)){flash("Der Link sieht nicht nach einer Internetadresse aus (https://…)");return;}
+    var p=V.prodSetze(data,f.id||null,{item:f.item,name:f.name,link:f.link||"",laden:f.laden||"",inhalt:f.inhalt,einh:f.einh,preis:f.preis===""?null:f.preis,vorh:f.vorh,soll:f.soll,mhd:f.mhd||""});
+    if(!p){flash("Das Produkt konnte nicht gespeichert werden");return;}st.pf=null;persist();flash("✓ "+p.name+" gespeichert");},
+  pd:function(){var f=st.pf;if(!f||!f.id)return;if(!f.del){f.del=true;render();return;}V.prodLoeschen(data,f.id);st.pf=null;persist();flash("Produkt gelöscht");},
+  pb:function(id,d){if(V.prodBestand(data,id,d)){persist();render();}},
+  fehlAuf:function(){st.fehlAuf=!st.fehlAuf;render();},
+  einkauf:function(){if(!window.MEMO)return;var md=MEMO.norm(C.getLocal("memo",MEMO.blank)),fe=V.fehlend(data),neu=0;
+    fe.forEach(function(x){neu+=MEMO.neu(md,"einkauf",V.einkaufText(x),null,null,true).length;});
+    if(neu){md._summary=MEMO.summary(md);C.save("memo",md);}
+    flash(neu?"🛒 "+neu+(neu===1?" Produkt":" Produkte")+" auf die Einkaufsliste gesetzt"+(neu<fe.length?" ("+(fe.length-neu)+" standen schon drauf)":""):"Steht alles schon auf der Einkaufsliste");},
   resetJa:function(){V.zuruecksetzen(data);st.reset=false;persist();flash("Alle Haken entfernt");}
 };
 render();

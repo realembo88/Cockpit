@@ -106,6 +106,10 @@ function heuteListe(){
   if(window.MEMO){try{MEMO.heute(C.getLocal("memo",null),t).forEach(function(e){add(e.ic,e.txt,e.sub,e.prio,e.href,e.rot,e.haken?e.id:null);});}catch(x){}}
   /* Notvorrat: Durchsicht etwa halbjährlich (erst, wenn der Bereich genutzt wird) */
   if(window.VORS){try{var vo=C.getLocal("vorsorge",null);if(vo&&vo.durchsicht&&VORS.faellig(vo,t))add("🎒","Notvorrat durchsehen","zuletzt "+V.de(vo.durchsicht)+" · Haltbarkeit prüfen, Wasser tauschen",12,"vorsorge/index.html");}catch(x){}}
+  /* Notvorrat: Produkte, die abgelaufen sind oder in den nächsten 30 Tagen ablaufen */
+  if(window.VORS){try{var vo2=C.getLocal("vorsorge",null),vab=vo2?VORS.ablauf(vo2,t,30):[];if(vab.length){var v0=vab[0],vn=vab.map(function(x){return x.p.name;});
+    add("🎒",vab.length===1?"Notvorrat: "+v0.p.name+(v0.tage<0?" ist abgelaufen":v0.tage===0?" läuft heute ab":" läuft in "+v0.tage+(v0.tage===1?" Tag":" Tagen")+" ab"):"Notvorrat: "+vab.length+" Produkte laufen ab",
+      vab.length===1?"MHD "+V.de(v0.p.mhd)+" · aufbrauchen und nachkaufen":vn.slice(0,3).join(", ")+(vn.length>3?" …":""),v0.tage<0?30:v0.tage<=7?22:14,"vorsorge/index.html");}}catch(x){}}
   /* Fristen, Kündigungstermine, Nebenkostenabrechnungen */
   var vt=C.getLocal("vertraege",null),fin=C.getLocal("finanzen",null),fixL=null,belegt={};
   /* Preiserhöhungen bei Verträgen festhalten (Termin „Sonderkündigung prüfen“, auch für die Wochenvorschau) */

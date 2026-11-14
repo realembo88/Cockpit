@@ -23,8 +23,8 @@ function offen(d,typ){return alle(d,typ).filter(function(x){return !x.ok;}).sort
 function erledigt(d,typ){return alle(d,typ).filter(function(x){return x.ok;}).sort(function(a,b){return b.ok-a.ok;});}
 
 /* Einträge anlegen – bei der Einkaufsliste mehrere auf einmal: „Milch, Brot; Eier“ */
-function neu(d,typ,text,faellig,jetzt){d=norm(d);jetzt=jetzt||Date.now();
-  var teile=typ==="einkauf"?String(text||"").split(/[,;\n]+/):[String(text||"")],neue=[];
+function neu(d,typ,text,faellig,jetzt,ganz){d=norm(d);jetzt=jetzt||Date.now();   /* ganz: Text nicht an Kommas teilen (z. B. „Wasser 6 × 1,5 l“ aus dem Notvorrat) */
+  var teile=typ==="einkauf"&&!ganz?String(text||"").split(/[,;\n]+/):[String(text||"")],neue=[];
   teile.map(function(s){return s.trim();}).filter(Boolean).forEach(function(s,i){
     if(typ==="einkauf"){var k=schluessel(s),schon=offen(d,"einkauf").filter(function(x){return schluessel(x.text)===k;})[0];if(schon)return;
       var h=d.haeufig[k]||{text:s,n:0};d.haeufig[k]={text:s,n:(h.n||0)+1,t:jetzt};}

@@ -1,7 +1,9 @@
 /* ===== Vorsorge: Notvorrat & Notgepäck – Logik ohne Oberfläche =====
    Inhalt nach BBK-Ratgeber „Vorsorgen für Krisen und Katastrophen“ (Stand 2025) und BLE-Vorratstabelle.
-   Datenbereich "vorsorge": {p (Personen), t (Tage), pT, c {punktId:{ok:true|false,t}}, durchsicht "JJJJ-MM-TT", dT}
-   Sync: je Haken gewinnt die jüngere Änderung (t); Personen/Tage und Durchsicht nach Zeitstempel. */
+   Datenbereich "vorsorge": {p (Personen), t (Tage), pT, c {punktId:{ok:true|false,t}}, durchsicht "JJJJ-MM-TT", dT,
+     prod {id:{id,item (Punkt),name,link,laden,inhalt (Zahl),einh "l"|"ml"|"kg"|"g",preis (je Packung),vorh (Anzahl da),soll (Anzahl geplant),mhd "JJJJ-MM-TT",t,del}}}
+   Sync: je Haken und je Produkt gewinnt die jüngere Änderung (t); Löschen = del:true; Personen/Tage und Durchsicht nach Zeitstempel.
+   Bestand: bei Trinkwasser und Lebensmitteln zählt Anzahl × Packungsinhalt gegen die Sollmenge – ist sie gedeckt, gilt der Punkt als erledigt. */
 var VORS=(function(){
 "use strict";
 var DAY=864e5;
@@ -89,14 +91,56 @@ var TAGE=[3,5,7,10],DURCHSICHT=183;   /* Durchsicht etwa zweimal im Jahr */
 
 function blank(){return {p:3,t:3,c:{}};}
 function norm(d){d=d&&typeof d==="object"?d:blank();if(!d.c||typeof d.c!=="object"||Array.isArray(d.c))d.c={};
+  if(!d.prod||typeof d.prod!=="object"||Array.isArray(d.prod))d.prod={};
   if(!(d.p>=1))d.p=3;if(TAGE.indexOf(+d.t)<0)d.t=3;return d;}
 function merge(l,r){l=norm(JSON.parse(JSON.stringify(l)));r=norm(JSON.parse(JSON.stringify(r)));
-  var o={c:{}};Object.keys(Object.assign({},l.c,r.c)).forEach(function(k){var a=l.c[k],b=r.c[k];o.c[k]=!a?b:!b?a:((a.t||0)>=(b.t||0)?a:b);});
+  var o={c:{},prod:{}};Object.keys(Object.assign({},l.c,r.c)).forEach(function(k){var a=l.c[k],b=r.c[k];o.c[k]=!a?b:!b?a:((a.t||0)>=(b.t||0)?a:b);});
+  Object.keys(Object.assign({},l.prod,r.prod)).forEach(function(k){var a=l.prod[k],b=r.prod[k];o.prod[k]=!a?b:!b?a:((a.t||0)>=(b.t||0)?a:b);});
   var pt=(l.pT||0)>=(r.pT||0)?l:r;o.p=pt.p;o.t=pt.t;if(pt.pT)o.pT=pt.pT;
   var dt=(l.dT||0)>=(r.dT||0)?l:r;if(dt.durchsicht){o.durchsicht=dt.durchsicht;o.dT=dt.dT;}
   o._summary=summary(o);return o;}
 function alleIds(){var o=[];SECTIONS.forEach(function(s){s.items.forEach(function(i){o.push(i.id);});});return o;}
-function ok(d,id){var x=norm(d).c[id];return !!(x&&x.ok);}
+function haken(d,id){var x=norm(d).c[id];return !!(x&&x.ok);}
+function ok(d,id){return haken(d,id)||gedeckt(d,id);}
+
+/* ---------- Produkte je Punkt ---------- */
+var UMR={l:1,ml:0.001,kg:1,g:0.001};
+function punkt(id){var r=null;SECTIONS.forEach(function(s){s.items.forEach(function(i){if(i.id===id)r=i;});});return r;}
+/* Mengeneinheit eines Punkts: "l" (Trinkwasser), "kg" (Lebensmittel) oder "" (nur Stückzahl) */
+function einheit(id){var i=punkt(id);return !i||!i.qty?"":i.qty==="water"?"l":"kg";}
+function einheiten(id){var e=einheit(id);return e==="l"?["l","ml"]:e==="kg"?["kg","g"]:[];}
+function zahl(v){var n=typeof v==="number"?v:parseFloat(String(v==null?"":v).trim().replace(/\s/g,"").replace(",","."));return isFinite(n)&&n>=0?n:null;}
+function linkOk(u){u=String(u||"").trim();if(!u)return "";if(!/^https?:\/\//i.test(u)){if(/^[\w-]+(\.[\w-]+)+(\/|$)/.test(u))u="https://"+u;else return "";}return u.slice(0,600);}
+function produkte(d,item){d=norm(d);return Object.keys(d.prod).map(function(k){return d.prod[k];}).filter(function(p){return p&&!p.del&&p.name&&(!item||p.item===item);})
+  .sort(function(a,b){return a.name.localeCompare(b.name,"de");});}
+/* anlegen (id leer) oder ändern; gibt das Produkt zurück, null bei fehlendem Namen/Punkt */
+function prodSetze(d,id,f,jetzt){d=norm(d);jetzt=jetzt||Date.now();var alt=id&&d.prod[id]&&!d.prod[id].del?d.prod[id]:null,item=alt?alt.item:f.item;
+  var name=String(f.name==null?(alt?alt.name:""):f.name).trim();if(!name||!punkt(item))return null;
+  var p={id:alt?alt.id:"p"+jetzt.toString(36)+Math.random().toString(36).slice(2,6),item:item,name:name.slice(0,120),t:jetzt};
+  var src=Object.assign({},alt||{},f),eh=einheiten(item);
+  var l=linkOk(src.link);if(l)p.link=l;
+  var la=String(src.laden||"").trim();if(la)p.laden=la.slice(0,60);
+  if(eh.length){var inh=zahl(src.inhalt);if(inh){p.inhalt=inh;p.einh=eh.indexOf(src.einh)>-1?src.einh:eh[0];}}
+  var pr=zahl(src.preis);if(pr!=null)p.preis=Math.round(pr*100)/100;
+  var vh=zahl(src.vorh);p.vorh=vh==null?0:Math.round(vh);
+  var so=zahl(src.soll);p.soll=so==null?Math.max(1,p.vorh):Math.round(so);
+  if(/^\d{4}-\d{2}-\d{2}$/.test(src.mhd||""))p.mhd=src.mhd;
+  d.prod[p.id]=p;return p;}
+function prodBestand(d,id,delta,jetzt){d=norm(d);var p=d.prod[id];if(!p||p.del)return null;p=Object.assign({},p,{vorh:Math.max(0,(p.vorh||0)+delta),t:jetzt||Date.now()});d.prod[id]=p;return p;}
+function prodLoeschen(d,id,jetzt){d=norm(d);if(d.prod[id])d.prod[id]={id:id,del:true,t:jetzt||Date.now()};}
+function inhaltBasis(p){return p.inhalt?p.inhalt*(UMR[p.einh]||1):0;}
+/* vorhandene bzw. geplante Menge eines Mengen-Punkts in l bzw. kg */
+function bestand(d,item){return produkte(d,item).reduce(function(a,p){return a+(p.vorh||0)*inhaltBasis(p);},0);}
+function geplant(d,item){return produkte(d,item).reduce(function(a,p){return a+Math.max(p.soll||0,p.vorh||0)*inhaltBasis(p);},0);}
+function gedeckt(d,item){var i=punkt(item);if(!i||!i.qty)return false;var soll=menge(d,i.qty);return soll>0&&bestand(d,item)>=soll-1e-6;}
+/* was noch gekauft werden muss: je Produkt geplant − vorhanden */
+function fehlend(d){var l=[];produkte(d).forEach(function(p){var n=(p.soll||0)-(p.vorh||0);if(n>0)l.push({p:p,n:n,kosten:p.preis!=null?n*p.preis:null});});return l;}
+function fehlKosten(d){var f=fehlend(d);return {n:f.length,summe:f.reduce(function(a,x){return a+(x.kosten||0);},0),ohnePreis:f.filter(function(x){return x.kosten==null;}).length};}
+function wert(d){return produkte(d).reduce(function(a,p){return a+(p.vorh||0)*(p.preis||0);},0);}
+/* Haltbarkeit: vorhandene Produkte, die abgelaufen sind oder in höchstens `tage` Tagen ablaufen */
+function ablauf(d,heute,tage){tage=tage==null?30:tage;return produkte(d).filter(function(p){return p.mhd&&(p.vorh||0)>0&&tageSeit(heute,p.mhd)<=tage;})
+  .map(function(p){return {p:p,tage:tageSeit(heute,p.mhd)};}).sort(function(a,b){return a.tage-b.tage;});}
+function einkaufText(x){return (x.n>1?x.n+"× ":"")+x.p.name;}
 function setze(d,id,wert,jetzt){d=norm(d);d.c[id]={ok:!!wert,t:jetzt||Date.now()};return d;}
 function zuruecksetzen(d,jetzt){d=norm(d);jetzt=jetzt||Date.now();Object.keys(d.c).forEach(function(k){if(d.c[k].ok)d.c[k]={ok:false,t:jetzt};});return d;}
 function fortschritt(d){var ids=alleIds(),n=ids.filter(function(i){return ok(d,i);}).length;return {n:n,von:ids.length};}
@@ -107,8 +151,10 @@ function tageSeit(iso,heute){return Math.round((new Date(heute+"T12:00:00")-new 
 /* Durchsicht fällig: nie erfasst oder älter als ein halbes Jahr */
 function faellig(d,heute){d=norm(d);return !d.durchsicht||tageSeit(d.durchsicht,heute)>=DURCHSICHT;}
 function summary(d,heute){d=norm(d);heute=heute||new Date().toISOString().slice(0,10);var f=fortschritt(d);
+  var ab=ablauf(d,heute);if(ab.length)return {k:f.n+" / "+f.von,s:ab[0].tage<0?(ab.length===1?"1 Produkt abgelaufen":ab.length+" Produkte laufen ab"):(ab.length===1?"1 Produkt läuft bald ab":ab.length+" Produkte laufen bald ab")};
   return {k:f.n+" / "+f.von,s:d.durchsicht?(faellig(d,heute)?"Durchsicht fällig":"Durchgesehen "+d.durchsicht.split("-").reverse().join(".")):"Haken setzen, was vorhanden ist"};}
-return {FOOD:FOOD,SECTIONS:SECTIONS,TAGE:TAGE,DURCHSICHT:DURCHSICHT,blank:blank,norm:norm,merge:merge,ok:ok,setze:setze,zuruecksetzen:zuruecksetzen,
+return {FOOD:FOOD,SECTIONS:SECTIONS,TAGE:TAGE,DURCHSICHT:DURCHSICHT,blank:blank,norm:norm,merge:merge,ok:ok,haken:haken,punkt:punkt,einheit:einheit,einheiten:einheiten,zahl:zahl,linkOk:linkOk,produkte:produkte,prodSetze:prodSetze,prodBestand:prodBestand,prodLoeschen:prodLoeschen,
+  inhaltBasis:inhaltBasis,bestand:bestand,geplant:geplant,gedeckt:gedeckt,fehlend:fehlend,fehlKosten:fehlKosten,wert:wert,ablauf:ablauf,einkaufText:einkaufText,setze:setze,zuruecksetzen:zuruecksetzen,
   fortschritt:fortschritt,wasser:wasser,essenKg:essenKg,menge:menge,faellig:faellig,tageSeit:tageSeit,summary:summary,alleIds:alleIds};
 })();
 if(typeof window!=="undefined")window.VORS=VORS;
