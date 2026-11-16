@@ -66,6 +66,11 @@ input[type=file]{display:none;}
 .lg{padding:9px 0;border-top:1px solid #152038;font-size:13px;} .lg:first-of-type{border-top:none;}
 .lg .w{color:#fde68a;font-variant-numeric:tabular-nums;} .lg .g{font-size:11px;color:var(--muted);margin-top:2px;}
 .formbox{border:1px solid var(--border);border-radius:12px;padding:12px;background:var(--panel2);margin:10px 0;}
+.nz{display:flex;gap:10px;align-items:flex-start;padding:8px 0 8px 10px;border-left:2px solid #1e2b45;cursor:pointer;font-size:13px;}
+.nz b{color:#fff;} .nz .g,.nc .g{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.45;} .nz.lose{border-left-color:#f59e0b;} .nz.lose .g{color:#fcd34d;}
+.nzi{font-size:17px;line-height:1.2;} .nzt{min-width:0;flex:1;}
+.nc{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid #152038;font-size:13px;} .nc b{color:#e2e8f0;font-weight:600;} .nc.ok b{color:var(--muted);text-decoration:line-through;}
+.nck{flex:0 0 26px;width:26px;height:26px;border-radius:50%;border:2px solid #475569;background:transparent;color:#0b1220;font-size:14px;font-weight:800;cursor:pointer;padding:0;} .nc.ok .nck{background:#22c55e;border-color:#22c55e;}
 /* Abrechnung als Dokument (Bildschirm-Overlay, beim Drucken nur das Dokument) */
 #docOverlay{display:none;}
 body.doc-on #docOverlay{display:block;position:fixed;inset:0;z-index:50;overflow:auto;background:#e9edf3;padding:0 0 40px;}
@@ -105,6 +110,7 @@ body.doc-on .wrap{display:none;}
 <script src="../assets/cockpit.js"></script>
 <script src="logic.js"></script>
 <script src="technik.js"></script>
+<script src="netz.js"></script>
 <script src="../dokumente/logic.js"></script>
 <script src="../vertraege/logic.js"></script>
 <script>
@@ -167,7 +173,7 @@ function heuteIso(){return new Date().toISOString().slice(0,10);}
 function dIn(v){return v?de(v):"";}
 function tk(l,v){return v==null||v===""?"":'<div class="tk"><span>'+esc(l)+"</span><span>"+v+"</span></div>";}
 function n1(v){return v==null||v===""?"":String(v).replace(".",",");}
-function vTechnik(){
+function vHeizung(){
   var t=T(),a=t.anlage,h="";
   if(!a.waermeerzeuger&&!t.heizkreise.length)return '<div class="empty"><div class="big">🔧</div>Noch keine Heizungsdaten.<br><span class="small">Die Startdatei aus dem Heizungs-Chat einlesen – danach pflegst du Änderungen hier.</span><br>'+
     '<label class="btn" style="display:inline-block;margin-top:14px;background:#fb923c;cursor:pointer">📄 Heizungs-Startdatei einlesen<input type="file" accept=".json,application/json" onchange="H2.tImp(this)"></label></div>';
@@ -224,6 +230,149 @@ function ablesForm(){var t=T(),kr=t.heizkreise.map(function(k){return k.id;});if
     '<div class="g3" style="margin-top:8px">'+f("aDr","Anlagendruck bar","z. B. 1,5")+f("aAu","Außen °C")+"</div>"+
     '<div class="g3" style="margin-top:8px">'+f("aRa","Raum °C")+'<div><div class="lbl">Notiz</div><input id="aNo" class="inp"></div></div>'+
     '<div style="display:flex;gap:6px;margin-top:10px"><button class="btn" style="background:#fb923c;padding:9px 14px;font-size:13px" onclick="H2.tAbSave()">Speichern</button><button class="mini" onclick="H2.tAb(0)">Abbrechen</button></div></div>';}
+/* ---------- Technik: Netzwerk (eigener Datenbereich "netz") ---------- */
+var nd=NETZ.norm(C.getLocal("netz",NETZ.blank));C.registerMerge("netz",NETZ.merge);
+function nSave(){C.save("netz",nd);}
+function gName(g){return g?(g.name||g.modell||"Gerät"):"";}
+function nOpt(l,sel,leer){return (leer!=null?'<option value="">'+esc(leer)+"</option>":"")+l.map(function(x){return '<option value="'+esc(x.k)+'"'+(x.k===sel?" selected":"")+">"+esc(x.n)+"</option>";}).join("");}
+function nIn(id,l,v,ph,mode){return '<div><div class="lbl">'+l+'</div><input id="'+id+'" class="inp"'+(mode?' inputmode="'+mode+'"':"")+' value="'+esc(v==null?"":v)+'" placeholder="'+esc(ph||"")+'"></div>';}
+function nVal(id){var e=document.getElementById(id);return e?(e.value||"").trim():"";}
+function nRate(v){return v==null||v===""?"":n1(v)+" Mbit/s";}
+function nTempo(a){var d=NETZ.toN(a.down),u=NETZ.toN(a.up);return d==null&&u==null?"":(d!=null?"↓ "+n1(d):"")+(u!=null?(d!=null?" · ":"")+"↑ "+n1(u):"")+" Mbit/s";}
+function vTechnik(){
+  var sub=st.tSub==="netz"?"netz":"heizung";
+  return '<div style="display:flex;gap:6px;margin-bottom:12px"><button class="mini'+(sub==="heizung"?" ok":"")+'" onclick="H2.tSub(\'heizung\')">🔥 Heizung</button><button class="mini'+(sub==="netz"?" ok":"")+'" onclick="H2.tSub(\'netz\')">🌐 Netzwerk</button></div>'+(sub==="netz"?vNetz():vHeizung());
+}
+function vNetz(){
+  var d=nd,gs=NETZ.liste(d.geraete),a=d.anschluss,h="";
+  if(!gs.length&&!Object.keys(a.ist).length&&!st.nEdit&&!st.nAns)return '<div class="empty"><div class="big">🌐</div>Noch kein Netzwerk erfasst.<br><span class="small">Internet-Anschluss, Router, Repeater und Powerline-Adapter – mit Standort und Anbindung.</span><br>'+
+    '<button class="btn" style="margin-top:14px;background:#fb923c" onclick="H2.nEdit(\'neu\')">＋ Erstes Gerät</button></div>';
+  var hatP=NETZ.planOffen(d)||Object.keys(a.plan).some(function(k){return a.plan[k]!==""&&a.plan[k]!=null;}),plan=hatP&&st.nSicht==="plan";
+  /* Anschluss */
+  var p=a.plan||{},tb=NETZ.tageBis(d,heuteIso());
+  h+='<div class="panel"><h3>🌐 Internet-Anschluss</h3>';
+  if(st.nAns)h+=ansForm();
+  else{h+=tk("Anbieter",esc(a.ist.anbieter||""))+tk("Technik",esc(a.ist.technik||""))+tk("Tarif",esc(a.ist.tarif||""))+tk("Geschwindigkeit",esc(nTempo(a.ist)))+(a.ist.notiz?'<div class="note" style="margin-top:6px">'+esc(a.ist.notiz)+"</div>":"");
+    if(Object.keys(p).some(function(k){return p[k]!==""&&p[k]!=null;}))h+='<div class="unit">GEPLANT</div>'+tk("Anbieter",esc(p.anbieter||""))+tk("Technik",esc(p.technik||""))+tk("Tarif",esc(p.tarif||""))+tk("Geschwindigkeit",esc(nTempo(p)))+
+      tk("Termin",p.termin?esc(de(p.termin))+(tb!=null?' <span class="small muted">('+(tb>0?"in "+tb+" Tagen":tb===0?"heute":"vor "+(-tb)+" Tagen")+")</span>":""):"")+(p.notiz?'<div class="note" style="margin-top:6px">'+esc(p.notiz)+"</div>":"");
+    if(d.umgestellt)h+='<div class="note" style="margin-top:6px">Umgestellt am '+esc(de(d.umgestellt.datum))+".</div>";
+    h+='<button class="mini" style="margin-top:10px" onclick="H2.nAns(1)">✏️ Anschluss bearbeiten</button>';}
+  h+="</div>";
+  /* Was hängt woran */
+  var b=NETZ.baum(d,plan),hw=NETZ.hinweise(d,plan);
+  h+='<div class="panel"><h3>🗺️ Was hängt woran</h3>';
+  if(hatP)h+='<div style="display:flex;gap:6px;margin-bottom:10px"><button class="mini'+(!plan?" ok":"")+'" onclick="H2.nSicht(\'ist\')">Heute</button><button class="mini'+(plan?" ok":"")+'" onclick="H2.nSicht(\'plan\')">Nach der Umstellung</button></div>';
+  h+=b.length?b.map(function(z){var g=z.g,s=z.s,ar=NETZ.art(g.art);
+    return '<div class="nz'+(z.lose?" lose":"")+'" style="margin-left:'+(z.tiefe*18)+'px" onclick="H2.nEdit(\''+g.id+'\')"><span class="nzi">'+ar.ic+'</span><div class="nzt"><b>'+esc(gName(g))+"</b>"+(plan&&s.neu?' <span class="chipb">geändert</span>':"")+
+      '<div class="g">'+esc([s.ort,s.anb==="wan"?"am Internet-Anschluss":(z.tiefe&&s.anb?"über "+NETZ.anbN(s.anb):""),nRate(s.rate)].filter(Boolean).join(" · "))+(z.lose?" · ⚠ ohne Anschluss":"")+"</div></div></div>";}).join(""):'<div class="note">Noch kein Gerät in Betrieb.</div>';
+  if(hw.length)h+='<div class="warnbox" style="margin:10px 0 0">'+hw.map(function(x){return "⚠ <b>"+esc(x.name)+"</b> "+esc(x.text)+".";}).join("<br>")+"</div>";
+  h+="</div>";
+  /* Geräte */
+  h+='<div class="panel"><h3>📦 Geräte</h3>';
+  if(st.nEdit==="neu")h+=gerForm(null);
+  NETZ.STATUS.forEach(function(S){var l=gs.filter(function(g){return (g.status||"betrieb")===S.k;}).sort(function(x,y){return gName(x).localeCompare(gName(y),"de");});if(!l.length)return;
+    h+='<div class="unit">'+esc(S.n.toUpperCase())+" · "+l.length+"</div>";
+    l.forEach(function(g){if(st.nEdit===g.id){h+=gerForm(g);return;}var ar=NETZ.art(g.art),el=g.an?d.geraete[g.an]:null,pl=NETZ.hatPlan(g)?NETZ.sicht(g,true):null;
+      h+='<div class="lg" style="cursor:pointer" onclick="H2.nEdit(\''+g.id+'\')"><span class="chipb">'+ar.ic+" "+esc(ar.n)+'</span><b style="color:#fff">'+esc(gName(g))+"</b>"+(g.modell&&g.name&&g.modell!==g.name?' <span class="small muted">'+esc(g.modell)+"</span>":"")+
+        '<div class="g">'+esc([g.ort,g.anb?(g.anb==="wan"?"am Internet-Anschluss":NETZ.anbN(g.anb)+(el&&!el.del?" an "+gName(el):"")):"",nRate(g.rate),g.fw?"Firmware "+g.fw:""].filter(Boolean).join(" · "))+"</div>"+
+        (pl?'<div class="w">➜ nach der Umstellung: '+esc([pl.status!=="betrieb"?NETZ.statusN(pl.status):"",pl.status==="betrieb"?pl.ort:"",pl.status==="betrieb"&&pl.anb?(pl.anb==="wan"?"am Internet-Anschluss":NETZ.anbN(pl.anb)+(pl.an&&d.geraete[pl.an]?" an "+gName(d.geraete[pl.an]):"")):""].filter(Boolean).join(" · "))+"</div>":"")+
+        (g.notiz?'<div class="g">'+esc(g.notiz)+"</div>":"")+"</div>";});});
+  if(st.nEdit!=="neu")h+='<button class="mini" style="margin-top:10px" onclick="H2.nEdit(\'neu\')">＋ Gerät</button>';
+  h+='<div class="note" style="margin-top:8px">Funknetz-Schlüssel, Kennwörter und Seriennummern gehören nicht hierher.</div></div>';
+  /* Umstellung */
+  var pk=NETZ.punkte(d),sd=NETZ.stand(d);
+  h+='<div class="panel"><h3>✅ Umstellung des Anschlusses <span class="small muted">· '+sd.ok+" / "+sd.n+"</span></h3>";
+  NETZ.GRUPPEN.forEach(function(G){var l=pk.filter(function(x){return x.gr===G.k;});if(!l.length)return;h+='<div class="unit">'+esc(G.n.toUpperCase())+"</div>"+l.map(function(x){
+    return '<div class="nc'+(x.ok?" ok":"")+'"><button class="nck" onclick="H2.nHaken(\''+x.id+'\')" aria-label="'+(x.ok?"wieder öffnen":"erledigt")+'">'+(x.ok?"✓":"")+'</button><div class="nzt"><b>'+esc(x.t)+"</b>"+(x.h?'<div class="g">'+esc(x.h)+"</div>":"")+"</div>"+
+      (x.eigen?'<button class="x" onclick="H2.nPunktDel(\''+x.id+'\')" aria-label="Punkt löschen">×</button>':"")+"</div>";}).join("");});
+  h+=st.nPunkt?'<div class="formbox"><div class="g3">'+nIn("npT","Eigener Punkt","")+'<div><div class="lbl">Abschnitt</div><select id="npG" class="sel">'+nOpt(NETZ.GRUPPEN,"vor")+'</select></div></div><div style="display:flex;gap:6px;margin-top:10px"><button class="btn" style="background:#fb923c;padding:9px 14px;font-size:13px" onclick="H2.nPunktSave()">Speichern</button><button class="mini" onclick="H2.nPunkt(0)">Abbrechen</button></div></div>'
+    :'<button class="mini" style="margin-top:10px" onclick="H2.nPunkt(1)">＋ eigener Punkt</button>';
+  if(hatP)h+=' <button class="mini ok" style="margin-top:10px" onclick="H2.nAbschluss()">🏁 Umstellung abschließen</button><div class="note" style="margin-top:8px">Abschließen übernimmt den geplanten Stand in den Katalog und schreibt jede Änderung ins Protokoll.</div>';
+  h+="</div>";
+  /* Messungen */
+  var ms=NETZ.liste(d.mess).sort(function(x,y){return String(y.datum).localeCompare(String(x.datum))||(y.t||0)-(x.t||0);}),vg=NETZ.vergleich(d).filter(function(o){return o.vor&&o.nach;});
+  h+='<div class="panel"><h3>📶 Messungen</h3>';
+  if(vg.length)h+='<div class="tscroll"><table class="t"><tr><th>Ort</th><th>vorher</th><th>nachher</th><th>Änderung</th></tr>'+vg.map(function(o){return "<tr><td>"+esc(o.ort)+"</td><td>"+esc(n1(o.vor.down))+"</td><td>"+esc(n1(o.nach.down))+'</td><td class="'+(o.delta<0?"up":"dn")+'">'+(o.delta!=null?(o.delta>=0?"+":"")+o.delta+" %":"–")+"</td></tr>";}).join("")+'</table></div><div class="note" style="margin:6px 0 10px">Download in Mbit/s, je Ort die jüngste Messung vorher und nachher.</div>';
+  h+=ms.length?ms.slice(0,st.nMAlle?999:8).map(function(m){return '<div class="lg"><b style="color:#fff">'+esc(m.ort||"")+'</b> <span class="small muted">'+esc(dIn(m.datum))+" · "+(m.phase==="nach"?"nachher":"vorher")+(m.art?" · "+esc(m.art):"")+'</span><button class="x" style="float:right" onclick="H2.nMessDel(\''+m.id+'\')" aria-label="Messung löschen">×</button><div class="w">'+
+      esc([m.down!=null?"↓ "+n1(m.down)+" Mbit/s":"",m.up!=null?"↑ "+n1(m.up)+" Mbit/s":"",m.ping!=null?"Ping "+n1(m.ping)+" ms":""].filter(Boolean).join(" · "))+"</div>"+(m.notiz?'<div class="g">'+esc(m.notiz)+"</div>":"")+"</div>";}).join(""):'<div class="note">Noch keine Messungen. Je Raum eine Messung vor und nach der Umstellung zeigt, was sich geändert hat.</div>';
+  if(ms.length>8&&!st.nMAlle)h+='<button class="mini" style="margin-top:8px" onclick="H2.nMAlle()">Alle '+ms.length+" zeigen</button> ";
+  h+=st.nMess?messForm():'<button class="mini" style="margin-top:10px" onclick="H2.nMess(1)">＋ Messung eintragen</button>';
+  h+="</div>";
+  /* Protokoll */
+  var lg=NETZ.liste(d.log).sort(function(x,y){return String(y.datum).localeCompare(String(x.datum))||(y.t||0)-(x.t||0);});
+  h+='<div class="panel"><h3>📋 Änderungsprotokoll</h3>'+(lg.length?lg.slice(0,st.nLAlle?999:10).map(function(g){var ge=g.geraet?d.geraete[g.geraet]:null;
+      return '<div class="lg">'+(ge?'<span class="chipb">'+esc(gName(ge))+"</span>":"")+'<b style="color:#fff">'+esc(g.was||"")+'</b> <span class="small muted">'+esc(dIn(g.datum))+'</span><button class="x" style="float:right" onclick="H2.nLogDel(\''+g.id+'\')" aria-label="Eintrag löschen">×</button>'+
+        (g.vorher||g.nachher?'<div class="w">'+esc(g.vorher||"–")+" → "+esc(g.nachher||"–")+"</div>":"")+(g.grund?'<div class="g">'+esc(g.grund)+"</div>":"")+"</div>";}).join(""):'<div class="note">Noch keine Einträge.</div>')+
+    (lg.length>10&&!st.nLAlle?'<button class="mini" style="margin-top:8px" onclick="H2.nLAlle()">Alle '+lg.length+" zeigen</button> ":"")+
+    (st.nNotiz?nNotizForm():'<button class="mini" style="margin-top:10px" onclick="H2.nNotiz(1)">＋ Maßnahme eintragen</button>')+"</div>";
+  return h;
+}
+function ansForm(){var a=nd.anschluss,i=a.ist,p=a.plan;
+  function bl(pre,o){return '<div class="g3">'+nIn(pre+"An","Anbieter",o.anbieter)+nIn(pre+"Te","Technik",o.technik,"z. B. Kabel, Glasfaser")+'</div><div class="g3" style="margin-top:8px">'+nIn(pre+"Ta","Tarif",o.tarif)+'<div class="g3">'+nIn(pre+"Dn","↓ Mbit/s",o.down!=null?n1(o.down):"","","decimal")+nIn(pre+"Up","↑ Mbit/s",o.up!=null?n1(o.up):"","","decimal")+'</div></div><div style="margin-top:8px">'+nIn(pre+"No","Notiz",o.notiz)+"</div>";}
+  return '<div class="formbox"><div class="unit" style="margin-top:0">HEUTE</div>'+bl("ai",i)+'<div class="unit">GEPLANT (leer lassen, wenn nichts ansteht)</div>'+bl("ap",p)+'<div style="margin-top:8px">'+nIn("apTm","Termin der Umstellung",p.termin?de(p.termin):"","TT.MM.JJJJ")+"</div>"+
+    '<div style="display:flex;gap:6px;margin-top:10px"><button class="btn" style="background:#fb923c;padding:9px 14px;font-size:13px" onclick="H2.nAnsSave()">Speichern</button><button class="mini" onclick="H2.nAns(0)">Abbrechen</button></div></div>';}
+function gerForm(g){var x=g||{art:"repeater",anb:"wlan",status:"betrieb"},andere=NETZ.liste(nd.geraete).filter(function(o){return !g||o.id!==g.id;}).sort(function(a,b){return gName(a).localeCompare(gName(b),"de");}).map(function(o){return {k:o.id,n:gName(o)+(o.ort?" ("+o.ort+")":"")};});
+  var orte={};NETZ.liste(nd.geraete).forEach(function(o){if(o.ort)orte[o.ort]=1;if(o.pOrt)orte[o.pOrt]=1;});
+  return '<div class="formbox"><datalist id="ngOrte">'+Object.keys(orte).sort().map(function(o){return '<option value="'+esc(o)+'">';}).join("")+"</datalist>"+
+    '<div class="g3"><div><div class="lbl">Art</div><select id="ngArt" class="sel">'+nOpt(NETZ.ARTEN,x.art)+"</select></div>"+nIn("ngName","Name",x.name,"z. B. Repeater Flur")+"</div>"+
+    '<div class="g3" style="margin-top:8px">'+nIn("ngMod","Modell",x.modell)+'<div><div class="lbl">Standort</div><input id="ngOrt" class="inp" list="ngOrte" value="'+esc(x.ort||"")+'" placeholder="Etage – Raum"></div></div>'+
+    '<div class="g3" style="margin-top:8px"><div><div class="lbl">Anbindung</div><select id="ngAnb" class="sel">'+nOpt(NETZ.ANB,x.anb,"–")+'</select></div><div><div class="lbl">Angeschlossen an</div><select id="ngAn" class="sel">'+nOpt(andere,x.an,"–")+"</select></div></div>"+
+    '<div class="g3" style="margin-top:8px">'+nIn("ngRate","Verbindungsrate Mbit/s",x.rate!=null?n1(x.rate):"","laut Mesh-Übersicht","decimal")+nIn("ngFw","Firmware",x.fw)+"</div>"+
+    '<div class="g3" style="margin-top:8px"><div><div class="lbl">Status</div><select id="ngSt" class="sel">'+nOpt(NETZ.STATUS,x.status||"betrieb")+"</select></div>"+nIn("ngKauf","Gekauft",x.kauf,"z. B. 2023")+"</div>"+
+    '<div style="margin-top:8px">'+nIn("ngNo","Notiz",x.notiz,"z. B. wichtig für …")+"</div>"+
+    '<div class="unit">NACH DER UMSTELLUNG (nur ausfüllen, was sich ändert)</div>'+
+    '<div class="g3"><div><div class="lbl">Standort</div><input id="ngPOrt" class="inp" list="ngOrte" value="'+esc(x.pOrt||"")+'"></div><div><div class="lbl">Status</div><select id="ngPSt" class="sel">'+nOpt(NETZ.STATUS,x.pStatus||"","bleibt")+"</select></div></div>"+
+    '<div class="g3" style="margin-top:8px"><div><div class="lbl">Anbindung</div><select id="ngPAnb" class="sel">'+nOpt(NETZ.ANB,x.pAnb||"","bleibt")+'</select></div><div><div class="lbl">Angeschlossen an</div><select id="ngPAn" class="sel">'+nOpt(andere,x.pAn||"","bleibt")+"</select></div></div>"+
+    (g?'<div class="g3" style="margin-top:12px">'+nIn("ngDat","Datum der Änderung",de(heuteIso()),"TT.MM.JJJJ")+nIn("ngGrund","Grund (optional)","")+"</div>":"")+
+    '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap"><button class="btn" style="background:#fb923c;padding:9px 14px;font-size:13px" onclick="H2.nGerSave(\''+(g?g.id:"")+'\')">'+(g?"Speichern & protokollieren":"Speichern")+'</button><button class="mini" onclick="H2.nEdit(null)">Abbrechen</button>'+
+    (g?'<button class="mini" style="margin-left:auto;color:#f87171" onclick="H2.nGerDel(\''+g.id+'\')">Löschen</button>':"")+"</div></div>";}
+function messForm(){var orte={};NETZ.liste(nd.geraete).forEach(function(o){if(o.ort)orte[o.ort]=1;});NETZ.liste(nd.mess).forEach(function(o){if(o.ort)orte[o.ort]=1;});
+  return '<div class="formbox"><datalist id="nmOrte">'+Object.keys(orte).sort().map(function(o){return '<option value="'+esc(o)+'">';}).join("")+"</datalist>"+
+    '<div class="g3">'+nIn("nmDat","Datum",de(heuteIso()),"TT.MM.JJJJ")+'<div><div class="lbl">Ort</div><input id="nmOrt" class="inp" list="nmOrte" placeholder="Etage – Raum"></div></div>'+
+    '<div class="g3" style="margin-top:8px"><div><div class="lbl">Verbindung</div><select id="nmArt" class="sel"><option>WLAN</option><option>LAN</option><option>Powerline</option></select></div><div><div class="lbl">Zeitpunkt</div><select id="nmPh" class="sel">'+nOpt([{k:"vor",n:"vorher"},{k:"nach",n:"nachher"}],NETZ.phase(nd))+"</select></div></div>"+
+    '<div class="g3" style="margin-top:8px">'+nIn("nmDn","Download Mbit/s","","","decimal")+nIn("nmUp","Upload Mbit/s","","","decimal")+"</div>"+
+    '<div class="g3" style="margin-top:8px">'+nIn("nmPi","Ping ms","","","decimal")+nIn("nmNo","Notiz","")+"</div>"+
+    '<div style="display:flex;gap:6px;margin-top:10px"><button class="btn" style="background:#fb923c;padding:9px 14px;font-size:13px" onclick="H2.nMessSave()">Speichern</button><button class="mini" onclick="H2.nMess(0)">Abbrechen</button></div></div>';}
+function nNotizForm(){var gl=NETZ.liste(nd.geraete).sort(function(a,b){return gName(a).localeCompare(gName(b),"de");}).map(function(o){return {k:o.id,n:gName(o)};});
+  return '<div class="formbox"><div class="g3"><div><div class="lbl">Gerät</div><select id="nnGer" class="sel">'+nOpt(gl,"","Allgemein")+"</select></div>"+nIn("nnDat","Datum",de(heuteIso()),"TT.MM.JJJJ")+"</div>"+
+    '<div style="margin-top:8px">'+nIn("nnWas","Was wurde gemacht?","","z. B. Update eingespielt, Repeater versetzt")+"</div>"+
+    '<div style="margin-top:8px">'+nIn("nnGrund","Grund / Ergebnis (optional)","")+"</div>"+
+    '<div style="display:flex;gap:6px;margin-top:10px"><button class="btn" style="background:#fb923c;padding:9px 14px;font-size:13px" onclick="H2.nNotizSave()">Speichern</button><button class="mini" onclick="H2.nNotiz(0)">Abbrechen</button></div></div>';}
+var NACT={
+  tSub:function(s){st.tSub=s;st.nEdit=null;render();},
+  nSicht:function(s){st.nSicht=s;render();},
+  nEdit:function(id){st.nEdit=id;render();if(id){var e=document.querySelector(".formbox");if(e&&e.scrollIntoView)e.scrollIntoView({block:"center"});}},
+  nAns:function(on){st.nAns=!!on;render();},
+  nAnsSave:function(){function les(pre){var o={anbieter:nVal(pre+"An"),technik:nVal(pre+"Te"),tarif:nVal(pre+"Ta"),notiz:nVal(pre+"No")},dn=NETZ.toN(nVal(pre+"Dn")),up=NETZ.toN(nVal(pre+"Up"));if(dn!=null)o.down=dn;if(up!=null)o.up=up;
+      Object.keys(o).forEach(function(k){if(o[k]==="")delete o[k];});return o;}
+    var tm=nVal("apTm"),d=tm&&V?V.parse(tm):"";if(tm&&!d){flash("⚠ Termin bitte als TT.MM.JJJJ",true);return;}
+    var p=les("ap");if(d)p.termin=d;nd.anschluss={ist:les("ai"),plan:p,upd:Date.now()};st.nAns=false;nSave();flash("✓ Anschluss gespeichert");},
+  nGerSave:function(gid){var name=nVal("ngName"),mod=nVal("ngMod");if(!name&&!mod){flash("⚠ Bitte Name oder Modell eintragen",true);return;}
+    var dat=gid?nVal("ngDat"):de(heuteIso()),d=V?V.parse(dat):heuteIso();if(!d){flash("⚠ Datum bitte als TT.MM.JJJJ",true);return;}
+    var rt=nVal("ngRate"),rn=NETZ.toN(rt);if(rt!==""&&rn==null){flash("⚠ Verbindungsrate bitte als Zahl",true);return;}
+    var g={art:nVal("ngArt"),name:name||mod,modell:mod,ort:nVal("ngOrt"),anb:nVal("ngAnb"),an:nVal("ngAn"),rate:rn==null?"":rn,fw:nVal("ngFw"),status:nVal("ngSt")||"betrieb",kauf:nVal("ngKauf"),notiz:nVal("ngNo"),
+      pOrt:nVal("ngPOrt"),pAnb:nVal("ngPAnb"),pAn:nVal("ngPAn"),pStatus:nVal("ngPSt")};if(gid)g.id=gid;
+    if(g.pOrt===g.ort)g.pOrt="";if(g.pAnb===g.anb)g.pAnb="";if(g.pAn===g.an)g.pAn="";if(g.pStatus===g.status)g.pStatus="";
+    var r=NETZ.geraetSpeichern(nd,g,d,gid?nVal("ngGrund"):"");st.nEdit=null;nSave();flash(gid?(r.log?"✓ Gespeichert, "+r.log+(r.log===1?" Änderung":" Änderungen")+" protokolliert":"✓ Gespeichert"):"✓ Gerät aufgenommen");},
+  nGerDel:function(gid){var g=nd.geraete[gid];if(!g||!confirm("„"+gName(g)+"“ aus dem Katalog löschen?"))return;NETZ.geraetLoeschen(nd,gid);st.nEdit=null;nSave();flash("✓ Gelöscht");},
+  nHaken:function(cid){NETZ.haken(nd,cid);nSave();render();},
+  nPunkt:function(on){st.nPunkt=!!on;render();},
+  nPunktSave:function(){var t=nVal("npT");if(!t){flash("⚠ Bitte einen Text eintragen",true);return;}nd.check[NETZ.id("c")]={text:t,gr:nVal("npG")||"vor",ok:false,t:Date.now()};st.nPunkt=false;nSave();render();},
+  nPunktDel:function(cid){var x=nd.check[cid];if(!x||!confirm("Punkt löschen?"))return;x.del=true;x.t=Date.now();nSave();render();},
+  nAbschluss:function(){if(!confirm("Umstellung abschließen? Der geplante Stand wird zum heutigen Stand, jede Änderung kommt ins Protokoll."))return;var n=NETZ.abschliessen(nd,heuteIso());st.nSicht="ist";nSave();flash("✓ Umstellung abgeschlossen: "+n+(n===1?" Gerät":" Geräte")+" übernommen");},
+  nMess:function(on){st.nMess=!!on;render();},
+  nMAlle:function(){st.nMAlle=true;render();},
+  nMessSave:function(){var d=V?V.parse(nVal("nmDat")):"",ort=nVal("nmOrt");if(!d||!ort){flash("⚠ Bitte Datum (TT.MM.JJJJ) und Ort eintragen",true);return;}
+    var m={id:NETZ.id("m"),datum:d,ort:ort,art:nVal("nmArt"),down:NETZ.toN(nVal("nmDn")),up:NETZ.toN(nVal("nmUp")),ping:NETZ.toN(nVal("nmPi")),phase:nVal("nmPh")||"vor",notiz:nVal("nmNo"),t:Date.now()};
+    if(m.down==null&&m.up==null&&m.ping==null){flash("⚠ Bitte mindestens einen Messwert eintragen",true);return;}
+    nd.mess[m.id]=m;st.nMess=false;nSave();flash("✓ Messung gespeichert");},
+  nMessDel:function(mid){var m=nd.mess[mid];if(!m||!confirm("Messung löschen?"))return;m.del=true;m.t=Date.now();nSave();render();},
+  nLAlle:function(){st.nLAlle=true;render();},
+  nNotiz:function(on){st.nNotiz=!!on;render();},
+  nNotizSave:function(){var was=nVal("nnWas"),d=V?V.parse(nVal("nnDat")):"";if(!was||!d){flash("⚠ Bitte Datum (TT.MM.JJJJ) und „Was“ eintragen",true);return;}
+    var l={id:NETZ.id("l"),datum:d,geraet:nVal("nnGer"),was:was,vorher:"",nachher:"",grund:nVal("nnGrund"),t:Date.now()};nd.log[l.id]=l;st.nNotiz=false;nSave();flash("✓ Eingetragen");},
+  nLogDel:function(lid){var l=nd.log[lid];if(!l||!confirm("Protokoll-Eintrag löschen?"))return;l.del=true;l.t=Date.now();nSave();render();}
+};
 /* Wirkung: Heizenergie je Heizgradtag (wetterbereinigt) mit Markierungen der Änderungen */
 function vWirkung(t){
   var en=C.getLocal("energie",null),gas=TECH.gasMonate(en),h='<div class="panel"><h3>📉 Wirkung auf den Gasverbrauch</h3>';
@@ -634,10 +783,11 @@ window.H2={
       persist();st.y=defaultYear();flash("✓ Startdaten eingelesen: "+data.einheiten.length+" Wohnungen, "+(o.belegung||[]).length+" Belegungen, Jahre "+Object.keys(o.jahre||{}).join(", "));})
     .catch(function(e){flash("⚠ "+(e.message||"Datei konnte nicht gelesen werden"),true);});}
 };
+Object.keys(NACT).forEach(function(k){window.H2[k]=NACT[k];});
 document.addEventListener("keydown",function(e){if(e.key==="Escape"&&document.body.classList.contains("doc-on"))H2.closeDoc();});
-(function(){var h=location.hash.slice(1);if(["uebersicht","abrechnung","kosten","belegung","zaehler","steuer","technik","einst"].indexOf(h)>-1){st.tab=h;if(h==="technik")setTimeout(function(){ladeWetter(false);},50);}})();
+(function(){var h=location.hash.slice(1);if(h==="netz"){st.tab="technik";st.tSub="netz";}else if(["uebersicht","abrechnung","kosten","belegung","zaehler","steuer","technik","einst"].indexOf(h)>-1){st.tab=h;if(h==="technik")setTimeout(function(){ladeWetter(false);},50);}})();
 render();
-C.autoPull([AREA,"finanzen","ferienwohnung","energie","dokumente","zuordnung"],function(a,d){if(a===AREA)data=norm(d);render();});
+C.autoPull([AREA,"finanzen","ferienwohnung","energie","dokumente","zuordnung","netz"],function(a,d){if(a===AREA)data=norm(d);if(a==="netz"){if(document.querySelector("#main .formbox"))return;nd=NETZ.norm(d);}render();});
 })();
 </script>
 </body>
