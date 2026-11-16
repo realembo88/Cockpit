@@ -243,11 +243,18 @@ function compute(data,y,ctx){
     if(p.q!=="manuell"&&num(m[p.id])!=null){res.auto=res.v;res.v=num(m[p.id]);res.korr=true;}
     out[p.id]=res;});
   /* Formeln: Summe aus Faktor × Posten, mehrere Durchgänge für verschachtelte Formeln */
-  for(var pass=0;pass<5;pass++)posten.forEach(function(p){if(p.q!=="formel"||out[p.id].korr)return;var t=(p.c||{}).t||[],s=0,miss=[];
-    t.forEach(function(x){var o=out[x.id];if(!o||o.v==null){miss.push(x.id);return;}s+=o.v*(num(x.f)==null?1:num(x.f));});
-    out[p.id].v=t.length&&!miss.length?r2(s):null;out[p.id].info=!t.length?"Keine Bestandteile":miss.length?"wartet auf "+miss.length+" Posten":"berechnet";});
+  for(var pass=0;pass<5;pass++)posten.forEach(function(p){if(p.q!=="formel"||out[p.id].korr)return;var t=(p.c||{}).t||[],s=0,miss=[],offen=0;
+    t.forEach(function(x){var o=out[x.id];if(!o||o.v==null){if(x.opt){offen++;return;}miss.push(x.id);return;}s+=o.v*(num(x.f)==null?1:num(x.f));});
+    out[p.id].v=t.length&&!miss.length?r2(s):null;out[p.id].offen=offen;
+    out[p.id].info=!t.length?"Keine Bestandteile":miss.length?"wartet auf "+miss.length+" Posten":"berechnet"+(offen?" · "+offen+" Posten noch offen, als 0 gerechnet":"");});
   return out;
 }
+/* Ergebnis-Posten einer Anlage (Formel mit c.erg), z. B. Überschuss der Ferienwohnung: Bestandteile nach Vorzeichen getrennt */
+function ergebnis(data,a,comp){var p=aktiv(data).filter(function(x){return x.a===a&&x.q==="formel"&&(x.c||{}).erg;})[0];if(!p)return null;
+  var by={};aktiv(data).forEach(function(x){by[x.id]=x;});var ein=[],aus=[],sE=0,sA=0,offen=0;
+  ((p.c||{}).t||[]).forEach(function(t){var q=by[t.id];if(!q)return;var f=num(t.f);if(f==null)f=1;var c=comp[t.id]||{},v=c.v==null?null:r2(c.v*Math.abs(f));
+    var z={p:q,v:v,c:c,opt:!!t.opt};if(v==null)offen++;if(f>=0){ein.push(z);sE+=v||0;}else{aus.push(z);sA+=v||0;}});
+  return {p:p,ein:ein,aus:aus,sumEin:r2(sE),sumAus:r2(sA),v:(comp[p.id]||{}).v,offen:offen,ids:((p.c||{}).t||[]).map(function(t){return t.id;})};}
 /* Vorjahr: Wert laut Steuerbescheid/Berechnung (ref), sonst berechnet */
 function vorjahr(data,y,ctx,comp){
   var Jp=jahr(data,y-1),ref=Jp.ref||{},out={},c=comp||null;
@@ -266,6 +273,6 @@ function status(data,y,comp){
 return {ANLAGEN:ANLAGEN,QUELLEN:QUELLEN,QICON:QICON,EINHEITEN:EINHEITEN,HAUSF:HAUSF,SMOOF:SMOOF,ENF:ENF,BELEGE_STD:BELEGE_STD,
   compute:compute,vorjahr:vorjahr,vertraegeListe:vertraegeListe,vtWert:vertraege,
   docJahr:docJahr,ordnerJahr:ordnerJahr,docsJahr:docsJahr,jahrHinweise:jahrHinweise,istNachweis:istNachweis,istBescheinigung:istBescheinigung,jahreImTitel:jahreImTitel,
-  zaehlt:zaehlt,erwartet:erwartet,besFenster:besFenster,vtDocs:vtDocs,ERWARTET:ERWARTET,belegDocs:belegDocs,status:status,aktiv:aktiv,anlage:anlage,finKategorien:finKategorien,num:num,r2:r2,words:words};
+  zaehlt:zaehlt,erwartet:erwartet,besFenster:besFenster,vtDocs:vtDocs,ERWARTET:ERWARTET,belegDocs:belegDocs,status:status,ergebnis:ergebnis,aktiv:aktiv,anlage:anlage,finKategorien:finKategorien,num:num,r2:r2,words:words};
 })();
 if(typeof window!=="undefined")window.STEUER=STEUER;

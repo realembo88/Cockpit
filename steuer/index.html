@@ -223,7 +223,8 @@ function vAnl(){
     if(st.nur==="offen")return !c||c.v==null;if(st.nur==="ungeprueft")return !j.ok[p.id];return true;});
   if(!list.length)return h+'<div class="empty">Keine Posten in dieser Auswahl.</div>';
   var last=null;
-  list.forEach(function(p){if(p.a!==last){last=p.a;var a=S.anlage(p.a),n=list.filter(function(x){return x.a===p.a;}).length;h+='<div class="agrp">'+a.i+" "+esc(a.n)+"<span>"+n+" Posten</span></div>";}h+=card(p);});
+  list.forEach(function(p){if(p.a!==last){last=p.a;var a=S.anlage(p.a),n=list.filter(function(x){return x.a===p.a;}).length;h+='<div class="agrp">'+a.i+" "+esc(a.n)+"<span>"+n+" Posten</span></div>";
+      if(p.a==="VF"&&S.ergebnis(data,"VF",COMP))h+='<button class="mini" style="margin:0 0 8px" onclick="T2.docFewo()">📄 Aufstellung Einnahmen und Kosten '+st.y+"</button>";}h+=card(p);});
   h+='<button class="btn ghost full" style="margin-top:8px" onclick="T2.addPost()">＋ Posten hinzufügen</button>';
   return h;
 }
@@ -283,8 +284,8 @@ function editor(p){
   if(p.q==="fest")h+='<div style="margin-top:8px">'+f("Fester Wert",'<input class="inp" inputmode="decimal" value="'+esc(c.v!=null?String(c.v).replace(".",","):"")+'" onchange="T2.set(\''+p.id+'\',\'c.v\',this.value)">')+"</div>";
   if(p.q==="formel"){var others=S.aktiv(data).filter(function(x){return x.id!==p.id;});
     h+='<div style="margin-top:8px"><div class="lbl">Summe aus Faktor × Posten (z. B. 1 × Einnahmen, −1 × Ausgaben)</div>'+(c.t||[]).map(function(t,i){
-      return '<div class="g2" style="grid-template-columns:80px 1fr 30px;margin-bottom:6px"><input class="inp" inputmode="decimal" value="'+esc(String(t.f==null?1:t.f).replace(".",","))+'" onchange="T2.term(\''+p.id+'\','+i+',\'f\',this.value)"><select class="sel" onchange="T2.term(\''+p.id+'\','+i+',\'id\',this.value)">'+
-        others.map(function(o){return '<option value="'+esc(o.id)+'"'+(o.id===t.id?" selected":"")+">"+esc(o.n+(o.pers?" ("+persName(o.pers)+")":""))+"</option>";}).join("")+'</select><button class="x" onclick="T2.term(\''+p.id+'\','+i+',\'del\')" aria-label="Bestandteil entfernen">✕</button></div>';}).join("")+
+      return '<div class="g2" style="grid-template-columns:70px 1fr auto 30px;margin-bottom:6px;align-items:center"><input class="inp" inputmode="decimal" value="'+esc(String(t.f==null?1:t.f).replace(".",","))+'" onchange="T2.term(\''+p.id+'\','+i+',\'f\',this.value)"><select class="sel" onchange="T2.term(\''+p.id+'\','+i+',\'id\',this.value)">'+
+        others.map(function(o){return '<option value="'+esc(o.id)+'"'+(o.id===t.id?" selected":"")+">"+esc(o.n+(o.pers?" ("+persName(o.pers)+")":""))+"</option>";}).join("")+'</select><label class="small muted" style="white-space:nowrap" title="Solange dieser Posten keinen Wert hat, zählt er als 0"><input type="checkbox"'+(t.opt?" checked":"")+' onchange="T2.term(\''+p.id+'\','+i+',\'opt\',this.checked)"> offen = 0</label><button class="x" onclick="T2.term(\''+p.id+'\','+i+',\'del\')" aria-label="Bestandteil entfernen">✕</button></div>';}).join("")+
       '<button class="mini" onclick="T2.term(\''+p.id+'\',-1,\'add\')">＋ Bestandteil</button></div>';}
   h+='<div style="margin-top:8px">'+f("Hinweis (erscheint am Posten und in der Mappe)",'<input class="inp" value="'+esc(p.hint||"")+'" onchange="T2.set(\''+p.id+'\',\'hint\',this.value)">')+"</div>";
   h+='<div style="margin-top:8px">'+f("Wert laut Steuerbescheid "+(st.y-1)+" (Vorjahresvergleich, optional)",'<input class="inp" inputmode="decimal" value="'+esc(J(st.y-1).ref[p.id]!=null?String(J(st.y-1).ref[p.id]).replace(".",","):"")+'" onchange="T2.ref(\''+p.id+'\',this.value)">')+"</div>";
@@ -348,7 +349,8 @@ function vMappe(){
   h+='<div class="panel"><h3>📄 Unterlagen '+st.y+' für die Steuerberatung</h3><div class="note" style="margin-bottom:12px">Alle Posten je Anlage mit Vorjahresvergleich, offene Fragen, Stand der Belege und die Einzelaufstellung der Kontobuchungen. Druckfertig → „Als PDF speichern“.</div>'+
     '<div class="kv"><span>Posten mit Wert</span><span>'+s.tot.wert+" / "+s.tot.n+'</span></div><div class="kv"><span>Geprüft</span><span>'+s.tot.ok+" / "+s.tot.n+'</span></div><div class="kv"><span>Belege beisammen</span><span>'+bok+" / "+bl.length+'</span></div><div class="kv"><span>Offene Fragen</span><span>'+of+"</span></div>"+
     '<label class="note" style="display:flex;gap:8px;align-items:center;margin-top:10px"><input type="checkbox" id="mpTx" checked> Einzelaufstellung der Kontobuchungen anhängen</label>'+
-    '<div class="row2" style="margin-top:12px"><button class="btn" style="background:#8b5cf6" onclick="T2.doc()">📄 Unterlagen erstellen</button><button class="btn ghost" style="flex:0 0 auto" onclick="T2.csv()">⬇ CSV</button></div></div>';
+    '<div class="row2" style="margin-top:12px"><button class="btn" style="background:#8b5cf6" onclick="T2.doc()">📄 Unterlagen erstellen</button><button class="btn ghost" style="flex:0 0 auto" onclick="T2.csv()">⬇ CSV</button></div>'+
+    (S.ergebnis(data,"VF",COMP)?'<button class="btn ghost full" style="margin-top:8px" onclick="T2.docFewo()">🛏️ Ferienwohnung: Einnahmen und Kosten '+st.y+"</button>":"")+"</div>";
   if(fehl.length)h+='<div class="panel"><h3>Noch ohne Wert ('+fehl.length+")</h3>"+fehl.map(function(p){return '<div class="arow" onclick="T2.goPost(\''+p.id+'\')"><div class="i">'+S.anlage(p.a).i+'</div><div class="n">'+esc(p.n)+(p.pers?' <span class="pers">'+esc(persName(p.pers))+"</span>":"")+"<div>"+esc((COMP[p.id]||{}).info||"")+'</div></div><div class="small muted">›</div></div>';}).join("")+"</div>";
   return h;
 }
@@ -380,6 +382,39 @@ function docHtml(withTx){
       fl.forEach(function(p){var c=COMP[p.id],l=c.list.filter(function(t){return !t.aus;});
         h+="<h3>"+esc(p.n)+(p.pers?" · "+esc(persName(p.pers)):"")+' <span class="sub">('+l.length+" Buchungen, Summe "+raw(c.auto!=null?c.auto:c.v,"€")+')</span></h3><table><tr><th>Datum</th><th>Empfänger / Auftraggeber</th><th>Verwendungszweck</th><th class="r">Betrag</th></tr>'+
           l.map(function(t){return "<tr><td>"+HAUS.de(t.d)+"</td><td>"+esc(t.p||"")+"</td><td>"+esc(String(t.z||"").slice(0,90))+'</td><td class="r">'+C.eurRaw(t.b)+"</td></tr>";}).join("")+"</table>";});}}
+  return h+"</div>";
+}
+
+/* ---------- Ferienwohnung: Einnahmen und Werbungskosten als eigenes Blatt ---------- */
+function fewoHtml(){
+  var y=st.y,j=J(),E=S.ergebnis(data,"VF",COMP);if(!E)return "";
+  var raw=function(v,e){return fmt(v,e,true);},obj=CTX.haus&&CTX.haus.einst?CTX.haus.einst.objekt:"",pn=persName(E.p.pers);
+  var zeile=function(z){var p=z.p,v=VJ[p.id],e=p.e||"€";return "<tr><td>"+esc(p.n)+'</td><td class="r"><b>'+(z.v==null?"noch offen":raw(z.v,e))+'</b></td><td class="r">'+(v?raw(v.v,e)+(v.ref?"":"*"):"–")+"</td><td>"+esc(qText(p))+
+    (z.c.info?'<div class="info">'+esc(z.c.info)+"</div>":"")+(z.c.korr?'<div class="info">von Hand eingetragen, berechnet '+raw(z.c.auto,e)+"</div>":"")+(p.hint?'<div class="info">'+esc(p.hint)+"</div>":"")+(j.note[p.id]?'<div class="info"><b>Notiz:</b> '+esc(j.note[p.id])+"</div>":"")+"</td></tr>";};
+  var kopf='<tr><th>Posten</th><th class="r">'+y+'</th><th class="r">'+(y-1)+"</th><th>Quelle / Erläuterung</th></tr>",sum=function(l,v){return '<tr><td><b>'+l+'</b></td><td class="r"><b>'+raw(v,"€")+"</b></td><td></td><td></td></tr>";};
+  var h='<div class="doc"><h1>Ferienwohnung – Einnahmen und Werbungskosten '+y+'</h1><div class="sub">'+(obj?esc(obj)+" · ":"")+(pn?esc(pn)+" · ":"")+"erstellt am "+new Date().toLocaleDateString("de-DE")+" · Arbeitsgrundlage aus dem persönlichen Cockpit</div>";
+  if(y>=NOW)h+='<div class="box"><b>Zwischenstand:</b> Das Jahr '+y+" läuft noch. Die Werte ändern sich mit jeder Buchung, jedem Kontoauszug und jeder Rechnung.</div>";
+  h+="<h2>1. Ergebnis</h2><h3>Einnahmen</h3><table>"+kopf+E.ein.map(zeile).join("")+sum("Summe Einnahmen",E.sumEin)+"</table>";
+  h+="<h3>Werbungskosten</h3><table>"+kopf+E.aus.map(zeile).join("")+sum("Summe Werbungskosten",E.sumAus)+"</table>";
+  h+='<table style="margin-top:10px"><tr><td style="font-size:13px"><b>'+esc(E.p.n)+'</b></td><td class="r" style="font-size:13px"><b>'+(E.v==null?"offen":raw(E.v,"€"))+"</b></td></tr></table>";
+  if(E.offen)h+='<p class="info">'+E.offen+(E.offen===1?" Posten ist":" Posten sind")+" noch offen und mit 0 € gerechnet.</p>";
+  if(E.p.hint)h+='<p class="info">'+esc(E.p.hint)+"</p>";
+  var rest=S.aktiv(data).filter(function(p){return p.a==="VF"&&p.id!==E.p.id&&E.ids.indexOf(p.id)<0;});
+  if(rest.length)h+="<h2>2. Nutzung und Abgleich</h2><table>"+kopf+rest.map(function(p){return zeile({p:p,v:(COMP[p.id]||{}).v,c:COMP[p.id]||{}});}).join("")+"</table>";
+  var ust=S.aktiv(data).filter(function(p){return p.a==="UST"&&/ferienwohn/i.test(p.n);});
+  if(ust.length)h+="<h2>3. Umsatzsteuer der Ferienwohnung</h2><table>"+kopf+ust.map(function(p){return zeile({p:p,v:(COMP[p.id]||{}).v,c:COMP[p.id]||{}});}).join("")+"</table>";
+  var r=null;try{if(CTX.HS&&CTX.haus&&(CTX.haus.einheiten||[]).length)r=CTX.HS.calc(CTX.haus,y,{bookings:CTX.bookings,apt:CTX.apt});}catch(e){r=null;}
+  if(r&&r.gesamt){var sf=0;h+="<h2>4. Hauskosten – Anteil Ferienwohnung</h2><p class=\"info\">Aufteilung wie in der Nebenkostenabrechnung. Zeitgewichteter Flächenanteil der Ferienwohnung: "+C.num((r.flAnteil.fewo||0)*100,2)+' %.</p><table><tr><th>Kostenart</th><th class="r">Haus gesamt</th><th class="r">Anteil Ferienwohnung</th><th class="r">Anteil</th></tr>'+
+    r.pos.filter(function(p){return p.betrag;}).map(function(p){var a=r.nach.fewo[p.k]||0;sf+=a;return "<tr><td>"+esc(p.n)+'</td><td class="r">'+C.eurRaw(p.betrag)+'</td><td class="r">'+C.eurRaw(a)+'</td><td class="r">'+C.num(a/p.betrag*100,1)+" %</td></tr>";}).join("")+
+    '<tr><td><b>Summe</b></td><td class="r"><b>'+C.eurRaw(r.gesamt)+'</b></td><td class="r"><b>'+C.eurRaw(sf)+'</b></td><td class="r">'+C.num(sf/r.gesamt*100,1)+" %</td></tr></table>";
+    if(r.strom&&r.strom.fewo)h+='<p class="info">Strom der Ferienwohnung nach Zähler: '+C.int(r.strom.fewo)+" kWh.</p>";}
+  var hp=E.aus.filter(function(z){return z.p.q==="haus";})[0],bl=hp&&window.DOKS?hausBelege(hp.p):[];
+  if(bl.length)h+="<h2>5. Belege zu den Hauskosten</h2><table><tr><th>Datum</th><th>Beleg</th><th>Kostenart</th><th class=\"r\">Betrag</th></tr>"+bl.map(function(e){return "<tr><td>"+esc(DOKS.de(e.datum))+"</td><td>"+esc(DOKS.titel(e))+'<div class="info">'+esc(e.datei||"")+"</div></td><td>"+esc(e._nk||"")+'</td><td class="r">'+(e.betrag!=null?C.eurRaw(+e.betrag):"")+"</td></tr>";}).join("")+"</table>";
+  var fl=E.aus.filter(function(z){return z.c.list&&z.c.list.some(function(t){return !t.aus;});});
+  if(fl.length){h+='<h2 class="pb">6. Einzelaufstellung der Kosten laut Konto</h2>';fl.forEach(function(z){var l=z.c.list.filter(function(t){return !t.aus;});
+    h+="<h3>"+esc(z.p.n)+' <span class="sub">('+l.length+" Buchungen, Summe "+raw(z.c.auto!=null?z.c.auto:z.c.v,"€")+')</span></h3><table><tr><th>Datum</th><th>Empfänger</th><th>Verwendungszweck</th><th class="r">Betrag</th></tr>'+
+      l.map(function(t){return "<tr><td>"+HAUS.de(t.d)+"</td><td>"+esc(t.p||"")+"</td><td>"+esc(String(t.z||"").slice(0,90))+'</td><td class="r">'+C.eurRaw(t.b)+"</td></tr>";}).join("")+"</table>";});}
+  h+='<div class="box">„'+(y-1)+'“ ist der Wert laut Steuerberechnung des Vorjahres, sonst aus den Daten berechnet (mit * markiert). Diese Aufstellung ist eine Arbeitsgrundlage für die Steuerberatung und ersetzt keine steuerliche Beratung.</div>';
   return h+"</div>";
 }
 
@@ -440,6 +475,9 @@ window.T2={
   personNeu:function(){data.personen.push({k:"p"+Date.now().toString(36),n:"Person "+(data.personen.length+1)});data.einst.upd=Date.now();persist();render();},
   personWeg:function(i){if(!confirm("Person entfernen? Die Posten bleiben, nur ohne Zuordnung."))return;data.personen.splice(i,1);data.einst.upd=Date.now();persist();render();},
   doc:function(){var tx=document.getElementById("mpTx");document.getElementById("docOverlay").innerHTML='<div class="doc-bar"><button class="btn" onclick="window.print()">🖨 Drucken / als PDF speichern</button><button class="btn ghost" onclick="T2.closeDoc()">Schließen</button><span class="small" style="opacity:.7">Im Druckdialog „Als PDF speichern“ wählen.</span></div>'+docHtml(!tx||tx.checked);
+    document.body.classList.add("doc-on");window.scrollTo(0,0);},
+  docFewo:function(){var h=fewoHtml();if(!h){flash("⚠ Kein Ergebnis-Posten für die Ferienwohnung angelegt",true);return;}
+    document.getElementById("docOverlay").innerHTML='<div class="doc-bar"><button class="btn" onclick="window.print()">🖨 Drucken / als PDF speichern</button><button class="btn ghost" onclick="T2.closeDoc()">Schließen</button><span class="small" style="opacity:.7">Im Druckdialog „Als PDF speichern“ wählen.</span></div>'+h;
     document.body.classList.add("doc-on");window.scrollTo(0,0);},
   closeDoc:function(){document.body.classList.remove("doc-on");document.getElementById("docOverlay").innerHTML="";},
   csv:function(){var j=J(),rows=[["Anlage","Posten","Person","Einheit",String(st.y),String(st.y-1),"Quelle","Info","geprüft","Notiz"]];
