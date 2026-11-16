@@ -256,7 +256,7 @@ function hausBelege(p){var f=(p.c||{}).f||"";if(f.indexOf("kosten:")!==0||!windo
   return out.sort(function(a,b){return String(a.datum).localeCompare(String(b.datum));});}
 function qText(p){var c=p.c||{};
   if(p.q==="haus")return S.HAUSF[c.f]||"Haus";if(p.q==="smoobu")return S.SMOOF[c.f]||"Ferienwohnung";if(p.q==="energie")return S.ENF[c.f]||"Energie";
-  if(p.q==="finanzen"){var a=[];if(c.cats&&c.cats.length)a.push(c.cats.join(", "));if(c.such)a.push("„"+c.such+"“");return "Finanzen"+(a.length?": "+a.join(" oder "):"")+(c.dir>0?" · Eingänge":c.dir<0?" · Ausgaben":"");}
+  if(p.q==="finanzen"){var a=[];if(c.cats&&c.cats.length)a.push(c.cats.join(", "));if(c.such)a.push("„"+c.such+"“");return "Finanzen"+(a.length?": "+a.join(" oder "):"")+(c.dir>0?" · Eingänge":c.dir<0?" · Ausgaben":"")+(c.aus?" · nur Teilbetrag „"+c.aus+"“":"")+(c.mal?" · anteilig":"");}
   if(p.q==="dokumente")return "Dokumente"+(c.such?": „"+c.such+"“":"");
   if(p.q==="vertraege"){var va=window.VERTR&&VERTR.steuerArt(c.art);return "Verträge: "+(va?va.n:"Art wählen");}
   if(p.q==="formel")return "Berechnet: "+((c.t||[]).map(function(t,i){var q=post(t.id),f=S.num(t.f);if(f==null)f=1;
@@ -274,6 +274,8 @@ function editor(p){
     h+='<div class="g2" style="margin-top:8px">'+f("Richtung",sel("c.dir",[["-1","Ausgaben"],["1","Eingänge"],["0","beides (Saldo)"]],c.dir==null?-1:c.dir))+f("Konten",sel("c.ber",[["alle","alle Konten"],["privat","nur private"],["geschaeft","nur geschäftliche"]],c.ber||"alle"))+"</div>"+
       '<div style="margin-top:8px"><div class="lbl">Kategorien aus Finanzen (eine reicht)</div><div class="catbox">'+(cats.length?cats.map(function(k){return '<label><input type="checkbox" '+((c.cats||[]).indexOf(k)>-1?"checked ":"")+'onchange="T2.cat(\''+p.id+'\',this.dataset.k,this.checked)" data-k="'+esc(k)+'">'+esc(k)+"</label>";}).join(""):'<span class="note">Noch keine Kategorien in Finanzen.</span>')+"</div></div>"+
       '<div style="margin-top:8px">'+f("oder Suchwörter (Empfänger, Verwendungszweck)",'<input class="inp" value="'+esc(c.such||"")+'" placeholder="z. B. kindergarten hort" onchange="T2.set(\''+p.id+'\',\'c.such\',this.value)">')+"</div>"+
+      '<div class="g2" style="margin-top:8px">'+f("Nur Teilbetrag hinter dem Wort",'<input class="inp" value="'+esc(c.aus||"")+'" placeholder="leer = ganze Buchung" onchange="T2.set(\''+p.id+'\',\'c.aus\',this.value.trim())">')+
+        f("Davon nur der Anteil",sel("c.mal",[["","alles"],["flanteil:fewo","Flächenanteil Ferienwohnung"],["flanteil:miete","Flächenanteil Dauervermietung"]],c.mal||""))+"</div>"+
       '<label class="note" style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" '+(c.ohneNeutral?"checked ":"")+'onchange="T2.set(\''+p.id+'\',\'c.ohneNeutral\',this.checked)"> Umbuchungen, Sparen und Privateinlagen nicht mitzählen</label>'+
       ((c.ohne||[]).length?'<div class="note">Ausgenommen: '+c.ohne.map(esc).join(", ")+' <a href="#" style="color:#fbbf24" onclick="T2.set(\''+p.id+'\',\'c.ohne\',\'\');return false">aufheben</a></div>':"");}
   if(p.q==="dokumente")h+='<div style="margin-top:8px">'+f("Suchwörter (Absender, Betreff, Dateiname – eines reicht)",'<input class="inp" value="'+esc(c.such||"")+'" placeholder="z. B. Name des Portals" onchange="T2.set(\''+p.id+'\',\'c.such\',this.value)">')+"</div>"+

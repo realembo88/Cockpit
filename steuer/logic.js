@@ -121,7 +121,12 @@ function aktiv(data){return ((data&&data.posten)||[]).filter(function(p){return 
 function aIdx(k){for(var i=0;i<ANLAGEN.length;i++)if(ANLAGEN[i].k===k)return i;return 99;}
 function anlage(k){for(var i=0;i<ANLAGEN.length;i++)if(ANLAGEN[i].k===k)return ANLAGEN[i];return {k:k,n:k,i:"📎"};}
 
-/* ---------- Quelle Finanzen ---------- */
+/* ---------- Quelle Finanzen ----------
+   c.aus: nur der Teilbetrag, der im Verwendungszweck hinter diesem Wort steht (z. B. „Zinsen 115,99“ in einer Darlehensrate);
+          Buchungen ohne diesen Teilbetrag zählen dann nicht.
+   c.mal: Ergebnis mit einem Anteil aus dem Bereich Haus malnehmen (z. B. „flanteil:fewo“). */
+function teilbetrag(z,wort){var w=String(wort||"").trim().replace(/[.*+?^${}()|[\]\\]/g,"\\$&");if(!w)return null;
+  var m=new RegExp("(?:^|[^a-zäöüß])"+w+"\\s*:?\\s*(\\d[\\d.]*,\\d{2})","i").exec(String(z||""));return m?num(m[1]):null;}
 function finanzen(p,y,ctx,ex){
   var c=p.c||{},fin=ctx.fin||{},F=ctx.F,R=fin.rules||[],ko=fin.konten||{},cats=c.cats||[],w=words(c.such),ohne=c.ohne||[],exl={};
   (ex||[]).forEach(function(id){exl[id]=1;});
@@ -136,9 +141,14 @@ function finanzen(p,y,ctx,ex){
     if(ohne.indexOf(cat)>-1)return;
     if(cats.length||w.length){var h=(t.p+" "+t.z+" "+t.t).toLowerCase();
       if(!(cats.indexOf(cat)>-1||w.some(function(x){return h.indexOf(x)>-1;})))return;}
-    var aus=!!exl[t.id];list.push({id:t.id,d:t.d,b:t.b,p:t.p,z:t.z,cat:cat,aus:aus});if(!aus)sum+=t.b;});
+    var b=t.b;if(c.aus){var tb=teilbetrag(t.z,c.aus);if(tb==null)return;b=t.b<0?-tb:tb;}
+    var aus=!!exl[t.id];list.push({id:t.id,d:t.d,b:b,p:t.p,z:t.z,cat:cat,aus:aus});if(!aus)sum+=b;});
   list.sort(function(a,b){return a.d.localeCompare(b.d);});
   var v=c.dir?Math.abs(sum):sum;
+  if(c.aus&&!list.length)return {v:null,list:list,info:"Keine Buchungen mit „"+c.aus+" …“ in "+y+" – Kontoauszug dieses Kontos geladen?"};
+  if(c.mal){var an=haus({c:{f:c.mal}},y,ctx);if(an.v==null)return {v:null,list:list,info:"Anteil fehlt: "+an.info};
+    var n0=list.filter(function(x){return !x.aus;}).length;
+    return {v:r2(v*an.v/100),list:list,info:n0+" Buchungen, zusammen "+r2(v).toFixed(2).replace(".",",")+" € × "+String(an.v).replace(".",",")+" % "+(HAUSF[c.mal]||"Anteil").replace(/ \(.*$/,"")};}
   return {v:r2(v),list:list,info:list.length?list.filter(function(x){return !x.aus;}).length+" Buchungen"+(list.some(function(x){return x.aus;})?" ("+list.filter(function(x){return x.aus;}).length+" ausgeschlossen)":""):"Keine passenden Buchungen in "+y};
 }
 /* ---------- Quelle Dokumente ----------
