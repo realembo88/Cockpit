@@ -141,7 +141,7 @@ function ctx(){
   var f=C.getLocal("finanzen",null)||{},R=Array.isArray(f.rules)?f.rules:FIN.DEFAULT_RULES;FIN.setPartnerMap(f.pmap||{},f.tmap||{},f.zmap||{});
   var h=C.getLocal("haus",null),fw=C.getLocal("ferienwohnung",null);
   return {fin:{tx:Array.isArray(f.tx)?f.tx:[],rules:R,konten:f.konten||{}},F:FIN,haus:h,HS:window.HAUS,
-    bookings:fw&&fw.bookings?Object.keys(fw.bookings).map(function(k){return fw.bookings[k];}):[],apt:h&&h.einst?h.einst.apt:null,en:C.getLocal("energie",null),
+    heute:new Date().toISOString().slice(0,10),bookings:fw&&fw.bookings?Object.keys(fw.bookings).map(function(k){return fw.bookings[k];}):[],apt:h&&h.einst?h.einst.apt:null,en:C.getLocal("energie",null),
     vt:C.getLocal("vertraege",null),VT:window.VERTR,idx:(function(){var d=C.getLocal("dokumente",null);return d&&Array.isArray(d.index)?d.index:[];})(),over:(data.einst&&data.einst.docJahr)||{},fix:(function(){var l=null;return function(){if(!l){try{l=FIN.fixkosten(f).list;}catch(e){l=[];}}return l;};})()};
 }
 var CTX=null,COMP=null,VJ=null;
@@ -237,7 +237,7 @@ function card(p){
   if(p.hint)h+='<div class="s" style="margin-top:6px;color:#a5b4fc">💡 '+esc(p.hint)+"</div>";
   if(j.note[p.id]&&o!=="note")h+='<div class="s" style="margin-top:6px;color:#e2e8f0">📝 '+esc(j.note[p.id])+"</div>";
   h+='<div class="acts"><button class="mini'+(ok?" on":"")+'" onclick="T2.ok(\''+p.id+'\')">'+(ok?"✓ geprüft":"☐ geprüft")+'</button><button class="mini" onclick="T2.open(\''+p.id+'\',\'note\')">📝 Notiz</button>'+
-    (c.list?'<button class="mini" onclick="T2.open(\''+p.id+'\',\'tx\')">💶 '+c.list.length+" Buchungen "+(o==="tx"?"▴":"▾")+"</button>":"")+
+    (c.list?'<button class="mini" onclick="T2.open(\''+p.id+'\',\'tx\')">'+(c.doks?"📄 "+c.list.length+" Dokumente ":"💶 "+c.list.length+" Buchungen ")+(o==="tx"?"▴":"▾")+"</button>":"")+
     ((p.q==="vertraege"||p.q==="haus")&&vd.length?'<button class="mini" onclick="T2.open(\''+p.id+'\',\'docs\')">📎 '+vd.length+" Dokument"+(vd.length>1?"e ":" ")+(o==="docs"?"▴":"▾")+"</button>":"")+
     (p.q!=="manuell"?'<button class="mini" onclick="T2.open(\''+p.id+'\',\'korr\')">✏️ Korrektur</button>':"")+
     '<button class="mini" onclick="T2.open(\''+p.id+'\',\'edit\')">⚙️ Einstellen</button></div>';
@@ -245,8 +245,8 @@ function card(p){
   if(o==="docs"&&vd.length&&p.q==="haus")h+='<div class="box"><div class="note" style="margin-bottom:6px">Belege der Nebenkosten '+st.y+' – verknüpft unter Haus → Kosten.</div>'+vd.map(function(x){return docLine(x,"","🏘️ "+(x._nk||""));}).join("")+"</div>";
   else if(o==="docs"&&vd.length)h+='<div class="box"><div class="note" style="margin-bottom:6px">Schreiben der zugeordneten Verträge im Steuerberater-Ordner '+st.y+'. Als Nachweis zählen Bescheinigungen und Erstattungen.</div>'+vd.map(function(x){return docLine(x,S.istNachweis(x)?"":"Schriftverkehr");}).join("")+"</div>";
   if(o==="korr")h+='<div class="box"><div class="lbl">Wert '+st.y+' von Hand festlegen (überschreibt die Berechnung, z. B. laut Beleg)</div><input class="inp" inputmode="decimal" placeholder="leer = berechneter Wert" value="'+(j.m[p.id]!=null&&j.m[p.id]!==""?esc(String(j.m[p.id]).replace(".",",")):"")+'" onchange="T2.wert(\''+p.id+'\',this.value)"></div>';
-  if(o==="tx"&&c.list)h+='<div class="box">'+(c.list.length?'<div class="note" style="margin-bottom:6px">Haken entfernen, um eine Buchung für diesen Posten auszuschließen.</div><div class="txl">'+c.list.map(function(t){
-      return '<label class="tx'+(t.aus?" aus":"")+'"><input type="checkbox" '+(t.aus?"":"checked ")+'onchange="T2.ex(\''+p.id+'\',\''+(t.def?"+":"")+esc(t.id)+'\','+(t.def?"this.checked":"!this.checked")+')"><span class="m">'+esc(HAUS.de(t.d))+" · "+esc(t.p||"–")+"<div>"+esc(t.z||"")+" · "+esc(t.cat)+(t.def?" · Verpflegung – vorab abgewählt":"")+'</div></span><span class="b">'+eur(t.b)+"</span></label>";}).join("")+"</div>":'<div class="note">Keine passenden Buchungen in '+st.y+". Kategorien oder Suchwörter unter „Einstellen“ prüfen.</div>")+"</div>";
+  if(o==="tx"&&c.list)h+='<div class="box">'+(c.list.length?'<div class="note" style="margin-bottom:6px">Haken entfernen, um einen Eintrag für diesen Posten auszuschließen.</div><div class="txl">'+c.list.map(function(t){
+      return '<label class="tx'+(t.aus?" aus":"")+'"><input type="checkbox" '+(t.aus?"":"checked ")+'onchange="T2.ex(\''+p.id+'\',\''+(t.def?"+":"")+esc(t.id)+'\','+(t.def?"this.checked":"!this.checked")+')"><span class="m">'+esc(HAUS.de(t.d))+" · "+esc(t.p||"–")+"<div>"+esc(t.z||"")+" · "+esc(t.cat)+(t.def?" · Verpflegung – vorab abgewählt":"")+'</div></span><span class="b">'+eur(t.b)+"</span></label>";}).join("")+"</div>":'<div class="note">Keine passenden '+(c.doks?"Dokumente":"Buchungen")+" in "+st.y+". "+(c.doks?"Suchwörter":"Kategorien oder Suchwörter")+" unter „Einstellen“ prüfen.</div>")+"</div>";
   if(o==="edit")h+=editor(p);
   return h+"</div>";
 }
@@ -257,6 +257,7 @@ function hausBelege(p){var f=(p.c||{}).f||"";if(f.indexOf("kosten:")!==0||!windo
 function qText(p){var c=p.c||{};
   if(p.q==="haus")return S.HAUSF[c.f]||"Haus";if(p.q==="smoobu")return S.SMOOF[c.f]||"Ferienwohnung";if(p.q==="energie")return S.ENF[c.f]||"Energie";
   if(p.q==="finanzen"){var a=[];if(c.cats&&c.cats.length)a.push(c.cats.join(", "));if(c.such)a.push("„"+c.such+"“");return "Finanzen"+(a.length?": "+a.join(" oder "):"")+(c.dir>0?" · Eingänge":c.dir<0?" · Ausgaben":"");}
+  if(p.q==="dokumente")return "Dokumente"+(c.such?": „"+c.such+"“":"");
   if(p.q==="vertraege"){var va=window.VERTR&&VERTR.steuerArt(c.art);return "Verträge: "+(va?va.n:"Art wählen");}
   if(p.q==="formel")return "Berechnet: "+((c.t||[]).map(function(t,i){var q=post(t.id),f=S.num(t.f);if(f==null)f=1;
     return (i?(f<0?" − ":" + "):(f<0?"− ":""))+(Math.abs(f)!==1?C.num(Math.abs(f),Math.abs(f)%1?4:0).replace(/0+$/,"").replace(/,$/,"")+" × ":"")+(q?q.n:"?");}).join("")||"–");
@@ -275,6 +276,9 @@ function editor(p){
       '<div style="margin-top:8px">'+f("oder Suchwörter (Empfänger, Verwendungszweck)",'<input class="inp" value="'+esc(c.such||"")+'" placeholder="z. B. kindergarten hort" onchange="T2.set(\''+p.id+'\',\'c.such\',this.value)">')+"</div>"+
       '<label class="note" style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" '+(c.ohneNeutral?"checked ":"")+'onchange="T2.set(\''+p.id+'\',\'c.ohneNeutral\',this.checked)"> Umbuchungen, Sparen und Privateinlagen nicht mitzählen</label>'+
       ((c.ohne||[]).length?'<div class="note">Ausgenommen: '+c.ohne.map(esc).join(", ")+' <a href="#" style="color:#fbbf24" onclick="T2.set(\''+p.id+'\',\'c.ohne\',\'\');return false">aufheben</a></div>':"");}
+  if(p.q==="dokumente")h+='<div style="margin-top:8px">'+f("Suchwörter (Absender, Betreff, Dateiname – eines reicht)",'<input class="inp" value="'+esc(c.such||"")+'" placeholder="z. B. Name des Portals" onchange="T2.set(\''+p.id+'\',\'c.such\',this.value)">')+"</div>"+
+    '<label class="note" style="display:flex;gap:8px;align-items:center;margin-top:8px"><input type="checkbox" '+(c.monat?"checked ":"")+'onchange="T2.set(\''+p.id+'\',\'c.monat\',this.checked)"> kommt jeden Monat – fehlende Monate melden</label>'+
+    '<div class="note" style="margin-top:6px">Zählt den Betrag jedes passenden Dokuments im Jahr des Belegdatums.</div>';
   if(p.q==="haus")h+='<div style="margin-top:8px">'+f("Kennzahl aus dem Bereich Haus",sel("c.f",[["","bitte wählen"]].concat(Object.keys(S.HAUSF).map(function(k){return [k,S.HAUSF[k]];})),c.f||""))+"</div>";
   if(p.q==="smoobu")h+='<div style="margin-top:8px">'+f("Kennzahl aus Smoobu",sel("c.f",[["","bitte wählen"]].concat(Object.keys(S.SMOOF).map(function(k){return [k,S.SMOOF[k]];})),c.f||""))+"</div>";
   if(p.q==="energie")h+='<div style="margin-top:8px">'+f("Kennzahl aus dem Bereich Energie",sel("c.f",[["","bitte wählen"]].concat(Object.keys(S.ENF).map(function(k){return [k,S.ENF[k]];})),c.f||""))+"</div>";
@@ -411,8 +415,8 @@ function fewoHtml(){
   var hp=E.aus.filter(function(z){return z.p.q==="haus";})[0],bl=hp&&window.DOKS?hausBelege(hp.p):[];
   if(bl.length)h+="<h2>5. Belege zu den Hauskosten</h2><table><tr><th>Datum</th><th>Beleg</th><th>Kostenart</th><th class=\"r\">Betrag</th></tr>"+bl.map(function(e){return "<tr><td>"+esc(DOKS.de(e.datum))+"</td><td>"+esc(DOKS.titel(e))+'<div class="info">'+esc(e.datei||"")+"</div></td><td>"+esc(e._nk||"")+'</td><td class="r">'+(e.betrag!=null?C.eurRaw(+e.betrag):"")+"</td></tr>";}).join("")+"</table>";
   var fl=E.aus.filter(function(z){return z.c.list&&z.c.list.some(function(t){return !t.aus;});});
-  if(fl.length){h+='<h2 class="pb">6. Einzelaufstellung der Kosten laut Konto</h2>';fl.forEach(function(z){var l=z.c.list.filter(function(t){return !t.aus;});
-    h+="<h3>"+esc(z.p.n)+' <span class="sub">('+l.length+" Buchungen, Summe "+raw(z.c.auto!=null?z.c.auto:z.c.v,"€")+')</span></h3><table><tr><th>Datum</th><th>Empfänger</th><th>Verwendungszweck</th><th class="r">Betrag</th></tr>'+
+  if(fl.length){h+='<h2 class="pb">6. Einzelaufstellung der Kosten</h2>';fl.forEach(function(z){var l=z.c.list.filter(function(t){return !t.aus;});
+    h+="<h3>"+esc(z.p.n)+' <span class="sub">('+l.length+(z.c.doks?" Dokumente":" Buchungen")+", Summe "+raw(z.c.auto!=null?z.c.auto:z.c.v,"€")+')</span></h3><table><tr><th>Datum</th><th>'+(z.c.doks?"Absender":"Empfänger")+'</th><th>'+(z.c.doks?"Beleg":"Verwendungszweck")+'</th><th class="r">Betrag</th></tr>'+
       l.map(function(t){return "<tr><td>"+HAUS.de(t.d)+"</td><td>"+esc(t.p||"")+"</td><td>"+esc(String(t.z||"").slice(0,90))+'</td><td class="r">'+C.eurRaw(t.b)+"</td></tr>";}).join("")+"</table>";});}
   h+='<div class="box">„'+(y-1)+'“ ist der Wert laut Steuerberechnung des Vorjahres, sonst aus den Daten berechnet (mit * markiert). Diese Aufstellung ist eine Arbeitsgrundlage für die Steuerberatung und ersetzt keine steuerliche Beratung.</div>';
   return h+"</div>";
@@ -447,7 +451,7 @@ window.T2={
   ref:function(id,v){var j=J(st.y-1),n=pnum(v);if(n==null)delete j.ref[id];else j.ref[id]=n;touchY(st.y-1);persist();render();},
   set:function(id,k,v){var p=post(id);if(!p)return;
     if(k==="c.dir")v=+v;if(k==="c.v")v=pnum(v);if(k==="c.ohne")v=[];
-    if(k==="q"&&v!==p.q){p.c={};if(v==="finanzen")p.c={dir:-1,ber:"alle",cats:[],such:""};if(v==="formel")p.c={t:[]};if(v==="vertraege")p.c={art:""};}
+    if(k==="q"&&v!==p.q){p.c={};if(v==="finanzen")p.c={dir:-1,ber:"alle",cats:[],such:""};if(v==="formel")p.c={t:[]};if(v==="vertraege")p.c={art:""};if(v==="dokumente")p.c={such:"",monat:false};}
     setPath(p,k,v);upd(p);},
   cat:function(id,k,on){var p=post(id);if(!p)return;p.c=p.c||{};var l=(p.c.cats||[]).filter(function(x){return x!==k;});if(on)l.push(k);p.c.cats=l;upd(p);},
   term:function(id,i,k,v){var p=post(id);if(!p)return;p.c=p.c||{};var t=p.c.t=p.c.t||[];

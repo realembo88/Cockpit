@@ -19,8 +19,8 @@ var ANLAGEN=[
   {k:"UST",n:"Umsatzsteuer-Erklärungen",i:"🧾"},
   {k:"SON",n:"Sonstiges",i:"📎"}
 ];
-var QUELLEN={manuell:"Eingabe je Jahr",fest:"Fester Wert (jedes Jahr gleich)",finanzen:"Finanzen (Kontobuchungen)",haus:"Haus (Kostenaufteilung)",smoobu:"Ferienwohnung (Smoobu)",energie:"Energie (Zähler)",vertraege:"Verträge (Beiträge laut Konto)",formel:"Berechnet aus anderen Posten"};
-var QICON={manuell:"✍️",fest:"📌",finanzen:"💶",haus:"🏘️",smoobu:"🛏️",energie:"⚡",vertraege:"📑",formel:"🧮"};
+var QUELLEN={manuell:"Eingabe je Jahr",fest:"Fester Wert (jedes Jahr gleich)",finanzen:"Finanzen (Kontobuchungen)",haus:"Haus (Kostenaufteilung)",smoobu:"Ferienwohnung (Smoobu)",energie:"Energie (Zähler)",vertraege:"Verträge (Beiträge laut Konto)",dokumente:"Dokumente (Beträge aus dem Archiv)",formel:"Berechnet aus anderen Posten"};
+var QICON={manuell:"✍️",fest:"📌",finanzen:"💶",haus:"🏘️",smoobu:"🛏️",energie:"⚡",vertraege:"📑",dokumente:"📄",formel:"🧮"};
 var EINHEITEN=["€","Tage","kWh","km","%","Anzahl"];
 var HAUSF={
   "kosten:miete":"Umlagefähige Hauskosten – Anteil Dauervermietung",
@@ -141,6 +141,27 @@ function finanzen(p,y,ctx,ex){
   var v=c.dir?Math.abs(sum):sum;
   return {v:r2(v),list:list,info:list.length?list.filter(function(x){return !x.aus;}).length+" Buchungen"+(list.some(function(x){return x.aus;})?" ("+list.filter(function(x){return x.aus;}).length+" ausgeschlossen)":""):"Keine passenden Buchungen in "+y};
 }
+/* ---------- Quelle Dokumente ----------
+   Summe der Beträge aller Dokumente des Jahres (nach Belegdatum), deren Absender, Betreff oder Dateiname ein Suchwort enthält.
+   Satzzeichen zählen nicht („bookingcom“ findet „Booking.com“). Einzelne Dokumente lassen sich abwählen.
+   c.monat: meldet Monate ohne Dokument (für Rechnungen, die jeden Monat kommen). */
+function glatt(s){return String(s||"").toLowerCase().replace(/[^a-z0-9äöüß]+/g,"");}
+function dokumente(p,y,ctx,ex){
+  var c=p.c||{},w=words(c.such).map(glatt).filter(Boolean),exl={};(ex||[]).forEach(function(id){exl[id]=1;});
+  if(!w.length)return {v:null,info:"Kein Suchwort hinterlegt",list:[]};
+  var list=[],sum=0,ys=String(y),seen={},mon={};
+  (ctx.idx||[]).forEach(function(e){if(!e||e.betrag==null||isNaN(+e.betrag)||String(e.datum||"").slice(0,4)!==ys)return;
+    var h=glatt((e.absender||"")+" "+(e.ki_absender||"")+" "+(e.betreff||"")+" "+(e.datei||""));if(!w.some(function(x){return h.indexOf(x)>-1;}))return;
+    var key=e.md5||e.id;if(seen[key])return;seen[key]=1;var b=Math.abs(+e.betrag),aus=!!exl[e.id];
+    list.push({id:e.id,d:String(e.datum).slice(0,10),b:-b,p:String(e.absender||e.ki_absender||"").replace(/_/g," "),z:String(e.betreff||e.datei||"").replace(/_/g," "),cat:e.belegart||e.kategorie||"Dokument",aus:aus});
+    if(!aus){sum+=b;mon[+String(e.datum).slice(5,7)]=1;}});
+  list.sort(function(a,b){return a.d.localeCompare(b.d);});
+  var n=list.filter(function(x){return !x.aus;}).length,info=n?n+(n===1?" Dokument":" Dokumente")+" nach Belegdatum":"Keine passenden Dokumente in "+y;
+  if(c.monat&&n){var bis=ctx.heute&&String(ctx.heute).slice(0,4)===ys?+String(ctx.heute).slice(5,7)-(+String(ctx.heute).slice(8,10)<10?1:0):(ctx.heute&&String(ctx.heute).slice(0,4)<ys?0:12),f=[];
+    for(var m=1;m<=bis;m++)if(!mon[m])f.push(["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"][m-1]);
+    if(f.length)info+=" · ohne Dokument: "+f.join(", ");}
+  return {v:r2(sum),list:list,info:info,doks:true};
+}
 /* Kategorien, die in Finanzen vorkommen (Regeln + vergebene) */
 function finKategorien(ctx){
   var s={},fin=ctx.fin||{},F=ctx.F;(fin.rules||[]).forEach(function(r){s[r.name]=1;});
@@ -237,6 +258,7 @@ function compute(data,y,ctx){
     else if(p.q==="smoobu")res=smoobu(p,y,ctx);
     else if(p.q==="energie")res=energie(p,y,ctx);
     else if(p.q==="vertraege")res=vertraege(p,y,ctx,ex[p.id]);
+    else if(p.q==="dokumente")res=dokumente(p,y,ctx,ex[p.id]);
     else if(p.q==="formel")res={v:null,info:"",formel:true};
     else res={v:null,info:"Unbekannte Quelle"};
     /* Eingabe überschreibt berechnete Werte (z. B. Korrektur laut Beleg) */
