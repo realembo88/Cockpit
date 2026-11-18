@@ -60,11 +60,30 @@ sys.path.insert(0, str(HIER))
 sys.dont_write_bytecode = True  # keinen __pycache__-Ordner neben den Skripten anlegen
 
 
+def ohne_konsole_absichern():
+    """Unter pythonw (Aufgabenplanung, Hausmeister) gibt es keine Konsole: sys.stdout, sys.stderr und sys.stdin
+    sind None. Dann scheitern input(), sys.stdout.reconfigure() u. Ae. - auch schon beim Laden von ablage.py -
+    und der Lauf endet mit Ergebnis 1, ohne jede Spur. Deshalb Ersatz einsetzen, bevor irgendetwas anderes laeuft."""
+    for name, modus in (("stdout", "w"), ("stderr", "w"), ("stdin", "r")):
+        if getattr(sys, name, None) is None:
+            try:
+                setattr(sys, name, open(os.devnull, modus, encoding="utf-8"))
+            except OSError:
+                pass
+
+
+OHNE_KONSOLE = sys.stdout is None or sys.stdin is None
+ohne_konsole_absichern()
+IST_HAUSMEISTER = len(sys.argv) > 1 and sys.argv[1].strip().strip('"').lower().rstrip("/").endswith("hausmeister")
+
+
 def warte(sekunden=None):
+    if IST_HAUSMEISTER or OHNE_KONSOLE:
+        return
     if sekunden is None:
         try:
             input("\nEnter zum Schliessen...")
-        except EOFError:
+        except (EOFError, RuntimeError, OSError):
             pass
     else:
         print(f"\nDieses Fenster schliesst sich in {sekunden} Sekunden.")
@@ -95,12 +114,28 @@ def lade_benutzer_umgebung():
 
 lade_benutzer_umgebung()
 
+
+def start_protokoll(text: str):
+    """Fehler, bevor die Ablage bekannt ist (z. B. beim Laden von ablage.py), in _cockpit/hausmeister.log festhalten."""
+    try:
+        for root in (os.environ.get("ABLAGE_ROOT"), str(HIER.parent)):
+            k = Path(root) / "_cockpit" if root else None
+            if k and k.is_dir():
+                with open(k / "hausmeister.log", "a", encoding="utf-8") as f:
+                    f.write(f"{datetime.now().isoformat(timespec='seconds')} {text}\n")
+                return
+    except OSError:
+        pass
+
+
 try:
     import ablage as A  # Regeln, Kategorien, Namenskonvention, Pfade
-except ImportError as e:
-    print("FEHLER: ablage.py wurde nicht gefunden.")
+except Exception as e:  # noqa: BLE001 - auch Fehler beim Laden von ablage.py selbst sichtbar machen
+    start_protokoll(f"Start fehlgeschlagen ({'Hausmeister' if IST_HAUSMEISTER else 'Aufruf'}): ablage.py liess sich nicht laden - "
+                    f"{type(e).__name__}: {e}\n{traceback.format_exc()}")
+    print("FEHLER: ablage.py liess sich nicht laden.")
     print(f"cockpit_ablage.py muss im selben Ordner liegen wie ablage.py ({HIER}).")
-    print(f"Details: {e}")
+    print(f"Details: {type(e).__name__}: {e}")
     warte()
     sys.exit(1)
 
@@ -1735,26 +1770,28 @@ def hausmeister_main():
     global STILL
     STILL = True
     if not ROOT.exists():
+        start_protokoll(f"uebersprungen: Ablage-Ordner nicht gefunden ({ROOT})")
         return
-    if not sperre_holen("hausmeister"):
-        try:  # sichtbar machen, warum der Hausmeister nichts getan hat
-            d = lies_sperre(sperr_datei("lauf.lock"))
+    gesperrt = False
+    try:
+        gesperrt = sperre_holen("hausmeister")
+        if not gesperrt:
+            d = lies_sperre(sperr_datei("lauf.lock"))  # sichtbar machen, warum der Hausmeister nichts getan hat
             with open(KANAL / "hausmeister.log", "a", encoding="utf-8") as f:
                 f.write(f"{jetzt()} uebersprungen: anderer Lauf aktiv ({d.get('befehl') or '?'} seit {uhr(d.get('start'))})\n")
-        except OSError:
-            pass
-        return
-    try:
+            return
         cmd_hausmeister("")
     except Exception as e:  # noqa: BLE001
         try:
+            KANAL.mkdir(parents=True, exist_ok=True)
             with open(KANAL / "hausmeister.log", "a", encoding="utf-8") as f:
                 f.write(f"{jetzt()} {type(e).__name__}: {e}\n{traceback.format_exc()}\n")
         except OSError:
             pass
     finally:
-        sperre_frei()
-        loesche(sperr_datei("vorrang"), 3)
+        if gesperrt:
+            sperre_frei()
+            loesche(sperr_datei("vorrang"), 3)
 
 
 def main():
