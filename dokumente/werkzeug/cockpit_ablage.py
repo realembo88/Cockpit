@@ -32,7 +32,10 @@ Austausch mit dem Cockpit ueber den Ordner <Ablage>/_cockpit/:
   hausmeister.json  Stand des automatischen Laufs (Ablagen, Zaehlerfotos, Sicherung) fuers Cockpit
   hausmeister_einst.json  Einstellungen dafuer (sicherung_ziel, sicherung_tage, sicherung_behalten, auto_ablegen)
   zaehlerstaende.json     aus Fotos gelesene Zaehlerstaende - das Cockpit (Energie) uebernimmt sie
-  lauf.lock / vorrang     Sperre gegen gleichzeitige Laeufe; ein Lauf aus dem Cockpit hat Vorrang
+Sperre gegen gleichzeitige Laeufe (lauf.lock, vorrang) liegt NICHT in der Ablage, sondern lokal
+(Ordner Cockpit-Ablage unter LOCALAPPDATA): OneDrive haelt frische Dateien zum Hochladen offen, dann liess sich die Sperre
+nicht loeschen und alle folgenden Laeufe warteten. Eine Sperre, deren Prozess nicht mehr laeuft (Fenster
+geschlossen, Absturz), wird sofort uebernommen. Ein Lauf aus dem Cockpit hat Vorrang vor dem Hausmeister.
 
 Direkt aufrufen zum Testen:  python cockpit_ablage.py test
 """
@@ -43,7 +46,9 @@ import json
 import os
 import re
 import shutil
+import socket
 import sys
+import tempfile
 import time
 import traceback
 from datetime import datetime
@@ -188,6 +193,45 @@ Antworte mit reinem JSON ohne Codefences und ohne Erklaerungen mit genau diesen 
 
 class Fehler(Exception):
     """Erwarteter Fehler mit verstaendlicher Meldung."""
+
+
+class Dauerhaft(Fehler):
+    """Fehler, der sich durch Wiederholen nicht bessert (PDF zu gross, zu viele Seiten) -
+    die Datei wird erst wieder versucht, wenn sie sich aendert."""
+
+
+MAX_PDF_B64 = 32 * 1024 * 1024  # Grenze der API fuer ein PDF (gilt fuer die base64-Daten, also ca. 25 MB Datei)
+
+
+def pdf_base64(pdf: Path) -> str:
+    groesse = pdf.stat().st_size
+    if (groesse + 2) // 3 * 4 > MAX_PDF_B64:
+        raise Dauerhaft(f"PDF zu gross fuer die KI-Analyse ({groesse / 1e6:.0f} MB, hoechstens etwa 25 MB) - "
+                        "bitte verkleinern oder in Teile aufteilen")
+    return base64.standard_b64encode(pdf.read_bytes()).decode("utf-8")
+
+
+def fehlertext(e: Exception):
+    """(Meldung, dauerhaft) - verstaendlich fuer die bekannten Grenzen der API."""
+    t = str(e)
+    if isinstance(e, Dauerhaft):
+        return t, True
+    if re.search(r"PDF exceeds|request_too_large|Request too large", t, re.I) or getattr(e, "status_code", None) == 413:
+        return "PDF zu gross fuer die KI-Analyse (ueber 32 MB) - bitte verkleinern oder in Teile aufteilen", True
+    if re.search(r"maximum of \d+ PDF pages", t, re.I):
+        return "PDF hat mehr als 100 Seiten - bitte in Teile aufteilen", True
+    if isinstance(e, Fehler):
+        return t, False
+    return f"{type(e).__name__}: {t}", False
+
+
+def als_objekt(m) -> dict:
+    """Antwort der KI muss ein JSON-Objekt sein; eine Liste (mehrere Dokumente in einer PDF) -> erstes Objekt."""
+    if isinstance(m, list):
+        m = next((x for x in m if isinstance(x, dict)), None)
+    if not isinstance(m, dict):
+        raise Fehler("Antwort der KI hatte nicht das erwartete Format - wird beim naechsten Lauf erneut versucht")
+    return m
 
 
 # =============================================================================
@@ -649,7 +693,7 @@ def cmd_test(id_):
 
 
 def analysiere(client, pdf: Path) -> dict:
-    daten = base64.standard_b64encode(pdf.read_bytes()).decode("utf-8")
+    daten = pdf_base64(pdf)
     antwort = client.messages.create(
         model=A.MODEL,
         max_tokens=4096,
@@ -659,7 +703,7 @@ def analysiere(client, pdf: Path) -> dict:
             {"type": "text", "text": "Analysiere dieses Dokument und antworte mit reinem JSON ohne Codefences."},
         ]}],
     )
-    return normalisiere(A.extract_json(antwort.content[0].text), ref=datetime.fromtimestamp(pdf.stat().st_mtime))
+    return normalisiere(als_objekt(A.extract_json(antwort.content[0].text)), ref=datetime.fromtimestamp(pdf.stat().st_mtime))
 
 
 def cmd_analyse(id_):
@@ -691,14 +735,19 @@ def analyse_eingang(id_, stopp=None, neu_namen=None) -> dict:
         s = p.stat()
         sig = {"groesse": s.st_size, "geaendert": int(s.st_mtime)}
         e = alt.get(p.name)
-        if e and e.get("meta") and not e.get("fehler") and e.get("groesse") == sig["groesse"] and e.get("geaendert") == sig["geaendert"]:
-            dateien[p.name] = e
+        gleich = e and e.get("groesse") == sig["groesse"] and e.get("geaendert") == sig["geaendert"]
+        if gleich and ((e.get("meta") and not e.get("fehler")) or e.get("dauerhaft")):
+            dateien[p.name] = e  # fertig analysiert - oder dauerhaft nicht analysierbar (zu gross), bis die Datei sich aendert
         else:
             offen.append((p, sig))
-    print(f"  {len(pdfs)} PDF(s) im Eingang, davon {len(offen)} neu zu analysieren.\n")
+    n_dauer = sum(1 for e in dateien.values() if e.get("dauerhaft"))
+    print(f"  {len(pdfs)} PDF(s) im Eingang, davon {len(offen)} neu zu analysieren."
+          + (f" {n_dauer} zu gross bzw. zu lang (werden uebersprungen)." if n_dauer else "") + "\n")
     speichere_vorschlaege(dateien)
     if not offen:
-        return {"meldung": f"Nichts Neues - {len(pdfs)} PDF(s) waren schon analysiert.", "dateien": len(pdfs), "neu": 0, "fehler": 0}
+        return {"meldung": f"Nichts Neues - {len(pdfs)} PDF(s) waren schon analysiert"
+                + (f", {n_dauer} davon zu gross bzw. zu lang fuer die KI" if n_dauer else "") + ".",
+                "dateien": len(pdfs), "neu": 0, "fehler": 0}
     idx = lade_index()
     if index_hashes(idx):
         speichere_index(idx)
@@ -769,8 +818,11 @@ def analyse_eingang(id_, stopp=None, neu_namen=None) -> dict:
             print(("KASSENBON " if bon else "") + ("DUBLETTE? " if meta.get("doppelt") else "") + ("OK" if ok else "PRUEFEN"))
         except Exception as e:  # noqa: BLE001 - weiter mit dem naechsten Dokument
             fehler += 1
-            dateien[p.name] = dict(sig, meta=None, analysiert=jetzt(), fehler=f"{type(e).__name__}: {e}"[:300], pruefen=None)
-            print("FEHLER")
+            text, dauerhaft = fehlertext(e)
+            dateien[p.name] = dict(sig, meta=None, analysiert=jetzt(), fehler=text[:300], pruefen=None)
+            if dauerhaft:
+                dateien[p.name]["dauerhaft"] = True
+            print("FEHLER" + (" - " + text[:60] if dauerhaft else ""))
         speichere_vorschlaege(dateien)
         status(id_, "analyse", "laeuft", f"{i} von {len(offen)} analysiert", fortschritt={"i": i, "n": len(offen)})
     speichere_vorschlaege(dateien)
@@ -807,7 +859,9 @@ def datei_md5(p: Path) -> str:
 def index_hashes(idx: dict) -> bool:
     """md5 und Groesse der abgelegten PDFs im Verzeichnis nachtragen (einmalig, danach nur fuer neue/geaenderte Dateien)."""
     neu = False
-    for e in idx.values():
+    for i, e in enumerate(idx.values()):
+        if i % 25 == 0:
+            lebenszeichen()
         p = ROOT / e["archiv"]
         try:
             g = p.stat().st_size
@@ -1020,7 +1074,7 @@ def cmd_index(id_):
 
 
 def lies_nach(client, pdf: Path) -> dict:
-    daten = base64.standard_b64encode(pdf.read_bytes()).decode("utf-8")
+    daten = pdf_base64(pdf)
     antwort = client.messages.create(
         model=A.MODEL,
         max_tokens=1024,
@@ -1030,7 +1084,7 @@ def lies_nach(client, pdf: Path) -> dict:
             {"type": "text", "text": "Lies die Angaben aus und antworte mit reinem JSON."},
         ]}],
     )
-    return normalisiere(A.extract_json(antwort.content[0].text))
+    return normalisiere(als_objekt(A.extract_json(antwort.content[0].text)))
 
 
 def braucht_nachlesen(e: dict) -> bool:
@@ -1083,8 +1137,9 @@ def cmd_nachlesen(id_):
         except Exception as ex:  # noqa: BLE001 - weiter mit dem naechsten Dokument
             fehler += 1
             e["nachlesen_versuche"] = int(e.get("nachlesen_versuche") or 0) + 1
-            e["nachlesen_fehler"] = f"{type(ex).__name__}: {ex}"[:200]
-            if e["nachlesen_versuche"] >= 2:  # dauerhaft unlesbar -> nicht endlos wiederholen
+            text, dauerhaft = fehlertext(ex)
+            e["nachlesen_fehler"] = text[:200]
+            if e["nachlesen_versuche"] >= 2 or dauerhaft:  # dauerhaft unlesbar -> nicht endlos wiederholen
                 e["nachgelesen"] = jetzt()
             print("FEHLER")
         speichere_index(idx)
@@ -1401,56 +1456,183 @@ def stamm_ablegen(namen: set, stopp=None) -> list:
 
 
 SPERRE = None
+RECHNER = (os.environ.get("COMPUTERNAME") or socket.gethostname() or "").upper()
+_SPERR_DIR = None
+
+
+def sperr_datei(name: str) -> Path:
+    """lauf.lock und vorrang liegen lokal (je Benutzer und Ablage), nicht im OneDrive-Ordner der Ablage."""
+    global _SPERR_DIR
+    if _SPERR_DIR is None:
+        basis = os.environ.get("LOCALAPPDATA") or tempfile.gettempdir()
+        kennung = hashlib.sha1(os.path.normcase(os.path.abspath(str(ROOT))).encode("utf-8")).hexdigest()[:8]
+        d = Path(basis) / "Cockpit-Ablage" / kennung
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+            _SPERR_DIR = d
+        except OSError:
+            _SPERR_DIR = KANAL
+    return _SPERR_DIR / name
+
+
+def loesche(p: Path, versuche=10) -> bool:
+    """Datei loeschen, bei kurzzeitiger Sperre (Virenscanner, Synchronisation) mehrmals versuchen. True = weg."""
+    for i in range(versuche):
+        try:
+            p.unlink()
+            return True
+        except FileNotFoundError:
+            return True
+        except OSError:
+            if i + 1 < versuche:
+                time.sleep(0.3)
+    return False
+
+
+def prozess_lebt(pid) -> bool:
+    """Laeuft der Python-Prozess mit dieser Nummer noch? Im Zweifel True (dann gilt die 20-Minuten-Regel)."""
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return True
+    if pid <= 0:
+        return False
+    if pid == os.getpid():
+        return True
+    if os.name == "nt":
+        try:
+            import ctypes
+            from ctypes import wintypes
+            k = ctypes.WinDLL("kernel32", use_last_error=True)
+            k.OpenProcess.restype = wintypes.HANDLE
+            k.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+            k.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
+            k.GetExitCodeProcess.restype = wintypes.BOOL
+            k.QueryFullProcessImageNameW.argtypes = (wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD))
+            k.QueryFullProcessImageNameW.restype = wintypes.BOOL
+            k.CloseHandle.argtypes = (wintypes.HANDLE,)
+            h = k.OpenProcess(0x1000, False, pid)  # PROCESS_QUERY_LIMITED_INFORMATION
+            if not h:
+                return ctypes.get_last_error() == 5  # Zugriff verweigert -> es gibt ihn; sonst gibt es ihn nicht
+            try:
+                code = wintypes.DWORD()
+                if k.GetExitCodeProcess(h, ctypes.byref(code)) and code.value != 259:  # 259 = STILL_ACTIVE
+                    return False
+                buf = ctypes.create_unicode_buffer(1024)
+                n = wintypes.DWORD(1024)
+                if k.QueryFullProcessImageNameW(h, 0, buf, ctypes.byref(n)):
+                    # Nummer inzwischen an ein anderes Programm vergeben? Dann ist unser Lauf weg.
+                    return os.path.basename(buf.value).lower().startswith("py")
+                return True
+            finally:
+                k.CloseHandle(h)
+        except Exception:  # noqa: BLE001
+            return True
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except OSError:
+        return True
+
+
+def lies_sperre(lock: Path) -> dict:
+    try:
+        d = json.loads(lock.read_text(encoding="utf-8"))
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def sperre_verwaist(inhalt: dict, alter: float) -> bool:
+    if alter > 20 * 60:  # kein Lebenszeichen seit 20 Minuten (der Lauf meldet sich nach jedem Dokument)
+        return True
+    pid = inhalt.get("pid")
+    if not pid:
+        return alter > 30  # gerade erst angelegt und noch leer -> abwarten
+    if inhalt.get("rechner") and str(inhalt["rechner"]).upper() != RECHNER:
+        return False  # Sperre eines anderen Rechners - nur die 20-Minuten-Regel
+    return not prozess_lebt(pid)
+
+
+def uhr(iso) -> str:
+    return str(iso or "")[11:16] or "?"
+
+
+def altlast_entfernen():
+    """Sperrdateien frueherer Versionen lagen in _cockpit (OneDrive) - weg damit, sie gelten nicht mehr."""
+    for n in ("lauf.lock", "vorrang"):
+        p = KANAL / n
+        if p.exists() and p != sperr_datei(n):
+            loesche(p, 3)
 
 
 def sperre_holen(cmd: str, warten=True, id_="") -> bool:
-    """lauf.lock: nur ein Lauf gleichzeitig. Der Hausmeister wartet nicht; Laeufe aus dem Cockpit haben Vorrang
-    (sie setzen 'vorrang', der Hausmeister beendet sich nach dem aktuellen Dokument)."""
+    """Nur ein Lauf gleichzeitig. Der Hausmeister wartet nicht; Laeufe aus dem Cockpit haben Vorrang
+    (sie setzen 'vorrang', der Hausmeister beendet sich nach dem aktuellen Dokument). Eine Sperre, deren
+    Prozess nicht mehr laeuft, wird sofort uebernommen; sonst wird sichtbar gewartet (hoechstens 15 Minuten)."""
     global SPERRE
-    KANAL.mkdir(parents=True, exist_ok=True)
-    lock = KANAL / "lauf.lock"
+    lock = sperr_datei("lauf.lock")
+    altlast_entfernen()
     start = time.time()
+    gemeldet = 0.0
     while True:
         try:
             fd = os.open(str(lock), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump({"befehl": cmd, "pid": os.getpid(), "start": jetzt()}, f)
+                json.dump({"befehl": cmd, "pid": os.getpid(), "start": jetzt(), "rechner": RECHNER}, f)
             SPERRE = lock
             if cmd != "hausmeister":
-                try:
-                    (KANAL / "vorrang").unlink()
-                except FileNotFoundError:
-                    pass
+                loesche(sperr_datei("vorrang"), 3)
+            if gemeldet and not STILL:
+                print("  Frei - es geht los.\n")
             return True
         except FileExistsError:
-            try:
-                alter = time.time() - lock.stat().st_mtime
-                inhalt = lies_json(lock, {})
-            except OSError:
-                continue
-            if alter > 20 * 60:  # verwaist (Hausmeister meldet sich alle paar Minuten) -> uebernehmen
-                try:
-                    lock.unlink()
-                except OSError:
-                    pass
-                continue
-            if cmd == "hausmeister" or not warten:
-                return False
-            if inhalt.get("befehl") == "hausmeister":
-                (KANAL / "vorrang").write_text(jetzt(), encoding="utf-8")
-                status(id_, cmd, "laeuft", "Warte, bis der automatische Lauf das aktuelle Dokument fertig hat ...")
+            pass
+        inhalt = lies_sperre(lock)
+        try:
+            alter = time.time() - lock.stat().st_mtime
+        except OSError:
+            time.sleep(0.2)  # gerade freigegeben -> gleich noch einmal
             if time.time() - start > 15 * 60:
                 return False
-            time.sleep(2)
+            continue
+        if sperre_verwaist(inhalt, alter) and loesche(lock):
+            if not STILL:
+                print(f"  Alte Sperre entfernt ({inhalt.get('befehl') or '?'} von {uhr(inhalt.get('start'))} laeuft nicht mehr).")
+            continue
+        if cmd == "hausmeister" or not warten:
+            return False
+        was = inhalt.get("befehl") or "anderer Lauf"
+        if was == "hausmeister":
+            try:
+                sperr_datei("vorrang").write_text(jetzt(), encoding="utf-8")
+            except OSError:
+                pass
+        jetzt_t = time.time()
+        if jetzt_t - start > 15 * 60:
+            return False
+        if jetzt_t - gemeldet >= 30:
+            bis = datetime.fromtimestamp(start + 15 * 60).strftime("%H:%M")
+            if was == "hausmeister":
+                text = "Warte, bis der automatische Lauf das aktuelle Dokument fertig hat ..."
+            else:
+                text = f"Warte auf den laufenden Auftrag '{was}' (seit {uhr(inhalt.get('start'))}) ..."
+            if not STILL:
+                print(("  " + text) if not gemeldet else f"  ... warte weiter (hoechstens bis {bis})")
+                if not gemeldet:
+                    print(f"  Ein anderes Fenster 'Cockpit-Ablage' arbeitet noch (Prozess {inhalt.get('pid', '?')}). "
+                          f"Ist es haengen geblieben, dieses andere Fenster schliessen - dann geht es hier sofort weiter.")
+            status(id_, cmd, "laeuft", text)
+            gemeldet = jetzt_t
+        time.sleep(2)
 
 
 def sperre_frei():
     global SPERRE
     if SPERRE:
-        try:
-            SPERRE.unlink()
-        except OSError:
-            pass
+        loesche(SPERRE)
         SPERRE = None
 
 
@@ -1464,7 +1646,7 @@ def lebenszeichen():
 
 def hat_vorrang() -> bool:
     lebenszeichen()
-    return (KANAL / "vorrang").exists()
+    return sperr_datei("vorrang").exists()
 
 
 def cmd_hausmeister(id_):
@@ -1555,6 +1737,12 @@ def hausmeister_main():
     if not ROOT.exists():
         return
     if not sperre_holen("hausmeister"):
+        try:  # sichtbar machen, warum der Hausmeister nichts getan hat
+            d = lies_sperre(sperr_datei("lauf.lock"))
+            with open(KANAL / "hausmeister.log", "a", encoding="utf-8") as f:
+                f.write(f"{jetzt()} uebersprungen: anderer Lauf aktiv ({d.get('befehl') or '?'} seit {uhr(d.get('start'))})\n")
+        except OSError:
+            pass
         return
     try:
         cmd_hausmeister("")
@@ -1566,10 +1754,7 @@ def hausmeister_main():
             pass
     finally:
         sperre_frei()
-        try:
-            (KANAL / "vorrang").unlink()
-        except OSError:
-            pass
+        loesche(sperr_datei("vorrang"), 3)
 
 
 def main():
@@ -1604,7 +1789,8 @@ def main():
         if cmd != "test":
             gesperrt = sperre_holen(cmd, True, id_)
             if not gesperrt:
-                raise Fehler("Ein anderer Lauf ist noch aktiv - bitte gleich noch einmal versuchen.")
+                raise Fehler("Ein anderer Lauf ist seit ueber 15 Minuten aktiv - bitte spaeter noch einmal versuchen. "
+                             "Haengt ein anderes Fenster 'Cockpit-Ablage'? Dann jenes Fenster schliessen und neu starten.")
         erg = BEFEHLE[cmd](id_) or {}
         status(id_, cmd, "fertig", erg.get("meldung", ""), ergebnis=erg, start=start)
         print("\n" + erg.get("meldung", "Fertig."))
