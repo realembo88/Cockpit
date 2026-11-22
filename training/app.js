@@ -99,6 +99,43 @@ function monWerte(l,m){var mm=l.filter(function(s){return s.date.slice(0,7)===m;
     if(l.filter(function(s){return s.date>=ws&&s.date<we;}).length>=3)w3++;}
   return {n:mm.length,kr:kr.length,hi:hm.length,hiMin:Math.round(sum(hm,function(s){return s.secs;})/60),runs:runs.length,km:sum(runs,function(s){return s.dist;}),dur:sum(runs,function(s){return s.dur;}),
     hm:sum(runs,function(s){return s.hm;}),kcal:sum(runs,function(s){return s.kcal;}),vol:sum(kr,volume),cn:cm.length,cnS:sum(cm,function(s){return s.count;}),w3:w3};}
+/* ---------- 1 % besser: jede Übung mit dem letzten Mal vergleichen (Maßstab Volumen, nur Krafttraining) ----------
+   Volumen = Σ Gewicht × Wdh.; ohne Zusatzgewicht Σ Wdh.; Zeitübungen Σ Sekunden.
+   Erfolg: ≥ +1 % – oder Gewicht erhöht (dann darf das Volumen kurz sinken: doppelte Progression). */
+var PZ_OK={plus:1,gewicht:1};
+function leistung(e,n){var tm=unitOf(e)==="s",sets=(e.sets||[]).filter(function(x){return (+x.r)>0;});if(n!=null)sets=sets.slice(0,n);
+  if(tm)return {v:sets.reduce(function(a,x){return a+(+x.r||0);},0),art:"s",mx:0,n:sets.length};
+  var kg=sets.some(function(x){return (+x.w)>0;});
+  return {v:sets.reduce(function(a,x){return a+(kg?(+x.w||0)*(+x.r||0):(+x.r||0));},0),art:kg?"kg":"wdh",mx:Math.max.apply(null,[0].concat(sets.map(function(x){return +x.w||0;}))),n:sets.length};}
+function lvTxt(v,art){return art==="kg"?C.int(v)+" kg":art==="s"?fmtSec(v):C.int(v)+" Wdh.";}
+function pzVergleich(e,prev,teil){var a=leistung(e);if(!a.v||!prev)return null;var b=leistung(prev,teil?a.n:null);if(!b.v)return null;
+  if(a.art==="kg"&&b.art==="wdh")return {st:"gewicht",pct:null,a:a,b:b};
+  if(a.art!==b.art)return null;
+  var pct=a.v/b.v-1,st=a.art==="kg"&&a.mx>b.mx+1e-9?"gewicht":pct>=0.01-1e-9?"plus":pct<=-0.01+1e-9?"minus":"gleich";
+  return {st:st,pct:pct,a:a,b:b,teil:!!teil&&a.n<leistung(prev).n};}
+function pctTxt(p){return (p>=0?"+":"−")+C.num(Math.abs(p*100),1)+" %";}
+function pzKurz(r){if(!r)return "";return r.st==="plus"?"✅ "+pctTxt(r.pct):r.st==="gewicht"?"✅ ⬆ Gewicht":r.st==="gleich"?"= "+pctTxt(r.pct):"▼ "+pctTxt(r.pct);}
+function pzLang(r){if(!r)return "";var ref=" ("+lvTxt(r.a.v,r.a.art)+" statt "+lvTxt(r.b.v,r.b.art)+(r.teil?" in den ersten "+r.a.n+" Sätzen":"")+")";
+  if(r.st==="gewicht")return "✅ ⬆ Gewicht erhöht ("+C.num(r.a.mx,r.a.mx%1?1:0)+" kg statt "+C.num(r.b.mx,r.b.mx%1?1:0)+" kg)"+(r.pct!=null?" · Volumen "+pctTxt(r.pct):"");
+  return (r.teil?"bisher ":"")+(r.st==="plus"?"✅ ":r.st==="gleich"?"= gehalten · ":"▼ ")+pctTxt(r.pct)+ref;}
+/* kleinster konkreter Schritt zu +1 % gegenüber dem letzten Mal */
+function pzZiel(prev){var b=leistung(prev);if(!b.v)return "";var mehr=b.v*0.01;
+  if(b.art==="s")return "+"+Math.max(1,Math.ceil(mehr-1e-9))+" s Haltezeit insgesamt";
+  if(b.art==="wdh")return Math.max(1,Math.ceil(mehr-1e-9))+" Wdh. mehr insgesamt";
+  var n=Math.max(1,Math.ceil(mehr/b.mx-1e-9));return n+" Wdh. mehr bei "+C.num(b.mx,b.mx%1?1:0)+" kg (≥ "+C.int(Math.ceil(b.v*1.01))+" kg) – oder Gewicht erhöhen";}
+/* Vorgänger einer gespeicherten Einheit (ohne sie selbst) */
+function vorher(name,s){var n=String(name||"").toLowerCase().trim(),l=list().filter(function(x){return x.type==="kraft";}),i=l.indexOf(s);
+  for(var k=i+1;k<l.length;k++){var e=(l[k].exercises||[]).filter(function(x){return x.name.toLowerCase().trim()===n;})[0];if(e)return {date:l[k].date,e:e,s:l[k]};}return null;}
+function pzSitzung(s){var o={n:0,ok:0,gw:0,je:{}};(s.exercises||[]).forEach(function(e){var p=vorher(e.name,s),r=p?pzVergleich(e,p.e):null;if(!r)return;o.n++;if(PZ_OK[r.st])o.ok++;if(r.st==="gewicht")o.gw++;o.je[e.name]=r;});return o;}
+function pzQuoteTxt(q){return q.ok+" von "+q.n+" Übungen ≥ +1 %"+(q.gw?" (davon "+q.gw+"× Gewicht erhöht)":"");}
+/* Monatsquote und Trend je Vorlage (Ø Veränderung des Trainingsvolumens je Training, 4 Wochen) */
+function pzMonat(l,m){var q={n:0,ok:0,gw:0};l.forEach(function(s){if(s.type!=="kraft"||s.date.slice(0,7)!==m)return;var x=pzSitzung(s);q.n+=x.n;q.ok+=x.ok;q.gw+=x.gw;});return q;}
+function pzTrend(l,bis){var von=new Date(new Date(bis+"T12:00:00").getTime()-27*DAY).toISOString().slice(0,10),by={};
+  l.filter(function(s){return s.type==="kraft"&&s.date<=bis;}).slice().reverse().forEach(function(s){var k=s.tpl||"Frei",v=volume(s),x=by[k]||(by[k]={prev:null,ch:[]});
+    if(s.date>=von&&x.prev>0&&v>0)x.ch.push(v/x.prev-1);if(v>0)x.prev=v;});
+  var ord=Object.keys(tpls());return Object.keys(by).filter(function(k){return by[k].ch.length;}).sort(function(a,b){var ia=ord.indexOf(a),ib=ord.indexOf(b);return (ia<0?99:ia)-(ib<0?99:ib);})
+    .map(function(k){var c=by[k].ch;return {tpl:k,n:c.length,avg:c.reduce(function(a,b){return a+b;},0)/c.length};});}
+
 /* ---------- Bestwerte: Rekordmonate, beste Trainings (Kraft je Vorlage), neue Bestwerte im Monat ---------- */
 function besser(a,b,tm){if(!b)return true;if(tm)return (a.r||0)>(b.r||0);return (a.w||0)>(b.w||0)||((a.w||0)===(b.w||0)&&(a.r||0)>(b.r||0));}
 function satzTxt(x,tm){return tm?fmtSec(x.r)+(x.w?" + "+C.num(x.w,x.w%1?1:0)+" kg":""):(x.w?C.num(x.w,x.w%1?1:0)+" kg × "+x.r:x.r+" Wdh.");}
@@ -138,6 +175,11 @@ function vBest(l,m,mErst,mAkt){var dk=function(d){return d.slice(8,10)+"."+d.sli
   var nb=neueBestwerte(l,m),nz=st.nbAlle?nb.length:5;
   h+='<div class="bh">Neue Bestwerte im '+MON_L[+m.slice(5,7)-1]+(nb.length?" · "+nb.length:"")+"</div>"+(nb.length?nb.slice(0,nz).map(function(x){return '<div class="pr klick" onclick="T.zeige(\''+x.neu.s.id+'\')"><span>'+C.esc(x.n)+'<div class="small muted">vorher '+satzTxt(x.alt.x,x.alt.tm)+" ("+dk(x.alt.d)+")</div></span>"+
       '<span style="text-align:right;white-space:nowrap"><b>'+satzTxt(x.neu.x,x.neu.tm)+'</b> <span class="small muted">'+dk(x.neu.d)+" ›</span></span></div>";}).join("")+(nb.length>nz?'<button class="mini" style="margin-top:8px" onclick="T.nbAlle()">Alle '+nb.length+" zeigen</button>":""):'<div class="note">Noch keine neuen Bestwerte in diesem Monat.</div>');
+  var q=pzMonat(l,m),bis=m===C.today().slice(0,7)?C.today():new Date(new Date(monNach(m)+"-01T12:00:00").getTime()-DAY).toISOString().slice(0,10),tr=pzTrend(l,bis);
+  if(q.n||tr.length){h+='<div class="bh">📈 1 % besser · '+MON_L[+m.slice(5,7)-1]+"</div>";
+    if(q.n)h+='<div class="pr"><span>Quote: Übungen mit ≥ +1 % Volumen oder mehr Gewicht als beim letzten Mal<div class="small muted">'+pzQuoteTxt(q)+'</div></span><b style="white-space:nowrap;color:'+(q.ok/q.n>=0.5?"#34d399":"#fbbf24")+'">'+Math.round(q.ok/q.n*100)+" %</b></div>";
+    if(tr.length)h+='<div class="small muted" style="margin:8px 0 2px">Trend je Vorlage: Ø Veränderung des Volumens je Training, 4 Wochen bis '+bis.slice(8,10)+"."+bis.slice(5,7)+".</div>"+tr.map(function(t){
+      return '<div class="pr"><span>🏋️ '+C.esc(t.tpl)+' <span class="small muted">· '+t.n+(t.n===1?" Training":" Trainings")+"</span></span><b style=\"color:"+(t.avg>=0.01?"#34d399":t.avg<0?"#f87171":"#fbbf24")+'">'+(t.avg>=0.01?"✅ ":t.avg<0?"▼ ":"= ")+pctTxt(t.avg)+"</b></div>";}).join("");}
   return h+'<div class="note">Bestwert einer Übung: höchstes Gewicht, bei gleichem Gewicht mehr Wiederholungen; Zeitübungen nach Sekunden. Antippen öffnet das Training im Verlauf.</div></div>';}
 function kpi(i,l,v){return '<div class="kpi"><div class="ico">'+i+'</div><div class="val">'+v+'</div><div class="lab">'+l+"</div></div>";}
 
@@ -212,18 +254,31 @@ function vKraft(){
     if(e.ziel){var hoch=last&&e.top&&unitOf(last.e)!=="s"&&last.e.sets.length&&last.e.sets.every(function(x){return +x.r>=e.top;});
       h+='<div class="last" style="color:#fbbf24">🎯 Ziel: '+C.esc(e.ziel)+(hoch?' · <b>💪 letztes Mal alle Sätze ≥ '+e.top+' – Gewicht erhöhen</b>':"")+"</div>";}
     if(last)h+='<div class="last">Letztes Mal ('+new Date(last.date).toLocaleDateString("de-DE",{day:"numeric",month:"numeric"})+'): '+setsTxt(last.e)+"</div>";
+    if(last&&unitOf(last.e)===unitOf(e)&&pzZiel(last.e))h+='<div class="last pzziel">📈 Für +1 %: '+pzZiel(last.e)+"</div>";
+    if(last)h+='<div class="last pzlive" id="pz'+i+'">'+pzFormTxt(i)+"</div>";
     var tm=unitOf(e)==="s";
     h+='<div class="set"><span>Satz</span><span>'+(tm?"Sek.":"Wdh.")+'</span><span>'+(tm?"+ kg":"kg")+'</span><span></span></div>';
     e.sets.forEach(function(x,j){var ph=last&&last.e.sets[j]?last.e.sets[j]:null;
       h+='<div class="set"><span>'+(j+1)+'</span><input inputmode="'+(tm?"text":"numeric")+'" placeholder="'+(ph?(tm&&ph.r>=60?Math.floor(ph.r/60)+":"+("0"+ph.r%60).slice(-2):ph.r):(tm?"z. B. 60":""))+'" value="'+C.esc(x.r)+'" oninput="T.sv('+i+","+j+',\'r\',this.value)"><input inputmode="decimal" placeholder="'+(ph?(ph.w?String(ph.w).replace(".",","):"0"):"")+'" value="'+C.esc(x.w)+'" oninput="T.sv('+i+","+j+',\'w\',this.value)"><button class="x" onclick="T.rmSet('+i+","+j+')" aria-label="Satz entfernen">✕</button></div>';});
     h+='<button class="mini" onclick="T.addSet('+i+')">＋ Satz</button> <button class="mini" onclick="T.unit('+i+')" title="Zählweise wechseln">'+(tm?"⏱ Sek. → Wdh.":"🔁 Wdh. → Sek.")+'</button> '+(last?' <button class="mini" onclick="T.copyLast('+i+')">Werte vom letzten Mal</button>':"")+"</div>";});
   h+='<button class="btn ghost full" style="margin-bottom:14px" onclick="T.addEx()">＋ Übung</button>';
+  h+='<div class="pzges" id="pzGes">'+pzGesTxt()+"</div>";
   h+='<div class="field"><label>Notiz (optional)</label><input value="'+C.esc(f.note)+'" placeholder="z. B. gut geschlafen, Schulter zwickt" oninput="st_note(this.value)"></div>';
   h+='<div class="row2"><button class="btn grad" onclick="T.saveK()">Training speichern</button>'+(st.editId?'<button class="btn ghost" style="flex:0 0 auto" onclick="T.cancel()">Abbrechen</button>':"")+'</div>';
   h+='<div class="note" style="margin-top:10px">Leere Felder zeigen grau deine Werte vom letzten Mal. Leere Sätze werden nicht gespeichert. Gewicht leer oder 0 = ohne Zusatzgewicht. Zeitübungen als Sekunden („60“) oder Minuten:Sekunden („1:30“).</div></div>';
   return h;
 }
 window.st_note=function(v){st.form.note=v;};
+function formEx(e){return {name:e.name,unit:unitOf(e),sets:cleanSets(e)};}
+function pzForm(i){var f=st.form,e=f.exercises[i];if(!e||!e.name)return null;var last=lastOf(e.name,f.date);if(!last)return null;return pzVergleich(formEx(e),last.e,true);}
+function pzFormTxt(i){var r=pzForm(i);return r?pzLang(r):'<span class="muted">Noch keine Werte – Ziel siehe oben</span>';}
+function pzGesTxt(){var f=st.form;if(!f)return "";var q={n:0,ok:0,gw:0},vol=0,offen=0;
+  f.exercises.forEach(function(e,i){var c=formEx(e);if(!e.name)return;if(unitOf(e)!=="s")vol+=c.sets.reduce(function(a,x){return a+(x.w||0)*(x.r||0);},0);
+    var last=lastOf(e.name,f.date);if(!last)return;var r=pzVergleich(c,last.e,true);if(!r){offen++;return;}if(r.teil)offen++;q.n++;if(PZ_OK[r.st])q.ok++;if(r.st==="gewicht")q.gw++;});
+  var vt=null;if(f.tpl){var l=list().filter(function(s){return s.type==="kraft"&&s.tpl===f.tpl&&s.id!==st.editId&&s.date<=f.date;})[0];if(l)vt={d:l.date,v:volume(l)};}
+  if(!q.n&&!vol)return "";
+  return '<div class="small" style="color:#e2e8f0"><b>📈 '+(offen?"Bisher ":"")+pzQuoteTxt(q)+"</b></div>"+'<div class="small muted">Volumen '+C.int(vol)+" kg"+(vt?" · letztes „"+C.esc(f.tpl)+"“ ("+vt.d.slice(8,10)+"."+vt.d.slice(5,7)+".): "+C.int(vt.v)+" kg"+(vt.v>0&&!offen?" · "+pctTxt(vol/vt.v-1):""):"")+"</div>";}
+function pzLive(i){var el=document.getElementById("pz"+i);if(el)el.innerHTML=pzFormTxt(i);var g=document.getElementById("pzGes");if(g)g.innerHTML=pzGesTxt();}
 
 /* ---------- Lauf erfassen ---------- */
 function vLauf(){
@@ -260,7 +315,7 @@ function sesRow(s){var open=st.open[s.id];if(s.type==="counter"){var cd="",iv=ta
     return '<div class="ses"><div class="t" onclick="T.toggle(\''+s.id+'\')"><span>'+hiitHead(s)+'</span><span class="small muted" style="white-space:nowrap">'+new Date(s.date).toLocaleDateString("de-DE",{weekday:"short",day:"numeric",month:"numeric"})+"</span></div>"+(open?'<div class="d">'+dd+"</div>":"")+"</div>";}
   var head=s.type==="lauf"?'🏃 <b>'+C.num(s.dist,2)+' km</b> in '+fmtDur(s.dur)+' · '+fmtPace(pace(s))+(s.hm?' · ↗ '+C.int(s.hm)+' m':''):'🏋️ <b>'+C.esc(s.tpl||"Kraft")+'</b> · '+(s.exercises||[]).length+' Übungen · '+C.int(volume(s))+' kg';
   var det="";
-  if(open){det=s.type==="lauf"?[s.zeit?"🕕 "+s.zeit+" Uhr":"",s.ort?"📍 "+C.esc(s.ort):"",C.num(3600/(pace(s)||1),1)+" km/h",s.hr?"❤️ Ø "+s.hr+" bpm":"",s.hm!=null?"↗ "+C.int(s.hm)+" m Höhe":"",s.kcal?"🔥 "+C.int(s.kcal)+" kcal":""].filter(Boolean).join(" · "):(s.exercises||[]).map(function(e){return "<b style=\"color:#e8eaf6\">"+C.esc(e.name)+"</b>: "+setsTxt(e);}).join("<br>");
+  if(open){det=s.type==="lauf"?[s.zeit?"🕕 "+s.zeit+" Uhr":"",s.ort?"📍 "+C.esc(s.ort):"",C.num(3600/(pace(s)||1),1)+" km/h",s.hr?"❤️ Ø "+s.hr+" bpm":"",s.hm!=null?"↗ "+C.int(s.hm)+" m Höhe":"",s.kcal?"🔥 "+C.int(s.kcal)+" kcal":""].filter(Boolean).join(" · "):(function(){var pq=pzSitzung(s);return (s.exercises||[]).map(function(e){var r=pq.je[e.name];return "<b style=\"color:#e8eaf6\">"+C.esc(e.name)+"</b>: "+setsTxt(e)+(r?' <span class="pzb '+r.st+'">'+pzKurz(r)+"</span>":"");}).join("<br>")+(pq.n?'<div style="margin-top:6px">📈 '+pzQuoteTxt(pq)+" ggü. dem letzten Mal</div>":"");})();
     if(s.note)det+='<br><i>'+C.esc(s.note)+"</i>";
     det+='<div style="margin-top:8px"><button class="mini" onclick="T.edit(\''+s.id+'\')">Bearbeiten</button> <button class="mini" style="color:#ff8a80" onclick="T.del(\''+s.id+'\')">Löschen</button></div>';}
   return '<div class="ses"><div class="t" onclick="T.toggle(\''+s.id+'\')"><span>'+head+'</span><span class="small muted" style="white-space:nowrap">'+new Date(s.date).toLocaleDateString("de-DE",{weekday:"short",day:"numeric",month:"numeric"})+"</span></div>"+(open?'<div class="d">'+det+"</div>":"")+"</div>";}
@@ -766,7 +821,7 @@ window.T={
     if(e.name!==v){var f=st.form,z=f.tpl&&tpls()[f.tpl]?tpls()[f.tpl].map(tplEx).filter(function(x){return x.n===v&&x.z;})[0]:null;
       if(z){e.ziel=z.z;e.top=z.top;}else if(!e.orig){delete e.ziel;delete e.top;}}
     e.name=v;var l=lastOf(e.name,st.form.date);e.unit=l?unitOf(l.e):(isTimed(e.name)?"s":"r");render();},
-  sv:function(i,j,k,v){st.form.exercises[i].sets[j][k]=v;},
+  sv:function(i,j,k,v){st.form.exercises[i].sets[j][k]=v;pzLive(i);},
   addSet:function(i){var s=st.form.exercises[i].sets,l=s[s.length-1]||{r:"",w:""};s.push({r:l.r,w:l.w});render();},
   rmSet:function(i,j){st.form.exercises[i].sets.splice(j,1);render();},
   unit:function(i){var e=st.form.exercises[i];e.unit=unitOf(e)==="s"?"r":"s";render();},
@@ -786,7 +841,7 @@ window.T={
           if(k<0)return;var p=String(zl[k]).split("|");zl[k]=e.name+(p.length>1?" | "+p.slice(1).join("|").trim():"");});
         data.templates=t;data.tplT=Date.now();vz=" · Vorlage angepasst";}}
     var id=st.editId||uid();data.sessions[id]={id:id,type:"kraft",date:f.date||C.today(),tpl:f.tpl||(st.editId&&data.sessions[id]?data.sessions[id].tpl:""),exercises:ex,note:(f.note||"").trim(),upd:Date.now()};
-    persist();var was=!!st.editId;st.editId=null;st.form=null;st.tab="uebersicht";flash(was?"✓ Training aktualisiert":"✓ Training gespeichert · "+C.int(volume(data.sessions[id]))+" kg Volumen"+vz);},
+    persist();var was=!!st.editId;st.editId=null;st.form=null;st.tab="uebersicht";var pq=pzSitzung(data.sessions[id]);flash((was?"✓ Training aktualisiert":"✓ Training gespeichert · "+C.int(volume(data.sessions[id]))+" kg Volumen"+vz)+(pq.n?" · 📈 "+pzQuoteTxt(pq):""));},
   rv:function(k,v){st.run[k]=v;if(k==="dist"||k==="dur"){var d=pn(st.run.dist),s=parseDur(st.run.dur),el=document.getElementById("runPace");if(el)el.innerHTML=d&&s?"Tempo: <b>"+fmtPace(s/d)+"</b> · "+C.num(3600/(s/d),1)+" km/h":"";}if(k==="date")render();},
   saveR:function(){var r=st.run,d=pn(r.dist),s=parseDur(r.dur);if(!(d>0)||!(s>0)){flash("⚠ Bitte Distanz und Dauer eintragen",true);return;}
     var id=st.editId||uid(),o={id:id,type:"lauf",date:r.date||C.today(),dist:Math.round(d*100)/100,dur:s,hr:pn(r.hr)||null,note:(r.note||"").trim(),upd:Date.now()};
