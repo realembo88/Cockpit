@@ -5,28 +5,46 @@ var DOKS=(function(){
 "use strict";
 var DB="cockpit-fs",STORE="h",KEY="ablage",DAY=864e5;
 
-/* ---------- Ordner-Handle (bleibt im Browser dieses Geräts, IndexedDB) ---------- */
-function idb(){return new Promise(function(res,rej){var r=indexedDB.open(DB,1);r.onupgradeneeded=function(){r.result.createObjectStore(STORE);};r.onsuccess=function(){res(r.result);};r.onerror=function(){rej(r.error);};});}
-function hGet(){return idb().then(function(db){return new Promise(function(res,rej){var q=db.transaction(STORE).objectStore(STORE).get(KEY);q.onsuccess=function(){res(q.result||null);};q.onerror=function(){rej(q.error);};});});}
-function hSet(h){return idb().then(function(db){return new Promise(function(res,rej){var t=db.transaction(STORE,"readwrite");t.objectStore(STORE).put(h,KEY);t.oncomplete=function(){res(h);};t.onerror=function(){rej(t.error);};});});}
-function hDel(){return idb().then(function(db){return new Promise(function(res){var t=db.transaction(STORE,"readwrite");t.objectStore(STORE).delete(KEY);t.oncomplete=function(){res();};t.onerror=function(){res();};});});}
+/* ---------- Ordner-Handle (bleibt im Browser dieses Geräts, IndexedDB) ----------
+   Jede Stufe hat eine Frist und meldet Fehler sichtbar ("fehler"), statt die Seite ohne Hinweis hängen zu lassen.
+   Ein gewählter oder erlaubter Ordner wird zusätzlich für diesen Seitenaufruf im Speicher gehalten (memH). */
+var memH=null,merkErr=null;
+function fristMs(){return (typeof window!=="undefined"&&window.__DOKS_FRIST)||8000;}
+function frist(p,ms,txt){return new Promise(function(res,rej){var t=setTimeout(function(){rej(new Error(txt));},ms);
+  Promise.resolve(p).then(function(v){clearTimeout(t);res(v);},function(e){clearTimeout(t);rej(e);});});}
+function fehlerText(e){if(!e)return "unbekannter Fehler";var n=e.name&&e.name!=="Error"?e.name+": ":"";return n+(e.message||String(e));}
+function idb(){return new Promise(function(res,rej){var r;try{r=indexedDB.open(DB,1);}catch(e){rej(e);return;}
+  r.onupgradeneeded=function(){r.result.createObjectStore(STORE);};
+  r.onsuccess=function(){var db=r.result;db.onversionchange=function(){db.close();};res(db);};
+  r.onerror=function(){rej(r.error);};
+  r.onblocked=function(){rej(new Error("Der Browser-Speicher ist durch einen anderen Cockpit-Tab blockiert"));};});}
+function hGet(){return idb().then(function(db){return new Promise(function(res,rej){var q=db.transaction(STORE).objectStore(STORE).get(KEY);q.onsuccess=function(){res(q.result||null);db.close();};q.onerror=function(){rej(q.error);db.close();};});});}
+function hSet(h){return idb().then(function(db){return new Promise(function(res,rej){var t=db.transaction(STORE,"readwrite");t.objectStore(STORE).put(h,KEY);t.oncomplete=function(){res(h);db.close();};t.onerror=function(){rej(t.error);db.close();};});});}
+function hDel(){return idb().then(function(db){return new Promise(function(res){var t=db.transaction(STORE,"readwrite");t.objectStore(STORE).delete(KEY);t.oncomplete=function(){res();db.close();};t.onerror=function(){res();db.close();};});});}
 /* für automatische Tests kann window.__DOKS_TEST_ROOT ein anderes Verzeichnis liefern */
 function testRoot(){return typeof window!=="undefined"&&window.__DOKS_TEST_ROOT?window.__DOKS_TEST_ROOT:null;}
 /* Handy/Tablet: Chrome kann dort zwar Ordner öffnen, aber OneDrive-Ablage und Python gibt es nur am PC */
 function mobil(){if(typeof navigator==="undefined")return false;if(navigator.userAgentData&&navigator.userAgentData.mobile)return true;
   return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent||"");}
 function supported(){return !!testRoot()||(typeof window!=="undefined"&&"showDirectoryPicker" in window&&!mobil());}
-function handle(){return testRoot()?Promise.resolve(testRoot()):hGet().catch(function(){return null;});}
-/* Zustand: "granted" | "prompt" | "none" (noch nicht verbunden) | "unsupported" */
-function state(){if(!supported())return Promise.resolve({s:"unsupported"});
-  return handle().then(function(h){if(!h)return {s:"none"};if(!h.queryPermission)return {s:"granted",h:h};
-    return h.queryPermission({mode:"readwrite"}).then(function(p){return {s:p==="granted"?"granted":"prompt",h:h};});});}
+function gemerkt(){var t=testRoot();if(memH&&!t)return Promise.resolve(memH);
+  return frist(t||hGet(),fristMs(),"Der Browser-Speicher antwortet nicht (gemerkter Ordner)").then(function(h){if(h&&!t)memH=h;return h;});}
+function handle(){return gemerkt().catch(function(){return null;});}
+function erlaubnis(h){return frist(h.queryPermission({mode:"readwrite"}),fristMs(),"Chrome beantwortet die Zugriffsprüfung nicht");}
+/* Zustand: "granted" | "prompt" | "none" (noch nicht verbunden) | "unsupported" | "fehler" (err: Meldung, h: Ordner, falls bekannt) */
+function state(){if(!supported())return Promise.resolve({s:"unsupported"});var h0=null;
+  return gemerkt().then(function(h){h0=h;if(!h)return {s:"none"};if(!h.queryPermission)return {s:"granted",h:h};
+    return erlaubnis(h).then(function(p){return {s:p==="granted"?"granted":"prompt",h:h};});})
+  .catch(function(e){return {s:"fehler",err:fehlerText(e),h:h0};});}
 /* Zugriff anfragen – nur aus einem Klick heraus aufrufen */
 function root(ask){return handle().then(function(h){if(!h)return null;if(!h.queryPermission)return h;
-  return h.queryPermission({mode:"readwrite"}).then(function(p){if(p==="granted")return h;if(!ask)return null;
+  return erlaubnis(h).catch(function(){return "prompt";}).then(function(p){if(p==="granted")return h;if(!ask)return null;
     return h.requestPermission({mode:"readwrite"}).then(function(q){return q==="granted"?h:null;});});});}
-function pick(){return window.showDirectoryPicker({id:"cockpit-ablage",mode:"readwrite"}).then(function(h){return hSet(h);});}
-function forget(){return hDel();}
+/* Ordner wählen: sofort nutzbar; klappt das Merken im Browser-Speicher nicht, steht der Grund in merkFehler() */
+function pick(){return window.showDirectoryPicker({id:"cockpit-ablage",mode:"readwrite"}).then(function(h){memH=h;merkErr=null;
+  return frist(hSet(h),fristMs(),"Der Browser-Speicher antwortet nicht").then(function(){return h;},function(e){merkErr=fehlerText(e);return h;});});}
+function merkFehler(){return merkErr;}
+function forget(){memH=null;return frist(hDel(),fristMs(),"Zeitüberschreitung").catch(function(){});}
 
 /* ---------- Dateien ---------- */
 function dir(r,parts,create){return parts.reduce(function(p,n){return p.then(function(d){return d.getDirectoryHandle(n,{create:!!create});});},Promise.resolve(r));}
@@ -308,7 +326,7 @@ function hausVorschlag(y,key,idx){var kw=HAUS_KW[key];if(!kw)return [];return ha
 function oeffnen(e){return root(true).then(function(r){if(!r)throw new Error("Der Ablage-Ordner ist auf diesem Gerät nicht verbunden (Dokumente → Einrichtung).");
   return blobUrl(r,e.archiv);}).then(function(u){var w=window.open(u,"_blank");if(!w)location.href=u;setTimeout(function(){URL.revokeObjectURL(u);},60000);});}
 
-return {listCSVs:listCSVs,verschiebe:verschiebe,kontoImport:kontoImport,supported:supported,mobil:mobil,state:state,root:root,pick:pick,forget:forget,dir:dir,file:file,exists:exists,readJSON:readJSON,writeJSON:writeJSON,listPDFs:listPDFs,blobUrl:blobUrl,
+return {listCSVs:listCSVs,verschiebe:verschiebe,kontoImport:kontoImport,supported:supported,mobil:mobil,state:state,root:root,pick:pick,merkFehler:merkFehler,fehlerText:fehlerText,frist:frist,forget:forget,dir:dir,file:file,exists:exists,readJSON:readJSON,writeJSON:writeJSON,listPDFs:listPDFs,blobUrl:blobUrl,
   newId:newId,start:start,poll:poll,clean:clean,fname:fname,valid:valid,isoDatum:isoDatum,stbJahr:stbJahr,index:index,zuordnung:zuordnung,txKandidaten:txKandidaten,docKandidaten:docKandidaten,zuSetzen:zuSetzen,refPasst:refPasst,abgelehnt:abgelehnt,zuZurueck:zuZurueck,absKey:absKey,titelMonat:titelMonat,paarWert:paarWert,zuBlank:zuBlank,zuNorm:zuNorm,zuMerge:zuMerge,norm:norm,titel:titel,de:de,steuerJahr:steuerJahr,stbDocs:stbDocs,
   txMatcher:txMatcher,HAUS_KW:HAUS_KW,offenePosten:offenePosten,vorgang:vorgang,vorgangSetzen:vorgangSetzen,nrPasst:nrPasst,betragDiff:betragDiff,zstOffen:zstOffen,dokBlank:dokBlank,dokNorm:dokNorm,dokSummary:dokSummary,dokMerge:dokMerge,hmSumme:hmSumme,zstListe:zstListe,datenExport:datenExport,pcAbgleich:pcAbgleich,zuErledigt:zuErledigt,isoHeute:isoHeute,hausDocs:hausDocs,hausVorschlag:hausVorschlag,oeffnen:oeffnen};
 })();

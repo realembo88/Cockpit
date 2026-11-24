@@ -111,13 +111,15 @@ function esc(s){return C.esc(s);}
 function konfig(){return (st.vor&&st.vor.konfig)||data.konfig||{empfaenger:{},archiv:{Privat:[],Geschaeftlich:[]},stb:{Privat:[],Geschaeftlich:[]}};}
 
 /* ---------- Ordner & Daten laden ---------- */
-function init(){D.state().then(function(s){st.perm=s.s;st.root=s.s==="granted"?s.h:null;st.rootName=s.h?s.h.name:"";render();if(st.root)reload().then(laufFortsetzen);});}
+function init(){D.state().then(function(s){st.perm=s.s;st.err=s.err||"";st.root=s.s==="granted"?s.h:null;st.rootName=s.h?s.h.name:"";render();if(st.root)reload().then(laufFortsetzen);})
+  .catch(function(e){st.perm="fehler";st.err=D.fehlerText(e);render();});}
 /* läuft am PC noch ein längerer Vorgang (z. B. Altbestand auslesen)? Dann Fortschritt wieder anzeigen */
 function laufFortsetzen(){if(!st.root||st.run)return;D.readJSON(st.root,"_cockpit/status.json").then(function(s){
   if(!s||s.status!=="laeuft"||s.befehl!=="nachlesen"||!s.id||Date.now()-Date.parse(s.zeit)>10*60000)return;
   st.run={cmd:"nachlesen",label:"Altbestand auslesen",msg:s.meldung||"läuft …",i:(s.fortschritt||{}).i||0,n:(s.fortschritt||{}).n||0};render();
   warte("nachlesen","Altbestand auslesen",s.id,8*3600000);}).catch(function(){});}
 function reload(){if(!st.root)return Promise.resolve();
+  st.ladeFehler="";st.ladeStart=Date.now();clearTimeout(reload.tm);reload.tm=setTimeout(function(){if(st.pdfs==null&&!st.geladen)render();},20000);
   return Promise.all([D.readJSON(st.root,"_cockpit/vorschlaege.json"),D.readJSON(st.root,"_cockpit/index.json"),D.listPDFs(st.root).catch(function(){return null;}),
       D.readJSON(st.root,"_cockpit/einkaeufe.json").catch(function(){return null;}),D.listCSVs(st.root).catch(function(){return [];}),D.readJSON(st.root,"_cockpit/laeden.json").catch(function(){return null;}),
       D.readJSON(st.root,"_cockpit/hausmeister.json").catch(function(){return null;}),D.readJSON(st.root,"_cockpit/hausmeister_einst.json").catch(function(){return null;}),D.readJSON(st.root,"_cockpit/zaehlerstaende.json").catch(function(){return null;})]).then(function(a){
@@ -138,7 +140,7 @@ function reload(){if(!st.root)return Promise.resolve();
     var n=st.pdfs?st.pdfs.length:null;if(n!==data.eingang){data.eingang=n;changed=true;}
     /* Bearbeitungen für Dateien, die nicht mehr im Eingang liegen, aufräumen */
     if(st.pdfs){var names={};st.pdfs.forEach(function(p){names[p.name]=1;});Object.keys(st.edit).forEach(function(k2){if(!names[k2])delete st.edit[k2];});saveEdits();}
-    if(changed||ch2||ch3||ch4)persist();render();}).catch(function(e){flash("⚠ Ordner konnte nicht gelesen werden: "+(e.message||e),true);});}
+    st.geladen=true;if(changed||ch2||ch3||ch4)persist();render();return true;}).catch(function(e){st.ladeFehler=D.fehlerText(e);flash("⚠ Ordner konnte nicht gelesen werden: "+(e.message||e),true);return false;});}
 
 function hmSumme(hm,e){return D.hmSumme(hm,e);}
 /* Cockpit-Daten täglich in die Ablage (für die ZIP-Sicherung), siehe DOKS.datenExport */
@@ -174,7 +176,8 @@ function render(){
   document.getElementById("tabs").innerHTML=tabs.map(function(t){return '<button class="tab'+(st.tab===t[0]?" on":"")+'" onclick="D2.tab(\''+t[0]+'\')">'+t[1]+"</button>";}).join("");
   var h="";if(st.flash)h+='<div class="flash'+(st.flash.warn?" warn":"")+'">'+esc(st.flash.t)+"</div>";
   if(st.run){var pc=st.run.n?Math.round(st.run.i/st.run.n*100):0;h+='<div class="run">⏳ <b>'+esc(st.run.label)+"</b> läuft im Konsolenfenster am PC.<br>"+esc(st.run.msg)+(st.run.n?'<div class="bar"><i style="width:'+pc+'%"></i></div>':"")+'<div style="margin-top:8px"><button class="mini" onclick="D2.cancel()">Nicht mehr warten</button></div></div>';}
-  h+=({eingang:vEingang,archiv:vArchiv,einr:vEinr}[st.tab])();
+  try{h+=({eingang:vEingang,archiv:vArchiv,einr:vEinr}[st.tab])();}
+  catch(e){if(window.console)console.error(e);h+='<div class="panel" style="border-color:#f8717166"><b style="color:#fca5a5">⚠ Anzeige-Fehler</b><div class="note" style="margin:6px 0 10px">'+esc(e&&e.message||e)+'</div><button class="mini" onclick="location.reload()">↻ Seite neu laden</button></div>';}
   document.getElementById("main").innerHTML=h;
 }
 function connectHint(){
@@ -183,6 +186,11 @@ function connectHint(){
     (data.konfig?'<div class="note" style="margin-top:6px">'+(data.eingang?"Beim letzten Abgleich am PC lagen <b>"+data.eingang+" PDF(s)</b> im Eingang.":"Beim letzten Abgleich am PC war der Eingang leer.")+(data.upd?" Stand "+new Date(data.upd).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})+".":"")+"</div>":"")+
     '<div class="acts"><button class="mini" onclick="D2.tab(\'archiv\')">🗂 Archiv</button><a class="mini" style="text-decoration:none;display:inline-block" href="../finanzen/index.html#einkauf">🧾 Einkäufe</a></div></div>';
   if(st.perm==="prompt")return '<div class="panel"><b style="color:#7dd3fc">Zugriff auf „'+esc(st.rootName)+'“ erlauben</b><div class="note" style="margin:6px 0 10px">Chrome fragt nach jedem Neustart einmal nach – mit „Bei jedem Besuch zulassen“ entfällt das.</div><button class="btn" style="background:#0ea5e9" onclick="D2.allow()">Zugriff erlauben</button></div>';
+  if(st.perm==="…")return '<div class="note" style="margin:4px 0 10px">Prüfe den Zugriff auf den Ablage-Ordner …</div>';
+  if(st.perm==="fehler")return '<div class="panel" style="border-color:#f8717166"><b style="color:#fca5a5">⚠ Der Zugriff auf den Ablage-Ordner lässt sich gerade nicht prüfen</b>'+
+    '<div class="note" style="margin:6px 0 4px">Chrome meldet: '+esc(st.err||"keine Antwort")+'</div>'+
+    '<div class="note" style="margin:0 0 10px">Meist hilft „Zugriff erlauben“. Sonst Chrome ganz schließen (alle Fenster) und neu öffnen – oder den Ablage-Hauptordner neu wählen. An der Ablage selbst ändert sich dadurch nichts.</div>'+
+    '<div class="acts"><button class="btn" style="background:#0ea5e9;flex:0 0 auto" onclick="D2.allow()">Zugriff erlauben</button><button class="mini" onclick="D2.retry()">↻ Erneut prüfen</button><button class="mini" onclick="D2.pick()">📁 Ordner neu wählen</button></div></div>';
   if(st.perm==="none")return '<div class="panel"><b style="color:#7dd3fc">Noch kein Ablage-Ordner verbunden</b><div class="note" style="margin:6px 0 10px">Einmalig einrichten: Skripte ablegen, Link-Typ registrieren, Ordner verbinden.</div><button class="btn" style="background:#0ea5e9" onclick="D2.tab(\'einr\')">Zur Einrichtung</button></div>';
   return "";
 }
@@ -191,7 +199,10 @@ function connectHint(){
 function meta(name){var e=st.vor&&st.vor.dateien&&st.vor.dateien[name];var ed=st.edit[name];return ed&&ed.meta?ed.meta:(e&&e.meta?JSON.parse(JSON.stringify(e.meta)):null);}
 function vEingang(){
   var h=connectHint();if(st.perm!=="granted")return h+archivKurz();
-  if(st.pdfs==null)return h+'<div class="empty">Lese den Eingang …</div>';
+  if(st.pdfs==null){
+    if(st.ladeFehler)return h+'<div class="panel" style="border-color:#f8717166"><b style="color:#fca5a5">⚠ Der Eingang ließ sich nicht lesen</b><div class="note" style="margin:6px 0 10px">'+esc(st.ladeFehler)+'</div><div class="acts"><button class="mini" onclick="D2.reload()">↻ Erneut einlesen</button><button class="mini" onclick="D2.pick()">📁 Ordner neu wählen</button></div></div>'+archivKurz();
+    if(st.geladen)return h+'<div class="panel"><b style="color:#fbbf24">Kein Ordner 00_Eingang in „'+esc(st.rootName)+'“</b><div class="note" style="margin:6px 0 10px">Bitte den Ablage-Hauptordner verbinden (der Ordner, in dem 00_Eingang liegt).</div><button class="mini" onclick="D2.pick()">📁 Ordner neu wählen</button></div>'+archivKurz();
+    return h+'<div class="empty">Lese den Eingang …'+(st.ladeStart&&Date.now()-st.ladeStart>19000?'<br><span class="small">Dauert ungewöhnlich lange – OneDrive lädt evtl. noch Dateien. <button class="mini" onclick="D2.reload()">↻ Erneut einlesen</button></span>':"")+'</div>';}
   var neu=st.pdfs.filter(function(p){var e=st.vor.dateien[p.name];return !e||!e.meta||e.fehler||e.groesse!==p.size;}).length;
   h+='<div class="filt"><button class="btn" style="background:#0ea5e9;flex:1" onclick="D2.analyse()"'+(st.run?" disabled":"")+'>🔍 Analysieren'+(neu?" ("+neu+" neu)":"")+'</button><button class="mini" onclick="D2.reload()" aria-label="Neu einlesen">↻</button></div>';
   h+=hmEingang();
@@ -346,7 +357,7 @@ function vArchiv(){
 
 /* ---------- Einrichtung ---------- */
 function vEinr(){
-  var ok1=st.perm!=="none"&&st.perm!=="unsupported",t=st.test;
+  var ok1=(st.perm==="granted"||st.perm==="prompt"||st.perm==="fehler")&&!!st.rootName,t=st.test;
   if(st.perm==="unsupported"&&D.mobil())return '<div class="panel"><h3>Am Handy nichts zu tun</h3><div class="note" style="font-size:12px">Die Einrichtung gilt nur für den Chrome am PC, in dem der Ablage-Ordner verbunden ist – dort läuft auch das Python-Skript. '+
     (data.konfig?'Dein PC ist eingerichtet'+(data.aktualisiert?" – das Archiv-Verzeichnis kam zuletzt am "+D.de(data.aktualisiert)+" "+String(data.aktualisiert).slice(11,16)+" vom PC":"")+".":"Öffne Dokumente am PC in Chrome und folge dort den Schritten unter Einrichtung.")+
     "</div></div>"+'<div class="note">Kassenbons scannst du am Handy mit der OneDrive-App in den Ordner 00_Eingang; ausgewertet und abgelegt werden sie am PC über „🔍 Analysieren“.</div>';
@@ -354,7 +365,7 @@ function vEinr(){
     '<div class="step"><div class="n">1</div><div class="t">Die beiden Dateien herunterladen und in den Ordner legen, in dem deine <code>ablage.py</code> liegt:<div><a class="dl" href="werkzeug/cockpit_ablage.py" download>⬇ cockpit_ablage.py</a> &nbsp; <a class="dl" href="werkzeug/Cockpit-Ablage-einrichten.bat" download>⬇ Cockpit-Ablage-einrichten.bat</a><br>Chrome warnt bei .bat-Dateien – „Behalten“ wählen.</div></div></div>'+
     '<div class="step"><div class="n">2</div><div class="t">Doppelklick auf <code>Cockpit-Ablage-einrichten.bat</code>.<div>Richtet den Link-Typ <code>cockpit-ablage://</code> nur für deinen Windows-Benutzer ein, fragt bei Bedarf nach dem Ablage-Ordner und dem API-Schlüssel und macht am Ende einen Selbsttest. Das Fenster bleibt offen, bis du eine Taste drückst. Meldet Windows „Der Computer wurde durch Windows geschützt“: „Weitere Informationen“ → „Trotzdem ausführen“.</div></div></div>'+
     '<div class="step"><div class="n'+(st.perm==="granted"?" ok":"")+'">'+(st.perm==="granted"?"✓":"3")+'</div><div class="t">Ablage-Ordner verbinden – den Ordner wählen, in dem <code>00_Eingang</code> liegt.'+
-      (ok1?"<div>Verbunden: <b>"+esc(st.rootName)+"</b>"+(st.perm==="prompt"?' – <a href="#" class="dl" onclick="D2.allow();return false">Zugriff erlauben</a>':"")+"</div>":"")+
+      (ok1?"<div>Verbunden: <b>"+esc(st.rootName)+"</b>"+(st.perm==="prompt"||st.perm==="fehler"?' – <a href="#" class="dl" onclick="D2.allow();return false">Zugriff erlauben</a>':"")+"</div>":"")+(st.perm==="fehler"?'<div style="color:#fca5a5">⚠ '+esc(st.err||"Zugriff lässt sich nicht prüfen")+"</div>":"")+
       '<div style="margin-top:8px">'+(st.perm==="unsupported"?"Geht nur am PC in Chrome.":'<button class="mini" onclick="D2.pick()">📁 '+(ok1?"Anderen Ordner wählen":"Ordner verbinden")+"</button>")+"</div></div></div>"+
     '<div class="step"><div class="n'+(t&&t.status==="fertig"&&t.ergebnis&&t.ergebnis.api_key?" ok":"")+'">'+(t&&t.status==="fertig"&&t.ergebnis&&t.ergebnis.api_key?"✓":"4")+'</div><div class="t">Verbindung testen – startet das Skript kurz im Konsolenfenster.<div>Chrome fragt beim ersten Mal: „cockpit-ablage öffnen?“ → <b>Immer zulassen</b> anhaken und öffnen.</div>'+
       '<div style="margin-top:8px"><button class="mini" onclick="D2.test()"'+(st.perm!=="granted"||st.run?" disabled":"")+">🔌 Verbindung testen</button></div>"+testResult()+"</div></div></div>";
@@ -400,10 +411,13 @@ function editOf(name){var e=st.edit[name]=st.edit[name]||{};if(!e.meta)e.meta=me
 function after(){saveEdits();render();if(st.prevName)showPrev();}
 window.D2={
   tab:function(t){st.tab=t;render();window.scrollTo(0,0);},
-  reload:function(){reload().then(function(){flash("✓ Neu eingelesen");});},
-  allow:function(){D.root(true).then(function(h){if(h){st.root=h;st.perm="granted";render();reload();}else flash("⚠ Zugriff nicht erlaubt",true);});},
-  pick:function(){D.pick().then(function(h){return D.exists(h,"00_Eingang").then(function(ok){st.root=h;st.rootName=h.name;st.perm="granted";render();
-      if(!ok)flash("⚠ In „"+h.name+"“ gibt es keinen Ordner 00_Eingang – bitte den Ablage-Hauptordner wählen.",true);else{flash("✓ Ordner verbunden: "+h.name);reload();}});})
+  reload:function(){reload().then(function(ok){if(ok)flash("✓ Neu eingelesen");});},
+  retry:function(){st.perm="…";st.err="";render();init();},
+  allow:function(){D.root(true).then(function(h){if(h){st.root=h;st.perm="granted";st.err="";render();reload().then(laufFortsetzen);}else flash("⚠ Zugriff nicht erlaubt",true);})
+    .catch(function(e){st.perm="fehler";st.err=D.fehlerText(e);render();});},
+  pick:function(){D.pick().then(function(h){return D.exists(h,"00_Eingang").then(function(ok){st.root=h;st.rootName=h.name;st.perm="granted";st.err="";st.geladen=false;st.pdfs=null;render();
+      var mf=D.merkFehler();
+      if(!ok)flash("⚠ In „"+h.name+"“ gibt es keinen Ordner 00_Eingang – bitte den Ablage-Hauptordner wählen.",true);else{flash(mf?"⚠ Verbunden – Chrome konnte sich den Ordner aber nicht merken ("+mf+"). Nach einem Neustart evtl. erneut wählen.":"✓ Ordner verbunden: "+h.name,!!mf);reload();}});})
     .catch(function(e){if(e&&e.name==="AbortError")return;flash("⚠ "+(e.message||e),true);});},
   forget:function(){if(!confirm("Ordner auf diesem Gerät trennen?"))return;D.forget().then(function(){st.root=null;st.perm="none";st.rootName="";st.pdfs=null;render();});},
   test:function(){st.test=null;run("test","Verbindungstest",90000).then(function(s){if(s){st.test=s;render();}});},
