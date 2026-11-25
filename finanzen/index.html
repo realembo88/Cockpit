@@ -120,6 +120,7 @@ code{background:var(--field);padding:1px 5px;border-radius:4px;font-size:11px;}
 <script src="../assets/cockpit.js"></script>
 <script src="logic.js"></script>
 <script src="einkauf.js"></script>
+<script src="ingpdf.js"></script>
 <script src="../dokumente/logic.js"></script>
 <script>
 (function(){
@@ -415,7 +416,7 @@ function zuPanel(l){var h='<details class="panel" style="border-color:#38bdf866"
   return h+(l.length>30?'<div class="note">… und '+(l.length-30)+" weitere – nach den ersten Entscheidungen erscheinen sie hier.</div>":"")+"</details>";}
 function txRow(t){
   var R=rules(),c=F.category(t,R),ko=data.konten[t.k];
-  var h='<div class="tx"><div style="min-width:0"><div class="p">'+C.esc(t.p||t.t||"—")+'</div><div class="z">'+new Date(t.d).toLocaleDateString("de-DE")+" · "+C.esc(ko?ko.name:t.k)+(t.z?" · "+C.esc(t.z.slice(0,90)):"")+"</div>"+(t.note?'<div class="noteline">📝 '+C.esc(t.note)+"</div>":"");
+  var h='<div class="tx"><div style="min-width:0"><div class="p">'+C.esc(t.p||t.t||"—")+'</div><div class="z">'+new Date(t.d).toLocaleDateString("de-DE")+" · "+C.esc(ko?ko.name:t.k)+(t.q==="pdf"?' · <span title="aus einem PDF-Kontoauszug übernommen">📄 PDF</span>':"")+(t.z?" · "+C.esc(t.z.slice(0,90)):"")+"</div>"+(t.note?'<div class="noteline">📝 '+C.esc(t.note)+"</div>":"");
   if(st.edit===t.id){
     h+='<div style="margin-top:8px"><select class="inl" onchange="F2.setCat(\''+t.id+'\',this.value)"><option value="">– automatisch (Regel) –</option>'+R.map(function(r){return '<option'+(t.cat===r.name?" selected":"")+">"+C.esc(r.name)+"</option>";}).join("")+"</select>"+
       (function(){
@@ -585,14 +586,29 @@ function kontoEingang(ask){if(!window.DOKS||!DOKS.supported()||kiLauf)return Pro
       return res;});}).catch(function(e){kiLauf=false;flash("⚠ Eingang: "+(e.message||e),true);});}
 
 /* ---------- Import ---------- */
+function istPdf(f){return /\.pdf$/i.test(f.name||"")||f.type==="application/pdf";}
+/* Was käme beim Übernehmen dazu? CSV: per ID. PDF: zusätzlich gleicher Tag + Betrag im Zielkonto. */
+function pendingNeu(b,konto){var ids={};data.tx.forEach(function(t){ids[t.id]=1;});
+  var csv=b.txs.filter(function(t){return t.q!=="pdf";}),pdf=b.txs.filter(function(t){return t.q==="pdf";});
+  var neu=csv.filter(function(t){return !ids[t.id];});
+  if(!pdf.length)return {neu:neu,nahe:[]};
+  /* IDs hängen am Konto – für ein anderes Zielkonto vorab neu rechnen (Kopie, die Datei bleibt unverändert) */
+  var p2=pdf;if(konto!==b.key){p2=pdf.map(function(t){return {d:t.d,b:t.b,p:t.p,z:t.z,t:t.t};});F.assignIds({txs:p2},konto);}
+  var ab=FINPDF.abgleich(p2,data.tx.concat(neu.map(function(t){return {id:t.id,k:konto,d:t.d,b:t.b};})),konto);
+  return {neu:neu.concat(ab.neu),nahe:ab.nahe};}
+function pdfInfo(b,ab){
+  return '<div style="margin:-2px 0 10px">'+b.pdfs.map(function(x){var p=x.pruef;
+    return '<div class="kv"><span>📄 '+C.esc(x.monat||x.file)+'<br><span class="small muted">'+x.n+" Buchungen · "+C.esc(x.file)+"</span></span>"+
+      '<span class="small" style="text-align:right">'+(p?(p.ok?'<span style="color:#69f0ae">✓ Kontostand stimmt</span><br><span class="muted">'+C.eur(p.alt)+" → "+C.eur(p.neu)+"</span>":'<span style="color:#ffb74d">⚠ Differenz '+C.eur(p.diff)+"</span>"):'<span class="muted">ohne Kontostand</span>')+"</span></div>";}).join("")+
+    (ab.nahe.length?'<div class="note">'+ab.nahe.length+(ab.nahe.length===1?" Buchung":" Buchungen")+" gibt es mit gleichem Tag und Betrag schon (aus der CSV) – sie werden nicht doppelt übernommen.</div>":"")+"</div>";}
 function vImport(){
   var h="";
   if(st.pending){
     h+='<div class="panel" style="border-color:#e040fb66"><h3>Erkannte Konten zuordnen</h3>';
-    st.pending.forEach(function(b,i){var ex=data.konten[b.key],ids={};data.tx.forEach(function(t){ids[t.id]=1;});
-      var neu=b.txs.filter(function(t){return !ids[t.id];}).length;
+    st.pending.forEach(function(b,i){var ex=data.konten[b.key],ab=pendingNeu(b,b.target||b.key),neu=ab.neu.length;
       var ds=b.txs.map(function(t){return t.d;}).sort();
       h+='<div class="rule"><div class="small muted" style="margin-bottom:8px">'+b.bank+" · "+C.esc(b.file)+" · "+b.txs.length+" Buchungen ("+new Date(ds[0]).toLocaleDateString("de-DE")+" – "+new Date(ds[ds.length-1]).toLocaleDateString("de-DE")+') · <b style="color:#69f0ae">'+neu+" neu</b>"+(b.txs.length-neu?", "+(b.txs.length-neu)+" schon vorhanden":"")+"</div>"+
+        (b.pdfs?pdfInfo(b,ab):"")+
         (Object.keys(data.konten).length?'<div class="field"><label>Zu welchem Konto gehört die Datei?</label><select id="pt'+i+'" onchange="F2.ptgt('+i+',this.value)"><option value="'+C.esc(b.key)+'"'+(b.target===b.key?" selected":"")+'>'+(data.konten[b.key]?C.esc(data.konten[b.key].name)+" (erkannt)":"Neues Konto anlegen")+'</option>'+
           Object.keys(data.konten).filter(function(k){return k!==b.key;}).map(function(k){return '<option value="'+C.esc(k)+'"'+(b.target===k?" selected":"")+'>'+C.esc(data.konten[k].name)+'</option>';}).join("")+'</select></div>':'')+
         (b.target!==b.key&&b.overlap?'<div class="small" style="color:#ffb74d;margin:-6px 0 10px">⚠ '+b.overlap.n+' Buchungen dieser Datei gibt es schon in „'+C.esc(data.konten[b.overlap.k].name)+'“ – vermutlich dasselbe Konto (z. B. Datei umbenannt). Vorausgewählt, damit nichts doppelt entsteht.</div>':'')+
@@ -607,12 +623,12 @@ function vImport(){
       (ki&&ki.dateien&&ki.dateien.length?ki.dateien.map(function(x){return '<div class="kv"><span>'+C.esc(x.name)+'<br><span class="small">→ '+C.esc(x.ziel)+"</span></span><span>"+x.neu+" neu</span></div>";}).join(""):"")+
       (ki&&ki.unbekannt&&ki.unbekannt.length?'<div class="small" style="color:#ffb74d;margin:6px 0">Neues Konto, bitte unten von Hand importieren: '+C.esc(ki.unbekannt.join(", "))+"</div>":"")+
       '<button class="btn ghost" onclick="F2.eingang()">🔄 Eingang jetzt prüfen</button></div>';}
-  h+='<div class="panel"><h3>⬆ Kontoauszüge importieren</h3><div class="note" style="margin-bottom:12px">CSV-Exporte von <b>ING</b> (Umsatzanzeige) und <b>N26</b> (Kontoauszug als CSV). Mehrere Dateien auf einmal sind möglich. Überlappende Zeiträume sind kein Problem, doppelte Buchungen werden erkannt.</div>'+
-    '<label class="btn" style="display:inline-block;cursor:pointer">📁 CSV-Dateien wählen<input type="file" accept=".csv,text/csv,text/comma-separated-values" multiple onchange="F2.files(this)"></label></div>';
+  h+='<div class="panel"><h3>⬆ Kontoauszüge importieren</h3><div class="note" style="margin-bottom:12px">CSV-Exporte von <b>ING</b> (Umsatzanzeige), <b>Commerzbank</b> und <b>N26</b> (Kontoauszug als CSV). Für ältere Monate, die die ING nicht mehr als CSV liefert, gehen auch die <b>ING-Kontoauszüge als PDF</b> – die PDF wird nur hier im Browser gelesen. Mehrere Dateien auf einmal sind möglich. Überlappende Zeiträume sind kein Problem, doppelte Buchungen werden erkannt.</div>'+
+    '<label class="btn" style="display:inline-block;cursor:pointer">📁 CSV- oder PDF-Dateien wählen<input type="file" accept=".csv,text/csv,text/comma-separated-values,.pdf,application/pdf" multiple onchange="F2.files(this)"></label></div>';
   var stand=F.importStand(data),luecke={};F.importLuecken(data,new Date().toISOString().slice(0,10)).forEach(function(x){luecke[x.k]=1;});
   if(stand.length)h+='<div class="panel"><h3>📅 Stand je Konto</h3>'+stand.map(function(x){return '<div class="kv"><span>'+(luecke[x.k]?'<b style="color:#ffb74d">⚠ ':"<b>")+C.esc(x.name)+"</b>"+(x.ber==="geschaeft"?' <span class="small muted">Geschäft</span>':"")+'<br><span class="small">Buchungen bis '+(x.tx?new Date(x.tx+"T12:00:00").toLocaleDateString("de-DE"):"–")+'</span></span><span class="small">'+(x.imp?"importiert "+new Date(x.imp+"T12:00:00").toLocaleDateString("de-DE"):"")+"</span></div>";}).join("")+
     '<div class="note" style="margin-top:6px">⚠ = beim letzten Import nicht dabei. Ein ruhiges Konto ohne neue Buchungen ist trotzdem „aktuell“, sobald seine Datei einmal mit importiert wurde.</div></div>';
-  h+='<div class="panel"><h3>So bekommst du die Exporte</h3><div class="note"><b>ING:</b> Banking → Konto → Umsätze → Zeitraum wählen → „Exportieren“ bzw. Download-Symbol → CSV.<br><b>N26:</b> App → Profil/Konto → Kontoauszüge → „CSV exportieren“ → Zeitraum wählen (auch im Browser unter app.n26.com möglich).<br>Die Datei am besten direkt hochladen, ohne sie vorher in Excel zu öffnen und zu speichern. Falls doch, wird auch das erkannt.</div></div>';
+  h+='<div class="panel"><h3>So bekommst du die Exporte</h3><div class="note"><b>ING:</b> Banking → Konto → Umsätze → Zeitraum wählen → „Exportieren“ bzw. Download-Symbol → CSV.<br><b>ING, ältere Monate:</b> Die CSV reicht nur etwa ein Jahr zurück. Davor die Kontoauszüge aus der Postbox als PDF speichern und hier wählen (ganze Auszüge, alle Seiten). Je Auszug wird der Kontostand nachgerechnet.<br><b>N26:</b> App → Profil/Konto → Kontoauszüge → „CSV exportieren“ → Zeitraum wählen (auch im Browser unter app.n26.com möglich).<br>Die Datei am besten direkt hochladen, ohne sie vorher in Excel zu öffnen und zu speichern. Falls doch, wird auch das erkannt.</div></div>';
   h+='<div class="panel"><h3>🕘 Kategorien wiederherstellen</h3><div class="note" style="margin-bottom:10px">Jedes Speichern ist in deinem privaten Repo eine eigene Version. Hier kannst du Kategorien, Empfänger-Zuordnungen und Regeln aus einem früheren Stand zurückholen. Es wird nur <b>ergänzt</b>: Buchungen, die jetzt schon eine Kategorie haben, bleiben unverändert.</div>';
   if(st.hist===undefined)h+='<button class="btn" onclick="F2.loadHist()"'+(C.configured()?'':' disabled')+'>Frühere Stände laden</button>'+(C.configured()?'':'<div class="note">Nur mit eingerichteter Sync.</div>');
   else if(st.hist==="loading")h+='<div class="note">Lade Versionen …</div>';
@@ -950,12 +966,24 @@ window.F2={
     st.edit=null;persist();flash("✓ Verwendungszweck enthält „"+k+"“ → "+c+" ("+n+(n===1?" Buchung)":" Buchungen)"));},
   rmZ:function(k){data.zmap[k]={del:true,t:Date.now()};persist();render();},
   files:function(inp){var fs=[].slice.call(inp.files||[]);inp.value="";if(!fs.length)return;
-    var blocks=[],info=[];
-    Promise.all(fs.map(function(f){return f.arrayBuffer().then(function(buf){var r=F.parseFile(buf,f.name);
+    var blocks=[],info=[],namen=null,nPdf=fs.filter(istPdf).length;
+    if(nPdf)flash("PDF-Kontoauszüge werden gelesen …");
+    Promise.all(fs.map(function(f){return f.arrayBuffer().then(function(buf){
+      if(istPdf(f)){namen=namen||FINPDF.namenAus(data.tx);
+        return FINPDF.lesen(buf,f.name,{namen:namen}).then(function(b){
+          if(!b){info.push(f.name+": kein ING-Kontoauszug erkannt (PDF geht bisher nur für die ING).");return;}
+          b.file=f.name;b.txs.forEach(function(t){t.q="pdf";});F.assignIds(b,b.key);
+          b.pdfs=[{file:f.name,monat:b.pdf.monat,von:b.pdf.von,bis:b.pdf.bis,n:b.txs.length,pruef:b.pdf.pruef}];
+          b.pdf.warn.forEach(function(w){info.push(f.name+": "+w);});
+          if(b.pdf.pruef&&!b.pdf.pruef.ok)info.push(f.name+": Kontostand geht nicht auf (Differenz "+C.eur(b.pdf.pruef.diff)+") – bitte prüfen, ob alle Seiten dabei sind.");
+          delete b.pdf;blocks.push(b);}).catch(function(e){info.push(f.name+": PDF nicht lesbar – "+(e.message||e));});}
+      var r=F.parseFile(buf,f.name);
       if(!r){info.push(f.name+": Format nicht erkannt (weder ING, Commerzbank noch N26).");return;}
       r.forEach(function(b){b.file=f.name;F.assignIds(b,b.key);blocks.push(b);});});})).then(function(){
       /* gleiche Konten aus mehreren Dateien zusammenfassen */
-      var by={};blocks.forEach(function(b){if(by[b.key]){var seen={};by[b.key].txs.forEach(function(t){seen[t.id]=1;});b.txs.forEach(function(t){if(!seen[t.id])by[b.key].txs.push(t);});by[b.key].file+=", "+b.file;if(b.saldo&&(!by[b.key].saldo||b.saldo.d>by[b.key].saldo.d))by[b.key].saldo=b.saldo;}else by[b.key]=b;});
+      var by={};blocks.forEach(function(b){if(by[b.key]){var x=by[b.key],seen={};x.txs.forEach(function(t){seen[t.id]=1;});b.txs.forEach(function(t){if(!seen[t.id])x.txs.push(t);});x.file+=", "+b.file;if(b.saldo&&(!x.saldo||b.saldo.d>x.saldo.d))x.saldo=b.saldo;
+        if(b.pdfs)x.pdfs=(x.pdfs||[]).concat(b.pdfs);}else by[b.key]=b;});
+      Object.keys(by).forEach(function(k){if(by[k].pdfs)by[k].pdfs.sort(function(a,b){return a.von.localeCompare(b.von);});});
       st.pending=Object.keys(by).map(function(k){return by[k];});st.pendingInfo=info;
       /* passt die Datei zu einem vorhandenen Konto (gleiche Buchungen)? Dann dieses vorschlagen */
       var known={};data.tx.forEach(function(t){(known[fp(t)]=known[fp(t)]||{})[t.k]=1;});
@@ -963,13 +991,19 @@ window.F2={
         var best=null,bn=0;Object.keys(hits).forEach(function(k){if(hits[k]>bn){bn=hits[k];best=k;}});
         b.target=data.konten[b.key]?b.key:(best&&bn/b.txs.length>=0.3?best:b.key);b.overlap=best?{k:best,n:bn}:null;});
       if(!st.pending.length){st.pending=null;flash("⚠ "+(info[0]||"Keine Buchungen gefunden"),true);return;}
+      if(nPdf){st.flash=null;clearTimeout(flash.tm);}
       render();});},
   commit:function(){var ids={};data.tx.forEach(function(t){ids[t.id]=1;});var del={};data.deleted.forEach(function(d){del[d]=1;});var total=0,dup=0;
     st.pending.forEach(function(b,i){var name=document.getElementById("pn"+i).value.trim()||b.name,ber=document.getElementById("pb"+i).value;
       var sel=document.getElementById("pt"+i);if(sel&&sel.value&&sel.value!==b.key){b.key=sel.value;b.bank=(data.konten[b.key]||{}).bank||b.bank;F.assignIds(b,b.key);}
       var ko=data.konten[b.key]||{};ko.name=name;ko.bank=b.bank;ko.bereich=ber;if(b.saldo&&(!ko.saldo||b.saldo.d>=ko.saldo.d))ko.saldo=b.saldo;data.konten[b.key]=ko;
-      var neu=0;b.txs.forEach(function(t){if(ids[t.id]){dup++;return;}if(del[t.id]){delete del[t.id];}ids[t.id]=1;delete t.raw;data.tx.push(t);neu++;});total+=neu;
-      data.imports.push({ts:Date.now(),file:b.file,konto:name,neu:neu,dup:b.txs.length-neu});});
+      var neu=0;b.txs.forEach(function(t){if(t.q==="pdf")return;if(ids[t.id]){dup++;return;}if(del[t.id]){delete del[t.id];}ids[t.id]=1;delete t.raw;data.tx.push(t);neu++;});
+      /* Buchungen aus PDF-Auszügen erst danach: gleiche ID oder gleicher Tag + Betrag im Konto → schon vorhanden */
+      var pdf=b.txs.filter(function(t){return t.q==="pdf";});
+      if(pdf.length){var ab=FINPDF.abgleich(pdf,data.tx,b.key);dup+=ab.dup.length+ab.nahe.length;
+        ab.neu.forEach(function(t){if(ids[t.id]){dup++;return;}if(del[t.id]){delete del[t.id];}ids[t.id]=1;data.tx.push(t);neu++;});}
+      total+=neu;
+      data.imports.push({ts:Date.now(),file:b.file,konto:name,neu:neu,dup:b.txs.length-neu,pdf:pdf.length?b.pdfs.length:undefined});});
     data.deleted=Object.keys(del);
     data.tx.sort(function(a,b){return a.d.localeCompare(b.d);});
     st.pending=null;persist();st.tab="uebersicht";var ys=years();if(ys.length)st.year=ys[ys.length-1];
