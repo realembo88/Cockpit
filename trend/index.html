@@ -19,7 +19,7 @@
 .acard .n{font-weight:800;color:#fff;font-size:15px;}
 .acard .sub{font-size:11px;color:var(--muted);margin-top:2px;}
 .badge{font-size:12px;border-radius:20px;padding:4px 11px;border:1px solid var(--border);color:var(--muted);white-space:nowrap;font-weight:700;}
-.badge.in{color:#69f0ae;border-color:#22c55e88;background:#22c55e1a;} .badge.go{color:#b9f6ca;border-color:#22c55e;background:#22c55e33;}
+.badge.in{color:#69f0ae;border-color:#22c55e88;background:#22c55e1a;} .badge.hold{color:#fde047;border-color:#eab308;background:#eab3081f;} .badge.go{color:#b9f6ca;border-color:#22c55e;background:#22c55e33;}
 .badge.warn{color:#ffcc80;border-color:#ff9800;background:#ff98001f;} .badge.off{color:#8fa3c7;}
 .lv{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;margin-top:10px;font-size:12px;}
 .lv div{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid #152038;padding:3px 0;}
@@ -36,6 +36,9 @@
 .step input{margin-top:3px;} .step .m{font-size:11px;color:var(--muted);}
 .legend{display:flex;gap:10px;flex-wrap:wrap;font-size:10px;color:var(--muted);margin-top:2px;}
 .legend i{display:inline-block;width:10px;height:3px;border-radius:2px;margin-right:4px;vertical-align:middle;}
+.zeilen .zl{padding:8px 0;border-top:1px solid #152038;} .zeilen .zl>div:first-child{margin-bottom:3px;} .zeilen .zl>div:last-child{color:#cfd8e8;}
+details.sub{margin-top:12px;border:1px solid var(--border);border-radius:10px;} details.sub summary{padding:10px 12px;cursor:pointer;font-weight:700;color:#bef264;}
+details.sub .anl-b{padding:0 12px 10px;} .anl-b table.t td{vertical-align:top;font-size:12px;}
 details.anl{background:var(--panel);border:1px solid var(--border);border-radius:14px;margin-bottom:10px;}
 details.anl summary{padding:13px 14px;cursor:pointer;font-weight:700;color:#fff;list-style:none;}
 details.anl summary::-webkit-details-marker{display:none;}
@@ -186,13 +189,56 @@ function vZiel(){
   return h;
 }
 function sec(t,i,o){return '<details class="anl"'+(o?" open":"")+"><summary>"+t+'</summary><div class="anl-b">'+i+"</div></details>";}
+/* Lesehilfe: einfache Erklärung + aufklappbarer Teil mit Tabelle und Rechenbeispiel aus den aktuellen Kursen */
+function beispiel(){var w=werte(),l=liste(),x=w["EUNL.DE"]?Object.assign({id:"EUNL.DE"},w["EUNL.DE"]):l[0];if(!x)return null;
+  var s=R.signal(x.monate,n());if(!s)return null;var g=null;l.forEach(function(y){var t=R.signal(y.monate,n());if(!g&&t&&!t.drin)g={x:y,s:t};});
+  return {x:x,s:s,letzte:x.monate.slice(-n()).map(function(m){return px(m[1]);}),g:g,lv:R.live(x.monate,x.price,n())};}
+function lesehilfe(){var b=beispiel(),M=b?MON[+b.s.monat.slice(5,7)-1]:"";
+  var h="<p><b>Die Grundidee:</b> Für jeden ETF wird einmal im Monat gefragt: <i>Ist der Kurs höher als im Durchschnitt der letzten 10 Monate?</i></p>"+
+    "<ul><li><b>Ja</b> → der Trend geht nach oben → du bleibst drin (<b>investiert</b>).</li><li><b>Nein</b> → der Trend geht nach unten → du gehst raus und parkst das Geld auf dem Tagesgeld (<b>Cash</b>).</li></ul>"+
+    "<p>Wie ein Wetterbericht für den Markt: Er sagt nicht, was morgen passiert – nur, ob es zuletzt eher sonnig oder eher regnerisch war.</p>"+
+    "<p><b>Auf der Startseite:</b></p><ul><li><b>„"+C.esc(summaryFor(data).k)+"“</b> → bei so vielen der beobachteten ETFs geht der Trend gerade nach oben – das sagt etwas über die Märkte, nicht über dein Depot.</li><li><b>„Nächster Check "+naechsterCheck()+"“</b> → bis dahin ist nichts zu tun.</li><li><b>„⚠ 1 Aktion offen“</b> → bei einem ETF musst du kaufen oder verkaufen.</li></ul>"+
+    "<p><b>Auf der ETF-Karte zählt nur das farbige Feld oben rechts:</b></p>"+
+    '<div style="display:grid;gap:6px;margin:6px 0 10px">'+
+    '<div><span class="badge hold">Halten</span> du hast ihn, alles gut – nichts tun</div>'+
+    '<div><span class="badge warn">Verkaufen</span> du hast ihn, aber der Trend ist gekippt – verkaufen</div>'+
+    '<div><span class="badge go">Kaufen</span> der Trend ist gerade nach oben gedreht – jetzt einsteigen</div>'+
+    '<div><span class="badge off">Einstieg möglich</span> Trend zeigt schon länger nach oben – kann, muss nicht</div>'+
+    '<div><span class="badge off">Draußen bleiben</span> du hast ihn nicht, Trend nach unten – nicht kaufen</div></div>'+
+    "<p><b>Die Zahlen darunter</b> (wenn du es genauer wissen willst):</p><ul><li><b>Monatsschluss</b> = der Kurs am Monatsende</li><li><b>10-Monats-Schnitt</b> = der Durchschnittskurs der letzten 10 Monate</li><li><b>Abstand</b> = wie weit der Kurs darüber (+) oder darunter (−) liegt. Je näher an 0 %, desto eher kann sich das Signal beim nächsten Mal ändern.</li></ul>";
+  if(b){h+="<p><b>Beispiel:</b> "+C.esc(b.x.name)+" kostete Ende "+M+" <b>"+px(b.s.schluss)+" €</b>, der Durchschnitt der letzten 10 Monate lag bei <b>"+px(b.s.schnitt)+" €</b>. Der Kurs ist "+(b.s.drin?"höher → <b>investiert bleiben</b>.":"niedriger → <b>raus</b>.")+"</p>";
+    if(b.g)h+="<p>"+C.esc(b.g.x.name)+" dagegen: "+px(b.g.s.schluss)+" € gegenüber einem Durchschnitt von "+px(b.g.s.schnitt)+" € → niedriger → <b>raus</b> bzw. nicht kaufen.</p>";}
+  h+="<p><b>Die wichtigste Regel:</b> Nur einmal im Monat schauen und handeln – am Monatsanfang, wenn der Push kommt. Was zwischendurch an der Börse passiert, ist egal.</p>";
+  /* aufklappbarer Teil für Genauere */
+  var g='<p><b>Was du siehst – und was es bedeutet</b></p><div class="zeilen">'+[
+    ['<span class="badge hold">Halten</span>',"Du hast ihn, Trend nach oben – nichts tun."],
+    ['<span class="badge warn">Verkaufen</span>',"Du hast ihn, Trend nach unten – verkaufen."],
+    ['<span class="badge go">Kaufen (neues Signal)</span>',"Trend hat diesen Monat nach oben gedreht – guter Zeitpunkt zum Einstieg."],
+    ['<span class="badge off">Einstieg möglich</span>',"Trend zeigt schon länger nach oben – einsteigen geht, ist aber kein Muss."],
+    ['<span class="badge off">Draußen bleiben</span>',"Du hast ihn nicht, Trend nach unten – nicht kaufen."],
+    ["<b>Signal Ende "+(M||"Monat")+"</b>","Das gültige Ergebnis für diesen Monat: <i>investiert</i> oder <i>Cash</i>."],
+    ["<b>Monatsschluss</b>","Der letzte Kurs im Monat."],
+    ["<b>10-Monats-Schnitt</b>","Das „Normalniveau“: Durchschnitt der letzten 10 Monatsschlusskurse."],
+    ["<b>Abstand zum Schnitt</b>","Der Puffer: wie weit der Kurs über oder unter dem Normalniveau liegt. Nahe 0 % = das Signal kann beim nächsten Check kippen."],
+    ["<b>„Heute …“-Kasten</b>","Wie es jetzt aussähe – nur zur Info, es zählt allein der Monatsschluss."],
+    ["<b>Mein Bestand</b>","Deine Anteile, ihr Wert heute und Gewinn/Verlust seit dem Kauf."],
+    ["<b>Diagramm</b>","Weiße Linie = Monatsschlüsse, grüne Linie = Normalniveau, grüne Flächen = Monate, in denen man investiert war. Kreuzt die weiße die grüne Linie, dreht das Signal."]
+  ].map(function(r){return '<div class="zl"><div>'+r[0]+"</div><div>"+r[1]+"</div></div>";}).join("")+"</div>";
+  if(b){var sum=b.letzte.join(" · ");
+    g+="<p><b>Rechenbeispiel "+C.esc(b.x.name)+" (Stand Ende "+M+")</b></p><ol><li>Die letzten "+n()+" Monatsschlüsse: "+sum+" €</li><li>Zusammengezählt und durch "+n()+" geteilt → <b>Normalniveau "+px(b.s.schnitt)+" €</b>.</li>"+
+      "<li>Monatsschluss <b>"+px(b.s.schluss)+" €</b> liegt <b>"+pct(b.s.abstand)+"</b> "+(b.s.drin?"darüber → <b>investiert</b>.":"darunter → <b>Cash</b>.")+"</li>"+
+      (b.lv?"<li>Heute steht der Kurs bei "+px(b.x.price)+" €. Wäre heute Monatsende, läge er "+pct(b.lv.abstand)+" zum Schnitt – das Signal "+(b.lv.drin===b.s.drin?"bliebe gleich.":"würde drehen.")+"</li>":"")+"</ol>";}
+  g+="<p><b>Typische Missverständnisse</b></p><ul><li><i>„Der Kurs ist heute stark gefallen – muss ich verkaufen?“</i> Nein. Es zählt nur der Monatsschluss.</li><li><i>„Investiert heißt, der Kurs steigt weiter?“</i> Nein. Das Signal ist keine Vorhersage, es sagt nur, in welche Richtung der Trend bisher zeigt.</li>"+
+    "<li><i>„Je größer der Abstand, desto besser?“</i> Nicht unbedingt – ein großer Abstand ist nur ein großer Puffer bis zum nächsten Wechsel.</li><li><i>„Ich habe ein Fehlsignal erwischt.“</i> Kommt vor, besonders wenn die Kurse seitwärts laufen. Der Vorteil zeigt sich in langen Abschwüngen.</li></ul>";
+  return h+'<details class="sub"><summary>Für Genauere: jede Zeile erklärt, Rechenbeispiel, Missverständnisse</summary><div class="anl-b">'+g+"</div></details>";}
 function vAnl(){
-  var h=sec("1 · Die Regel","<p>Einmal im Monat, nach Monatsende, wird für jeden ETF verglichen:</p><ul><li><b>Monatsschluss über dem 10-Monats-Schnitt</b> → investiert sein (kaufen bzw. halten).</li><li><b>Monatsschluss darunter</b> → verkaufen bzw. draußen bleiben; das Geld liegt auf dem Tagesgeld.</li></ul><p>Das ist alles. Zwischen den Checks wird nichts getan – auch wenn es mitten im Monat kracht. Die Regel schützt vor langen, tiefen Abschwüngen (wie 2008 oder 2022), nicht vor kurzen Rücksetzern.</p>",true);
-  h+=sec("2 · Wann und wie handeln","<ol><li>Am ersten Tag des Monats ab 8 Uhr kommt der Push <b>„Trendfilter · Monats-Check“</b>.</li><li>Steht bei einem ETF <b>„← WECHSEL“</b>: am selben Tag (oder am nächsten Börsentag) kaufen bzw. verkaufen. Sonst: nichts tun.</li><li>Hier unter 📅 Signale das Häkchen „Ich halte diesen ETF“ anpassen – dann zeigt die Karte immer die richtige Aktion.</li></ol><p><b>„Einstieg möglich“</b> heißt: Das Signal steht schon länger auf investiert. Wer neu startet, darf jederzeit einsteigen – am saubersten zum nächsten Monats-Check.</p>"+
+  var h=sec("1 · So liest du den Trendfilter",lesehilfe(),true);
+  h+=sec("2 · Die Regel","<p>Einmal im Monat, nach Monatsende, wird für jeden ETF verglichen:</p><ul><li><b>Monatsschluss über dem 10-Monats-Schnitt</b> → investiert sein (kaufen bzw. halten).</li><li><b>Monatsschluss darunter</b> → verkaufen bzw. draußen bleiben; das Geld liegt auf dem Tagesgeld.</li></ul><p>Das ist alles. Zwischen den Checks wird nichts getan – auch wenn es mitten im Monat kracht. Die Regel schützt vor langen, tiefen Abschwüngen (wie 2008 oder 2022), nicht vor kurzen Rücksetzern.</p>");
+  h+=sec("3 · Wann und wie handeln","<ol><li>Am ersten Tag des Monats ab 8 Uhr kommt der Push <b>„Trendfilter · Monats-Check“</b>.</li><li>Steht bei einem ETF <b>„← WECHSEL“</b>: am selben Tag (oder am nächsten Börsentag) kaufen bzw. verkaufen. Sonst: nichts tun.</li><li>Hier unter 📅 Signale das Häkchen „Ich halte diesen ETF“ anpassen – dann zeigt die Karte immer die richtige Aktion.</li></ol><p><b>„Einstieg möglich“</b> heißt: Das Signal steht schon länger auf investiert. Wer neu startet, darf jederzeit einsteigen – am saubersten zum nächsten Monats-Check.</p>"+
     "<p><b>Kaufen bei kleinen Beträgen:</b> bei einem Neobroker als <i>Betragsorder</i> (z. B. 250 €) – dann gibt es Bruchstücke, die Gebühr ist meist 1 €. Bei der ING geht das nur über den Sparplan.</p><p><b>Sparplan:</b> nur in ETFs mit Signal „investiert“ besparen. Dreht ein ETF auf „Cash“, Sparplan pausieren und die Rate aufs Tagesgeld lenken, beim Wechsel zurück wieder starten.</p>"+
     "<p><b>Deine Bestände:</b> auf der ETF-Karte „＋ Bestand eintragen“ – Anteile und Kaufwert gesamt. Dann rechnet das Cockpit Wert, Gewinn/Verlust und die Summe für den Kapitalaufbau selbst.</p><p><b>Weitere ETFs:</b> unten unter 📅 Signale „Weiteren ETF aufnehmen“ – die ISIN in <code>trend/etfs.json</code> eintragen, fertig.</p>");
-  h+=sec("3 · Was „Rückblick“ zeigt","<p>Wie Trendfilter und einfaches Halten in den letzten Jahren abgeschnitten hätten. Achte auf den <b>größten Rückgang</b> – da liegt der Vorteil. Die Rendite ist oft ähnlich oder etwas niedriger als beim Halten, weil man nach Abschwüngen etwas später wieder einsteigt.</p>");
-  h+=sec("4 · Kürzelverzeichnis",'<dl class="gl">'+[["10-Monats-Schnitt","Durchschnitt der letzten 10 Monatsschlusskurse (gleitender Durchschnitt, engl. SMA)."],["Monatsschluss","Letzter Kurs eines Monats."],["Signal „investiert“ / „Cash“","Ergebnis der Regel für den kommenden Monat."],["ETF","Börsengehandelter Indexfonds, z. B. auf den MSCI World."],["ETC","Börsengehandelte Rohstoff-Wertpapiere, z. B. Xetra-Gold."],["ETN","Schuldverschreibung, die einen Kurs abbildet – z. B. Bitcoin-ETNs."],["ISIN","Zwölfstellige Wertpapierkennnummer; damit findest du den ETF bei jedem Broker."],["Xetra","Elektronischer Handelsplatz der Deutschen Börse (9–17:30 Uhr); die Kurse hier kommen von dort."],["Bruchstücke","Teile eines ETF-Anteils, z. B. 0,4 Stück – ideal für kleine Beträge."],["Betragsorder","Kauf über einen Euro-Betrag statt einer Stückzahl."],["Kaufen & Halten","Einmal kaufen und liegen lassen – der Vergleichsmaßstab."],["Rendite pro Jahr","Durchschnittlicher jährlicher Zuwachs (CAGR)."],["Größter Rückgang","Tiefster Verlust vom bisherigen Höchststand (Drawdown)."],["Fehlsignal","Wechsel, der sich kurz danach als unnötig herausstellt – gehört dazu."]].map(function(x){return "<dt>"+x[0]+"</dt><dd>"+x[1]+"</dd>";}).join("")+"</dl>");
+  h+=sec("4 · Was „Rückblick“ zeigt","<p>Wie Trendfilter und einfaches Halten in den letzten Jahren abgeschnitten hätten. Achte auf den <b>größten Rückgang</b> – da liegt der Vorteil. Die Rendite ist oft ähnlich oder etwas niedriger als beim Halten, weil man nach Abschwüngen etwas später wieder einsteigt.</p>");
+  h+=sec("5 · Kürzelverzeichnis",'<dl class="gl">'+[["10-Monats-Schnitt","Durchschnitt der letzten 10 Monatsschlusskurse (gleitender Durchschnitt, engl. SMA)."],["Monatsschluss","Letzter Kurs eines Monats."],["Signal „investiert“ / „Cash“","Ergebnis der Regel für den kommenden Monat."],["ETF","Börsengehandelter Indexfonds, z. B. auf den MSCI World."],["ETC","Börsengehandelte Rohstoff-Wertpapiere, z. B. Xetra-Gold."],["ETN","Schuldverschreibung, die einen Kurs abbildet – z. B. Bitcoin-ETNs."],["ISIN","Zwölfstellige Wertpapierkennnummer; damit findest du den ETF bei jedem Broker."],["Xetra","Elektronischer Handelsplatz der Deutschen Börse (9–17:30 Uhr); die Kurse hier kommen von dort."],["Bruchstücke","Teile eines ETF-Anteils, z. B. 0,4 Stück – ideal für kleine Beträge."],["Betragsorder","Kauf über einen Euro-Betrag statt einer Stückzahl."],["Kaufen & Halten","Einmal kaufen und liegen lassen – der Vergleichsmaßstab."],["Rendite pro Jahr","Durchschnittlicher jährlicher Zuwachs (CAGR)."],["Größter Rückgang","Tiefster Verlust vom bisherigen Höchststand (Drawdown)."],["Fehlsignal","Wechsel, der sich kurz danach als unnötig herausstellt – gehört dazu."]].map(function(x){return "<dt>"+x[0]+"</dt><dd>"+x[1]+"</dd>";}).join("")+"</dl>");
   return '<div class="panel"><h3>📖 Anleitung Trendfilter</h3><div class="note">Die ruhige Monats-Strategie für kleine Beträge – und der Weg zum Turtle-Echtgeld-Start.</div></div>'+h;
 }
 window.TF={tab:function(t){st.tab=t;render();window.scrollTo(0,0);},load:load,rb:function(id){st.rb=id;render();},
