@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0e1a">
+<title>Cockpit · Turtle</title>
+<link rel="manifest" href="../manifest.webmanifest">
+<link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/style.css">
+<style>
+.hero2{border-radius:16px;padding:16px;margin-bottom:14px;border:1px solid #22c55e55;background:linear-gradient(135deg,#22c55e24,var(--panel) 70%);}
+.hero2 .lab{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;}
+.hero2 .big{font-size:24px;font-weight:800;color:#fff;margin:4px 0;font-variant-numeric:tabular-nums;}
+.pos{color:#69f0ae;} .neg{color:#ff8a80;}
+.acard{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px;}
+.acard.in{border-color:#22c55e88;} .acard.alarm{border-color:#ff980099;}
+.acard .h{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px;flex-wrap:wrap;}
+.acard .n{font-weight:800;color:var(--mc);display:flex;align-items:center;gap:6px;font-size:15px;}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block;background:var(--mc);}
+.badge{font-size:11px;border-radius:20px;padding:3px 9px;border:1px solid var(--border);color:var(--muted);white-space:nowrap;}
+.badge.in{color:#69f0ae;border-color:#22c55e88;background:#22c55e1a;} .badge.go{color:#ffcc80;border-color:#ff980099;background:#ff98001a;}
+.badge.off{color:#8fa3c7;} .badge.skip{color:#b0a0ff;border-color:#8b7bff66;}
+.px{font-size:20px;font-weight:800;color:#fff;font-variant-numeric:tabular-nums;}
+.lv{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;margin-top:10px;font-size:12px;}
+.lv div{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid #152038;padding:3px 0;}
+.lv span:first-child{color:var(--muted);} .lv b{color:#fff;font-variant-numeric:tabular-nums;}
+.box{margin-top:10px;padding:10px;border-radius:10px;background:var(--field);font-size:12px;line-height:1.55;}
+.box b{color:#fff;}
+.chipbar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
+.chip{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:20px;padding:5px 11px;font-size:12px;cursor:pointer;}
+.chip.on{color:#fff;border-color:var(--accent);background:#22c55e22;}
+.banner{border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12px;background:#1a1000;border:1px solid #ff980088;color:#ffb74d;line-height:1.5;}
+.banner.info{background:#0b1a33;border-color:#3b82f688;color:#9cc3ff;}
+.note{font-size:11px;color:var(--muted);line-height:1.6;}
+pre.zettel{white-space:pre-wrap;background:var(--field);border-radius:10px;padding:12px;font-size:12px;line-height:1.6;color:#e6edf7;margin:0 0 10px;font-family:ui-monospace,Consolas,monospace;}
+.pitem{display:flex;justify-content:space-between;gap:10px;padding:10px 2px;border-top:1px solid #152038;font-size:13px;}
+.pitem .m{font-size:11px;color:var(--muted);margin-top:2px;}
+.pitem .r{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums;}
+.del{background:none;border:none;color:#3a4a6a;font-size:15px;cursor:pointer;padding:0 0 0 8px;}
+code{background:var(--field);padding:1px 5px;border-radius:4px;font-size:11px;}
+.legend{display:flex;gap:10px;flex-wrap:wrap;font-size:10px;color:var(--muted);margin-top:2px;}
+.legend i{display:inline-block;width:10px;height:3px;border-radius:2px;margin-right:4px;vertical-align:middle;}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div id="top"></div>
+<nav class="tabs" id="tabs"></nav>
+<div class="content" id="main"></div>
+</div>
+<script src="../assets/cockpit.js"></script>
+<script src="logic.js"></script>
+<script>
+(function(){
+"use strict";
+var C=window.Cockpit,T=window.TURTLE,AREA="turtle";
+var DATA_URL="https://raw.githubusercontent.com/realembo88/Cockpit/turtle/turtle.json",CACHE_KEY="cockpit:turtle:json";
+var ASSETS=[
+  {id:"spx",name:"S&P 500",color:"#60a5fa",fut:{sym:"MES",mult:5,step:1},cfd:{sym:"IBUS500",mult:1,step:1}},
+  {id:"ndx",name:"Nasdaq 100",color:"#2dd4bf",fut:{sym:"MNQ",mult:2,step:1},cfd:{sym:"IBUS100",mult:1,step:1}},
+  {id:"gold",name:"Gold",color:"#c9a84c",fut:{sym:"MGC",mult:10,step:1},cfd:{sym:"XAUUSD",mult:1,step:1}},
+  {id:"silver",name:"Silber",color:"#b8c0c8",fut:{sym:"SIL",mult:1000,step:1},cfd:{sym:"XAGUSD",mult:1,step:1}},
+  {id:"btc",name:"Bitcoin",color:"#f7931a",fut:{sym:"MBT",mult:0.1,step:1},cfd:{sym:"BTC (Spot/ETP)",mult:1,step:0.001}}
+];
+var BY={};ASSETS.forEach(function(a){BY[a.id]=a;});
+
+/* ---------- private Daten (Daten-Repo) ---------- */
+function blank(){var a={};ASSETS.forEach(function(x){a[x.id]={prod:"fut",fut:Object.assign({},x.fut),cfd:Object.assign({},x.cfd),off:0};});
+  return {konto:{betrag:0,waehrung:"EUR",hwm:0},risk:2,param:{entry:20,exit:10,atr:20,mult:2,filter:false},modus:"nacht",zeiten:{zu:"16:30",auf:"18:00"},
+    assets:a,positionen:[],journal:[],deleted:[]};}
+function norm(d){var b=blank();d=d&&typeof d==="object"?d:b;
+  ["konto","param","zeiten"].forEach(function(k){d[k]=Object.assign({},b[k],d[k]||{});});
+  if(!(d.risk>0))d.risk=2;if(d.modus!=="tag")d.modus="nacht";
+  d.assets=d.assets||{};ASSETS.forEach(function(x){var s=d.assets[x.id]=Object.assign({},b.assets[x.id],d.assets[x.id]||{});
+    s.fut=Object.assign({},x.fut,s.fut||{});s.cfd=Object.assign({},x.cfd,s.cfd||{});if(s.prod!=="cfd")s.prod="fut";s.off=+s.off||0;});
+  ["positionen","journal","deleted"].forEach(function(k){if(!Array.isArray(d[k]))d[k]=[];});
+  return d;}
+function merge(l,r,lU,rU){l=norm(JSON.parse(JSON.stringify(l)));r=norm(JSON.parse(JSON.stringify(r)));
+  var out=lU>=rU?l:r,del={};l.deleted.concat(r.deleted).forEach(function(id){del[id]=1;});
+  function uni(a,b){var by={},o=[];b.concat(a).forEach(function(x){if(del[x.id])return;if(!by[x.id])o.push(x.id);by[x.id]=x;});return o.map(function(k){return by[k];});}
+  out.positionen=uni(l.positionen,r.positionen);out.journal=uni(l.journal,r.journal);out.deleted=Object.keys(del).sort();
+  out.konto.hwm=Math.max(+l.konto.hwm||0,+r.konto.hwm||0);out._summary=summaryFor(out);return out;}
+C.registerMerge(AREA,merge);
+var data=norm(C.getLocal(AREA,blank));
+var st={tab:"signale",flash:null,j:null,loading:false,err:false};
+try{st.j=JSON.parse(localStorage.getItem(CACHE_KEY));}catch(e){}
+
+function persist(){data._summary=summaryFor(data);C.save(AREA,data);}
+function flash(t,warn){st.flash={t:t,warn:!!warn};render();clearTimeout(flash.tm);flash.tm=setTimeout(function(){st.flash=null;render();},warn?4500:2600);}
+function uid(){return "t-"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);}
+
+/* ---------- Rechnen ---------- */
+function eurusd(){return st.j&&st.j.eurusd||null;}
+function toUsd(v){if(data.konto.waehrung==="USD")return v;var fx=eurusd();return fx?v*fx:null;}
+function hwmUsd(){return toUsd(Math.max(+data.konto.hwm||0,+data.konto.betrag||0));}
+function param(){return Object.assign({},T.STANDARD,data.param);}
+var memo={};
+function calc(id){var x=st.j&&st.j.assets&&st.j.assets[id];if(!x)return null;
+  var key=id+"|"+st.j.ts+"|"+JSON.stringify(data.param);if(memo[key])return memo[key];
+  var an=T.analyse(x.sessions,x.partial,param());return (memo[key]={x:x,an:an});}
+function spec(id){var s=data.assets[id];return Object.assign({prod:s.prod},s[s.prod]);}
+function off(id){return +data.assets[id].off||0;}
+function posOf(id){return data.positionen.filter(function(p){return p.asset===id;});}
+function sizeFor(id,entry,stop){var sp=spec(id),h=hwmUsd();if(!(h>0))return null;return T.groesse({hwmUsd:h,risk:data.risk,entry:entry,stop:stop,mult:sp.mult,step:sp.step});}
+function fmtP(v){if(v==null||isNaN(v))return "–";var a=Math.abs(v);return C.num(v,a>=20000?0:a>=1000?1:2);}
+function usd(v,d){if(v==null||isNaN(v))return "–";return C.priv()?"••• $":C.num(v,d==null?0:d)+" $";}
+function qtyTxt(q,sp){return C.num(q,sp.step<1?3:0)+" "+(sp.prod==="fut"?(q===1?"Kontrakt":"Kontrakte"):"Einh.")+" "+sp.sym;}
+function pct(a,b){return b?(a-b)/b*100:null;}
+/* Uhrzeit New York → lokales Datum (berücksichtigt Sommerzeit-Verschiebungen) */
+function nyToLocal(iso,hh,mm){var p=iso.split("-").map(Number),g=Date.UTC(p[0],p[1]-1,p[2],hh+5,mm);
+  for(var k=0;k<2;k++){var w=nyParts(new Date(g)),diff=(Date.UTC(w.y,w.m-1,w.d,w.h,w.mi)-Date.UTC(p[0],p[1]-1,p[2],hh,mm));g-=diff;}return new Date(g);}
+function nyParts(dt){var f=new Intl.DateTimeFormat("en-US",{timeZone:"America/New_York",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false}).formatToParts(dt),o={};
+  f.forEach(function(x){o[x.type]=x.value;});return {y:+o.year,m:+o.month,d:+o.day,h:+o.hour%24,mi:+o.minute};}
+function nyTime(dt){var w=nyParts(dt);return w;}
+function hm(dt){return dt.toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit"});}
+function dde(iso){if(!iso)return "–";var d=new Date(iso+"T12:00:00Z");return d.toLocaleDateString("de-DE",{weekday:"short",day:"2-digit",month:"2-digit"});}
+/* laufender bzw. nächster Handelstag (für Zeiten im Tageshandel) */
+function laufenderTag(){var w=nyTime(new Date()),d=new Date(Date.UTC(w.y,w.m-1,w.d));if(w.h>=17)d.setUTCDate(d.getUTCDate()+1);
+  while(d.getUTCDay()===0||d.getUTCDay()===6)d.setUTCDate(d.getUTCDate()+1);return d.toISOString().slice(0,10);}
+
+function summaryFor(d){
+  if(!st||!st.j||!st.j.assets)return {k:"—",s:"Noch keine Kursdaten"};
+  var inT=0,nah=null;
+  ASSETS.forEach(function(a){var c=calc(a.id);if(!c||!c.an)return;var mine=d.positionen.some(function(p){return p.asset===a.id;});
+    if(mine||c.an.pos)inT++;else{var dist=pct(c.an.next.up,c.x.price);if(dist!=null&&(nah==null||dist<nah.d))nah={d:dist,n:a.name};}});
+  return {k:inT+" im Trade",s:nah?"Nächster Breakout: "+nah.n+" ("+C.num(nah.d,1)+" % entfernt)":"alle fünf im Trade"};}
+
+/* ---------- Kurse laden ---------- */
+function load(){
+  if(st.loading)return;st.loading=true;render();
+  fetch(DATA_URL+"?t="+Math.floor(Date.now()/60e3),{cache:"no-store"}).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;}).then(function(j){
+    st.loading=false;
+    if(j&&j.assets){st.j=j;st.err=false;memo={};try{localStorage.setItem(CACHE_KEY,JSON.stringify(j));}catch(e){}
+      var s=summaryFor(data);if(JSON.stringify(s)!==JSON.stringify(data._summary)&&data.konto.betrag)persist();}
+    else st.err=true;
+    render();});
+}
+
+/* ---------- Ansicht ---------- */
+function render(){
+  document.getElementById("top").innerHTML=C.topbar({title:"Turtle",icon:"🐢",sub:"Breakout-Strategie · 5 Märkte",accent:"#22c55e",accent2:"#86efac"});
+  C.paintStatus();
+  var tabs=[["signale","📊 Signale"],["zettel","🧾 Order-Zettel"],["positionen","📒 Positionen"],["statistik","📈 Statistik"],["einstellungen","⚙ Einstellungen"]];
+  document.getElementById("tabs").innerHTML=tabs.map(function(t){return '<button class="tab'+(st.tab===t[0]?" on":"")+'" onclick="TT.tab(\''+t[0]+'\')">'+t[1]+"</button>";}).join("");
+  var h="";if(st.flash)h+='<div class="flash'+(st.flash.warn?" warn":"")+'">'+C.esc(st.flash.t)+"</div>";
+  h+=({signale:vSignale,zettel:vZettel,positionen:vPos,statistik:vStat,einstellungen:vSet}[st.tab])();
+  document.getElementById("main").innerHTML=h;
+}
+function datenInfo(){
+  if(!st.j)return "";var d=new Date(st.j.ts),alt=Date.now()-st.j.ts>3*3600e3;
+  return '<span class="small'+(alt||st.err?"":" muted")+'"'+(alt||st.err?' style="color:#ffb74d"':"")+">Daten vom "+d.toLocaleDateString("de-DE")+", "+hm(d)+(st.err?" (Abruf fehlgeschlagen)":"")+"</span>";}
+function kontoLeer(){return !(+data.konto.betrag>0);}
+function vSignale(){
+  if(!st.j)return st.loading?'<div class="empty">Kursdaten werden geladen …</div>':
+    '<div class="empty"><div class="big">🐢</div>Noch keine Kursdaten.<br><span class="small">Die GitHub-Aufgabe „Turtle“ legt sie beim ersten Lauf an (Repo → Actions → Turtle → Run workflow).</span><br><button class="btn" style="margin-top:14px" onclick="TT.load()">Erneut laden</button></div>';
+  var h="";
+  if(Date.now()-st.j.ts>3*3600e3)h+='<div class="banner">⚠ Die Kursdaten sind älter als drei Stunden. Läuft die GitHub-Aufgabe „Turtle“ noch? (Repo → Actions)</div>';
+  if(kontoLeer())h+='<div class="banner info">ℹ Trag unter <a href="#" onclick="TT.tab(\'einstellungen\');return false" style="color:#cfe0ff">⚙ Einstellungen</a> deinen Kontostand ein – dann rechnet das Cockpit die Stückzahlen je Trade aus.</div>';
+  var p=param(),hw=hwmUsd(),inT=0,vol=0,ris=0;
+  ASSETS.forEach(function(a){posOf(a.id).forEach(function(x){var sp=Object.assign({},data.assets[a.id][x.prod]),c=calc(a.id);inT++;
+    vol+=x.qty*(c?c.x.price+off(a.id):x.entry)*sp.mult;var stp=c&&c.an?Math.max(x.fixed,c.an.next.trail+off(a.id)):x.fixed;ris+=Math.max(0,(x.entry-stp)*x.qty*sp.mult);});});
+  var kontoUsd=toUsd(+data.konto.betrag||0);
+  h+='<div class="hero2"><div class="lab">'+(data.modus==="tag"?"Tageshandel":"Über Nacht halten")+" · "+C.num(data.risk,1)+" % Risiko je Trade</div>"+
+    '<div class="big">'+inT+(inT===1?" Position":" Positionen")+" offen</div>"+
+    '<div class="small muted">'+(hw?"Risiko je neuem Trade "+usd(hw*data.risk/100)+" · Höchststand "+usd(hw):"Kontostand fehlt")+
+    (inT&&kontoUsd?" · Volumen "+usd(vol)+" (Hebel "+C.num(vol/kontoUsd,1)+"×) · offenes Risiko "+usd(ris):"")+"</div>"+
+    (data.modus==="tag"?(function(){var t=laufenderTag(),z=data.zeiten.zu.split(":"),a=data.zeiten.auf.split(":");
+      return '<div class="small" style="margin-top:6px;color:#9cc3ff">⏰ Heute: schließen um '+hm(nyToLocal(t,+z[0],+z[1]))+" Uhr, Wiedereinstieg ab "+hm(nyToLocal(t,+a[0],+a[1]))+" Uhr (über dem Stop)</div>";})():"")+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:8px;flex-wrap:wrap">'+datenInfo()+
+    '<button class="chip" onclick="TT.load()"'+(st.loading?" disabled":"")+'>↻ Aktualisieren</button></div></div>';
+  ASSETS.forEach(function(a){h+=karte(a,p);});
+  h+='<div class="note">Kurse: Futures-Kontrakte (ES, NQ, GC, SI) bzw. Bitcoin-Spot über Yahoo Finance, stündlich per GitHub-Aufgabe. Ein Handelstag endet um 17:00 New Yorker Zeit; die Level gelten für den ganzen laufenden Handelstag. '+
+    "Handelst du CFDs oder einen anderen Kontraktmonat, gleich unter ⚙ Einstellungen den Kursversatz ab. Keine Anlageberatung – die Regeln sind die aus dem Video.</div>";
+  return h;
+}
+function karte(a,p){
+  var c=calc(a.id);
+  if(!c||!c.an)return '<div class="acard" style="--mc:'+a.color+'"><div class="n"><span class="dot"></span>'+a.name+'</div><div class="note">'+(c?"Zu wenige Handelstage für die Berechnung.":"Keine Kursdaten.")+"</div></div>";
+  var an=c.an,o=off(a.id),px=c.x.price+o,sp=spec(a.id),mine=posOf(a.id),n=an.next;
+  var up=n.up+o,fx=n.fixedIfEntry+o,tr=n.trail+o;
+  var badge,cls="";
+  if(mine.length){badge='<span class="badge in">● Deine Position</span>';cls=" in";}
+  else if(an.heute&&an.heute.art==="einstieg"){badge='<span class="badge go">⚡ Breakout heute'+(an.heute.skip?" (Filter: aussetzen)":"")+"</span>";cls=" alarm";}
+  else if(an.pos){badge='<span class="badge in">laut Regel im Trade</span>';cls=" in";}
+  else if(an.naechsterSkip)badge='<span class="badge skip">Filter: nächster Breakout wird ausgelassen</span>';
+  else badge='<span class="badge off">wartet auf Breakout</span>';
+  var h='<div class="acard'+cls+'" style="--mc:'+a.color+'"><div class="h"><span class="n"><span class="dot"></span>'+a.name+'<span class="small muted" style="font-weight:400">'+C.esc(c.x.src)+(o?" · Versatz "+(o>0?"+":"")+fmtP(o):"")+"</span></span>"+badge+"</div>";
+  var chg=c.x.sessions.length?pct(c.x.price,c.x.sessions[c.x.sessions.length-1][4]):null;
+  h+='<div><span class="px">'+fmtP(px)+"</span>"+(chg!=null?' <span class="small '+(chg>=0?"pos":"neg")+'">'+(chg>=0?"▲":"▼")+" "+C.num(Math.abs(chg),2)+" % seit Schluss</span>":"")+(c.x.veraltet?' <span class="small" style="color:#ffb74d">(veraltet)</span>':"")+"</div>";
+  if(mine.length){
+    mine.forEach(function(x){var s2=Object.assign({},data.assets[a.id][x.prod]),stop=Math.max(x.fixed,tr),pl=(px-x.entry)*x.qty*s2.mult,r=(px-x.entry)/(x.entry-x.fixed);
+      h+='<div class="box"><b>'+qtyTxt(x.qty,Object.assign({prod:x.prod},s2))+"</b> seit "+dde(x.datum)+" · Einstieg "+fmtP(x.entry)+"<br>"+
+        'Stop jetzt <b>'+fmtP(stop)+"</b> ("+(x.fixed>=tr?"fester Stop":"Trailing, "+p.exit+"-Tage-Tief")+") · Abstand "+C.num(pct(stop,px),1)+" %<br>"+
+        'Offen: <b class="'+(pl>=0?"pos":"neg")+'">'+usd(pl)+"</b> · "+C.num(r,2)+" R"+(stop>x.entry?' · <span class="pos">Gewinn gesichert</span>':"")+"</div>";});
+  }else if(an.pos){
+    h+='<div class="box">Laut Regel läuft seit <b>'+dde(an.pos.in)+"</b> ein Trade (Einstieg "+fmtP(an.pos.entry+o)+", Stop jetzt "+fmtP(an.pos.stop+o)+"). "+
+      "Du hast keine Position erfasst – ein neues Einstiegssignal gibt es erst nach dem nächsten Ausstieg.</div>";
+  }
+  h+='<div class="lv"><div><span>Einstieg (20-T-Hoch)</span><b>'+fmtP(up)+'</b></div><div><span>Abstand</span><b>'+C.num(pct(up,px),1)+" %</b></div>"+
+    "<div><span>Fester Stop bei Einstieg</span><b>"+fmtP(fx)+"</b></div><div><span>Trailing ("+p.exit+"-T-Tief)</span><b>"+fmtP(tr)+"</b></div>"+
+    "<div><span>ATR ("+p.atr+")</span><b>"+fmtP(n.atr)+"</b></div><div><span>ATR in %</span><b>"+C.num(n.atr/c.x.price*100,2)+" %</b></div></div>";
+  if(!mine.length&&!an.pos){var g=sizeFor(a.id,up,fx);
+    if(g)h+='<div class="box">'+(g.qty>0?"Bei Einstieg: <b>"+qtyTxt(g.qty,sp)+"</b> · Risiko "+usd(g.risiko)+" von "+usd(g.budget)+" · Volumen "+usd(g.volumen)+
+      (toUsd(+data.konto.betrag)?" ("+C.num(g.volumen/toUsd(+data.konto.betrag)*100,0)+" % vom Konto)":""):
+      '<span style="color:#ffb74d">Mit '+C.esc(sp.sym)+" nicht umsetzbar:</span> 1 "+(sp.prod==="fut"?"Kontrakt":"Einheit")+" riskiert "+usd(g.proEinheit*sp.step)+", dein Budget sind "+usd(g.budget)+". Ab etwa "+usd(g.minKonto)+" Konto – oder unter ⚙ auf CFD umstellen.")+"</div>";}
+  if(an.heute){h+='<div class="box" style="border:1px solid #ff980066">'+(an.heute.art==="einstieg"?"⚡ Heute über das 20-Tage-Hoch gestiegen – Einstieg laut Regel bei <b>"+fmtP(an.heute.px+o)+"</b>.":"🛑 Heute den Stop berührt – Ausstieg laut Regel bei <b>"+fmtP(an.heute.px+o)+"</b>.")+"</div>";}
+  h+=miniChart(c,a,o,p)+"</div>";
+  return h;
+}
+/* kleines Diagramm: Schlusskurse der letzten 60 Tage mit Einstiegslinie, Trailing und Stops */
+function miniChart(c,a,o,p){
+  var S=c.x.sessions,N=Math.min(60,S.length-Math.max(p.entry,p.exit,p.atr));if(N<5)return "";
+  var atr=T.atrSeries(S,p.atr),rows=[];
+  for(var i=S.length-N;i<=S.length;i++){var L=T.levels(S,atr,i,p);rows.push({d:i<S.length?S[i][0]:"heute",c:i<S.length?S[i][4]:c.x.price,up:L.up,tr:L.trail});}
+  var tr=c.an.trades.filter(function(t){return t.out>=rows[0].d;}),pos=c.an.pos;
+  var vals=[];rows.forEach(function(r){vals.push(r.c,r.up,r.tr);});if(pos)vals.push(pos.fixed);
+  var mn=Math.min.apply(null,vals),mx=Math.max.apply(null,vals),pd=(mx-mn)*0.06;mn-=pd;mx+=pd;
+  var W=340,H=130,pL=4,pR=4,pT=6,pB=14,n=rows.length;
+  function x(i){return pL+(W-pL-pR)*i/(n-1);}function y(v){return pT+(H-pT-pB)*(1-(v-mn)/(mx-mn));}
+  function line(f,col,step,dash){var d="";rows.forEach(function(r,i){var v=f(r);if(v==null)return;d+=(d?(step?" H"+x(i).toFixed(1)+" V":" L"+x(i).toFixed(1)+" "):"M"+x(i).toFixed(1)+" ")+y(v).toFixed(1);});
+    return '<path d="'+d+'" fill="none" stroke="'+col+'" stroke-width="'+(step?1.4:2)+'"'+(dash?' stroke-dasharray="4 3"':"")+"/>";}
+  var s='<svg viewBox="0 0 '+W+" "+H+'" width="100%" role="img" style="margin-top:10px">';
+  s+=line(function(r){return r.up;},"#22c55e",true)+line(function(r){return r.tr;},"#ff9800",true);
+  if(pos){var k=-1;rows.forEach(function(r,i){if(k<0&&r.d>=pos.in)k=i;});if(k<0)k=0;s+='<line x1="'+x(k)+'" y1="'+y(pos.fixed)+'" x2="'+x(n-1)+'" y2="'+y(pos.fixed)+'" stroke="#ef4444" stroke-width="1.4" stroke-dasharray="4 3"/>';}
+  s+=line(function(r){return r.c;},"#e6edf7",false);
+  function idx(d){for(var i=0;i<rows.length;i++)if(rows[i].d===d)return i;return -1;}
+  tr.concat(pos?[pos]:[]).forEach(function(t){var i=idx(t.in);if(i>=0)s+='<path d="M'+x(i)+" "+(y(t.entry)+9)+" l-5 7 h10 z\" fill=\"#69f0ae\"><title>Einstieg "+dde(t.in)+" bei "+fmtP(t.entry+o)+"</title></path>";
+    if(t.out){var k2=idx(t.out);if(k2>=0)s+='<text x="'+x(k2)+'" y="'+(y(t.exit)+4)+'" fill="#ff5252" font-size="12" text-anchor="middle">✕<title>Ausstieg '+dde(t.out)+" bei "+fmtP(t.exit+o)+" ("+C.num(t.r,2)+" R)</title></text>";}});
+  s+='<text x="'+pL+'" y="'+(H-2)+'" fill="#5c7aaa" font-size="9">'+dde(rows[0].d)+'</text><text x="'+(W-pR)+'" y="'+(H-2)+'" fill="#5c7aaa" font-size="9" text-anchor="end">heute</text>';
+  return s+'</svg><div class="legend"><span><i style="background:#e6edf7"></i>Schlusskurs</span><span><i style="background:#22c55e"></i>20-Tage-Hoch (Einstieg)</span><span><i style="background:#ff9800"></i>10-Tage-Tief (Trailing)</span>'+(pos?'<span><i style="background:#ef4444"></i>fester Stop</span>':"")+"</div>";
+}
+/* ---------- Order-Zettel ---------- */
+function zettelText(){
+  var p=param(),t=laufenderTag(),z=[],h=hwmUsd();
+  z.push("TURTLE · ORDER-ZETTEL für "+dde(t)+" (gültig bis 17:00 New York = "+hm(nyToLocal(t,17,0))+" Uhr)");
+  z.push("Risiko je Trade: "+C.num(data.risk,1)+" % vom Höchststand"+(h?" = "+C.num(h*data.risk/100,0)+" $":" (Kontostand fehlt)"));z.push("");
+  ASSETS.forEach(function(a){var c=calc(a.id);if(!c||!c.an){z.push(a.name+": keine Daten");return;}
+    var an=c.an,o=off(a.id),sp=spec(a.id),mine=posOf(a.id),tr=an.next.trail+o;
+    if(mine.length){mine.forEach(function(x){var s2=data.assets[a.id][x.prod],stop=Math.max(x.fixed,tr);
+      z.push(a.name+": Position halten – Stop-Order anpassen");z.push("   SELL STOP "+C.num(x.qty,s2.step<1?3:0)+" "+s2.sym+" @ "+fmtP(stop)+(stop>x.fixed?"  (Trailing, vorher "+fmtP(x.fixed)+")":"  (fester Stop)"));});}
+    else if(an.pos){z.push(a.name+": laut Regel im Trade seit "+dde(an.pos.in)+" – keine neue Order");}
+    else if(an.naechsterSkip){z.push(a.name+": Filter aktiv – nächster Breakout wird ausgelassen (letzter Trade war ein Gewinner)");}
+    else{var up=an.next.up+o,fx=an.next.fixedIfEntry+o,g=sizeFor(a.id,up,fx);
+      if(!g){z.push(a.name+": BUY STOP @ "+fmtP(up)+" · danach SELL STOP @ "+fmtP(fx)+"  (Stückzahl: Kontostand fehlt)");}
+      else if(g.qty>0){z.push(a.name+": BUY STOP "+C.num(g.qty,sp.step<1?3:0)+" "+sp.sym+" @ "+fmtP(up));z.push("   angehängt: SELL STOP @ "+fmtP(fx)+"  (Risiko "+C.num(g.risiko,0)+" $)");}
+      else z.push(a.name+": kein Trade möglich – 1 "+sp.sym+" riskiert "+C.num(g.proEinheit*sp.step,0)+" $ > Budget "+C.num(g.budget,0)+" $");
+      if(an.heute&&an.heute.art==="einstieg")z.push("   ⚡ Breakout heute schon passiert (bei "+fmtP(an.heute.px+o)+") – Kurs jetzt "+fmtP(c.x.price+o));}
+  });
+  if(data.modus==="tag"){var zz=data.zeiten.zu.split(":"),aa=data.zeiten.auf.split(":");z.push("");
+    z.push("TAGESHANDEL: offene Positionen um "+hm(nyToLocal(t,+zz[0],+zz[1]))+" Uhr schließen, ab "+hm(nyToLocal(t,+aa[0],+aa[1]))+" Uhr wieder kaufen, wenn der Kurs über dem Stop liegt (Stop bleibt gleich).");}
+  return z.join("\n");
+}
+function vZettel(){
+  if(!st.j)return '<div class="empty">Noch keine Kursdaten.</div>';
+  return '<div class="panel"><h3>🧾 Order-Zettel</h3><pre class="zettel">'+C.esc(C.priv()?zettelText().replace(/[\d.,]+ \$/g,"••• $"):zettelText())+"</pre>"+
+    '<button class="btn grad full" onclick="TT.copy()">In die Zwischenablage</button>'+
+    '<div class="note" style="margin-top:12px">So setzt du das bei Interactive Brokers um:<br>'+
+    "• <b>Einstieg</b> als Stop-Order (Kauf) am 20-Tage-Hoch, mit angehängter Stop-Order (Verkauf) am festen Stop – in TWS „Bracket“ bzw. „Attach → Stop Loss“. Gültigkeit: bis Tagesende, jeden Abend nach 23 Uhr neu.<br>"+
+    "• <b>Offene Position</b>: Stop-Order jeden Abend auf den angezeigten Wert nachziehen – sie steigt nur, sie fällt nie.<br>"+
+    "• <b>Tageshandel</b> ohne nachts aufzustehen: in TWS Orders mit Zeitbedingung anlegen (Order → Bedingungen → Zeit), z. B. Verkauf ab 16:30 ET und Wiederkauf ab 18:00 ET.<br>"+
+    "• Futures: den liquiden Frontmonat nehmen und vor dem Verfall rollen. Die Level stammen vom fortlaufenden Kontrakt bei Yahoo; bei Abweichungen den Kursversatz unter ⚙ setzen.</div></div>";
+}
+/* ---------- Positionen ---------- */
+function vPos(){
+  var h='<div class="panel"><h3>＋ Gekaufte Position erfassen</h3><div class="note" style="margin-bottom:10px">Trag hier ein, was bei IBKR tatsächlich ausgeführt wurde. Das Cockpit führt dann den Stop für dich nach.</div>'+
+    '<div class="row2"><div class="field"><label>Markt</label><select id="p-asset" onchange="TT.vorschlag()">'+ASSETS.map(function(a){return '<option value="'+a.id+'">'+a.name+"</option>";}).join("")+'</select></div>'+
+    '<div class="field"><label>Produkt</label><select id="p-prod" onchange="TT.vorschlag()"><option value="fut">Micro-Future</option><option value="cfd">CFD / Spot</option></select></div></div>'+
+    '<div class="row2"><div class="field"><label>Menge</label><input id="p-qty" inputmode="decimal"></div><div class="field"><label>Einstiegskurs</label><input id="p-entry" inputmode="decimal" oninput="TT.stopVorschlag()"></div></div>'+
+    '<div class="row2"><div class="field"><label>Fester Stop</label><input id="p-fixed" inputmode="decimal"></div><div class="field"><label>Datum</label><input id="p-datum" type="date" value="'+C.today()+'"></div></div>'+
+    '<div class="note" id="p-hint" style="margin:-4px 0 12px"></div><button class="btn grad full" onclick="TT.addPos()">Position speichern</button></div>';
+  h+='<div class="panel" style="padding:4px 14px"><h3 style="padding-top:10px">Offene Positionen</h3>';
+  if(!data.positionen.length)h+='<div class="note" style="padding-bottom:12px">Keine.</div>';
+  data.positionen.forEach(function(x){var a=BY[x.asset],s2=data.assets[x.asset][x.prod],c=calc(x.asset),px=c?c.x.price+off(x.asset):null;
+    h+='<div class="pitem"><div><div style="color:'+a.color+';font-weight:700">'+a.name+'</div><div class="m">'+qtyTxt(x.qty,Object.assign({prod:x.prod},s2))+" · "+dde(x.datum)+" · Einstieg "+fmtP(x.entry)+" · fester Stop "+fmtP(x.fixed)+'</div></div><div style="display:flex;align-items:flex-start;gap:6px"><div class="r">'+
+      (px!=null?'<div class="'+(px>=x.entry?"pos":"neg")+'">'+usd((px-x.entry)*x.qty*s2.mult)+'</div><div class="m">'+C.num((px-x.entry)/(x.entry-x.fixed),2)+" R</div>":"")+
+      '</div><button class="chip" onclick="TT.closePos(\''+x.id+'\')">Verkauft</button><button class="del" aria-label="Löschen" onclick="TT.delPos(\''+x.id+'\')">✕</button></div></div>';});
+  h+="</div>";
+  h+='<div class="panel" style="padding:4px 14px"><h3 style="padding-top:10px">Journal (abgeschlossen)</h3>';
+  if(!data.journal.length)h+='<div class="note" style="padding-bottom:12px">Noch keine abgeschlossenen Trades.</div>';
+  else{var sumR=0,sumU=0;data.journal.slice().sort(function(a,b){return (b.exitDatum||"").localeCompare(a.exitDatum||"");}).forEach(function(x){var a=BY[x.asset],s2=data.assets[x.asset][x.prod],r=(x.exit-x.entry)/(x.entry-x.fixed),u=(x.exit-x.entry)*x.qty*s2.mult;sumR+=r;sumU+=u;
+    h+='<div class="pitem"><div><div style="color:'+a.color+';font-weight:700">'+a.name+'</div><div class="m">'+dde(x.datum)+" → "+dde(x.exitDatum)+" · "+fmtP(x.entry)+" → "+fmtP(x.exit)+'</div></div><div style="display:flex;align-items:flex-start"><div class="r"><div class="'+(u>=0?"pos":"neg")+'">'+usd(u)+'</div><div class="m">'+C.num(r,2)+' R</div></div><button class="del" aria-label="Löschen" onclick="TT.delJ(\''+x.id+'\')">✕</button></div></div>';});
+    h+='<div class="pitem"><b>Summe</b><div class="r"><b class="'+(sumU>=0?"pos":"neg")+'">'+usd(sumU)+'</b><div class="m">'+C.num(sumR,2)+" R</div></div></div>";}
+  return h+"</div>";
+}
+/* ---------- Statistik ---------- */
+function vStat(){
+  if(!st.j)return '<div class="empty">Noch keine Kursdaten.</div>';
+  var all=[],rows="";
+  ASSETS.forEach(function(a){var c=calc(a.id);if(!c||!c.an)return;var ts=c.an.trades.map(function(t){return Object.assign({a:a},t);});all=all.concat(ts);
+    var s=T.stats(c.an.trades);rows+='<tr><td style="color:'+a.color+';font-weight:700">'+a.name+"</td><td>"+s.n+"</td><td>"+(s.win!=null?C.num(s.win*100,0)+" %":"–")+'</td><td class="'+(s.sumR>=0?"pos":"neg")+'">'+C.num(s.sumR,1)+" R</td><td>"+(s.pf==null?"–":s.pf===Infinity?"∞":C.num(s.pf,2))+"</td></tr>";});
+  var S=T.stats(all),first=null;ASSETS.forEach(function(a){var c=calc(a.id);if(c&&c.x.sessions.length){var d=c.x.sessions[Math.max(param().entry,param().exit,param().atr)];if(d&&(!first||d[0]<first))first=d[0];}});
+  var h='<div class="panel"><h3>📈 Regel-Simulation</h3><div class="note" style="margin-bottom:10px">Was die Regeln seit '+dde(first)+" ergeben hätten – gemessen in R (1 R = Abstand Einstieg → fester Stop, also das eingesetzte Risiko). Ohne Spread, Swaps und Rundung der Stückzahl; ausgelassene Trades (Filter) zählen nicht."+
+    '</div><div class="scroll-x"><table class="t"><thead><tr><th>Markt</th><th>Trades</th><th>Treffer</th><th>Summe</th><th>Profit-Faktor</th></tr></thead><tbody>'+rows+
+    '<tr><td><b>Alle fünf</b></td><td><b>'+S.n+"</b></td><td><b>"+(S.win!=null?C.num(S.win*100,0)+" %":"–")+'</b></td><td class="'+(S.sumR>=0?"pos":"neg")+'"><b>'+C.num(S.sumR,1)+" R</b></td><td><b>"+(S.pf==null?"–":S.pf===Infinity?"∞":C.num(S.pf,2))+"</b></td></tr></tbody></table></div>"+
+    '<div class="note" style="margin-top:8px">Bei '+C.num(data.risk,1)+" % Risiko je Trade entspricht 1 R grob "+C.num(data.risk,1)+" % Kontoveränderung. Der Zeitraum ist kurz (rund ein Jahr Stundendaten) – für eine Einschätzung der Strategie taugt er nicht, wohl aber zum Prüfen, ob die Signale plausibel sind.</div></div>";
+  var t=all.filter(function(x){return !x.skip;}).sort(function(a,b){return a.out.localeCompare(b.out);}),cum=0;
+  if(t.length>1)h+='<div class="panel"><h3>Verlauf in R (alle Märkte)</h3>'+C.lineChart(t.map(function(x){cum+=x.r;return {label:x.out.slice(8,10)+"."+x.out.slice(5,7)+".",value:cum};}),{color:"#22c55e",fmt:function(v){return C.num(v,2)+" R";}})+"</div>";
+  h+='<div class="panel" style="padding:4px 14px"><h3 style="padding-top:10px">Trades</h3>'+all.slice().sort(function(a,b){return (b.out||"").localeCompare(a.out||"");}).map(function(x){
+    return '<div class="pitem"'+(x.skip?' style="opacity:.45"':"")+'><div><div style="color:'+x.a.color+';font-weight:700">'+x.a.name+(x.skip?" · ausgelassen (Filter)":"")+'</div><div class="m">'+dde(x.in)+" → "+dde(x.out)+" · "+fmtP(x.entry)+" → "+fmtP(x.exit)+" · "+(x.why==="fest"?"fester Stop":"Trailing")+'</div></div><div class="r '+(x.r>=0?"pos":"neg")+'">'+(x.r>=0?"+":"")+C.num(x.r,2)+" R</div></div>";}).join("")+"</div>";
+  return h;
+}
+/* ---------- Einstellungen ---------- */
+function vSet(){
+  var p=data.param,k=data.konto;
+  var h='<div class="panel"><h3>Konto & Risiko</h3><div class="row2"><div class="field"><label>Kontostand</label><input id="s-betrag" inputmode="decimal" value="'+(k.betrag||"")+'"></div>'+
+    '<div class="field"><label>Währung</label><select id="s-wg"><option'+(k.waehrung==="EUR"?" selected":"")+'>EUR</option><option'+(k.waehrung==="USD"?" selected":"")+">USD</option></select></div></div>"+
+    '<div class="row2"><div class="field"><label>Höchststand (High-Water-Mark)</label><input id="s-hwm" inputmode="decimal" value="'+(k.hwm||"")+'"></div><div class="field"><label>Risiko je Trade (%)</label><input id="s-risk" inputmode="decimal" value="'+data.risk+'"></div></div>'+
+    '<div class="note" style="margin:-4px 0 12px">Der Höchststand steigt automatisch mit, wenn du einen höheren Kontostand einträgst. Gerechnet wird in US-Dollar'+(eurusd()?" (1 € = "+C.num(eurusd(),4)+" $)":"")+'. Bleibt nur in deinem privaten Daten-Repo.</div>'+
+    '<button class="btn full" onclick="TT.saveKonto()">Speichern</button></div>';
+  h+='<div class="panel"><h3>Variante</h3><div class="chipbar"><button class="chip'+(data.modus==="nacht"?" on":"")+'" onclick="TT.modus(\'nacht\')">Über Nacht halten</button><button class="chip'+(data.modus==="tag"?" on":"")+'" onclick="TT.modus(\'tag\')">Tageshandel</button></div>'+
+    (data.modus==="tag"?'<div class="row2"><div class="field"><label>Schließen um (New York)</label><input id="s-zu" value="'+data.zeiten.zu+'"></div><div class="field"><label>Wiedereinstieg ab (New York)</label><input id="s-auf" value="'+data.zeiten.auf+'"></div></div><button class="btn ghost full" onclick="TT.saveZeiten()">Zeiten speichern</button>':"")+
+    '<div class="note" style="margin-top:8px">Tageshandel: gleiche Regeln, aber jede Position wird 30 Minuten vor Ende der New Yorker Sitzung geschlossen und um 18:00 New York wieder eröffnet, wenn der Kurs noch über dem Stop liegt – spart Übernachtkosten bei CFDs. Bei Futures fallen keine Swaps an, IBKR verlangt über Nacht aber mehr Margin. Für den täglichen Push-Hinweis zusätzlich im Repo die Variable <code>TURTLE_TAGESHANDEL</code> = <code>1</code> setzen.</div></div>';
+  h+='<div class="panel"><h3>Produkt je Markt</h3>'+ASSETS.map(function(a){var s=data.assets[a.id],sp=s[s.prod],c=calc(a.id);
+    return '<div style="border-top:1px solid #152038;padding:10px 0"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><b style="color:'+a.color+'">'+a.name+'</b><span class="chipbar" style="margin:0"><button class="chip'+(s.prod==="fut"?" on":"")+'" onclick="TT.prod(\''+a.id+'\',\'fut\')">Micro-Future</button><button class="chip'+(s.prod==="cfd"?" on":"")+'" onclick="TT.prod(\''+a.id+'\',\'cfd\')">CFD / Spot</button></span></div>'+
+      '<div class="row2" style="margin-top:8px"><div class="field"><label>Symbol</label><input id="sp-'+a.id+'-sym" value="'+C.esc(sp.sym)+'"></div><div class="field"><label>Multiplikator ($ je Punkt)</label><input id="sp-'+a.id+'-mult" inputmode="decimal" value="'+sp.mult+'"></div></div>'+
+      '<div class="row2"><div class="field"><label>Kleinste Stückelung</label><input id="sp-'+a.id+'-step" inputmode="decimal" value="'+sp.step+'"></div><div class="field"><label>Kurs bei IBKR jetzt (für Versatz)</label><input id="sp-'+a.id+'-bk" inputmode="decimal" placeholder="'+(c?fmtP(c.x.price):"")+'"></div></div>'+
+      '<div class="small muted" style="margin:-4px 0 8px">Versatz zum Datenkurs: '+(s.off?(s.off>0?"+":"")+fmtP(s.off)+' <a href="#" onclick="TT.offReset(\''+a.id+'\');return false">zurücksetzen</a>':"keiner")+'</div><button class="btn ghost full" onclick="TT.saveSpec(\''+a.id+'\')">'+a.name+" speichern</button></div>";}).join("")+
+    '<div class="note" style="margin-top:6px">Micro-Futures: MES 5 $/Punkt, MNQ 2 $/Punkt, MGC 10 oz, SIL 1.000 oz, MBT 0,1 BTC. CFDs lassen sich feiner stückeln; Bitcoin-CFDs bietet IBKR EU-Kunden meist nicht an – dort ggf. Spot oder ein ETP eintragen. Der Versatz gleicht aus, dass dein Handelsprodukt anders notiert als der Datenkurs (Kassa vs. Future, anderer Kontraktmonat).</div></div>';
+  h+='<div class="panel"><h3>Regeln</h3><div class="row2"><div class="field"><label>Einstieg: Hoch der letzten … Tage</label><input id="r-entry" inputmode="numeric" value="'+p.entry+'"></div><div class="field"><label>Trailing: Tief der letzten … Tage</label><input id="r-exit" inputmode="numeric" value="'+p.exit+'"></div></div>'+
+    '<div class="row2"><div class="field"><label>ATR-Periode</label><input id="r-atr" inputmode="numeric" value="'+p.atr+'"></div><div class="field"><label>Fester Stop: … × ATR</label><input id="r-mult" inputmode="decimal" value="'+p.mult+'"></div></div>'+
+    '<label class="small" style="display:flex;gap:8px;align-items:center;margin:4px 0 12px"><input type="checkbox" id="r-filter"'+(p.filter?" checked":"")+'> Original-Filter: Breakout nach einem Gewinner-Trade auslassen</label>'+
+    '<div style="display:flex;gap:8px"><button class="btn full" onclick="TT.saveRegeln()">Übernehmen</button><button class="btn ghost" onclick="TT.regelnStd()">Standard</button></div>'+
+    '<div class="note" style="margin-top:8px">Standard aus dem Video: 20 / 10 / 20 / 2, ohne Filter. Das Original-„System 2“ der Turtles entspricht 55 / 20. Die Push-Nachrichten rechnen immer mit dem Standard.</div></div>';
+  h+='<div class="panel"><h3>📲 Push aufs Handy (ntfy)</h3><div class="note">1. App <b>ntfy</b> installieren (Android/iOS, kostenlos, ohne Konto).<br>2. Einen schwer zu erratenden Themennamen ausdenken, z. B. <code>turtle-'+Math.random().toString(36).slice(2,10)+'</code>, und in der App abonnieren.<br>3. Bei GitHub im Repo <b>Cockpit</b> → Settings → Secrets and variables → Actions → <b>New repository secret</b>: Name <code>NTFY_TOPIC</code>, Wert = dein Themenname.<br>'+
+    "Dann kommt jeden Handelstag nach 23 Uhr der Order-Zettel (ohne Stückzahlen und Kontostand) und während des Tages eine Nachricht, sobald ein Breakout oder Stop passiert – stündlich geprüft. Der Themenname ist wie ein Passwort: Wer ihn kennt, kann mitlesen.</div></div>";
+  return h;
+}
+
+/* ---------- Aktionen ---------- */
+function val(id){var e=document.getElementById(id);return e?e.value.trim():"";}
+window.TT={
+  tab:function(t){st.tab=t;render();window.scrollTo(0,0);if(t==="positionen")setTimeout(TT.vorschlag,0);},
+  load:load,
+  copy:function(){var t=zettelText();(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(function(){flash("✓ Kopiert");},function(){flash("⚠ Kopieren nicht möglich",true);});},
+  saveKonto:function(){var b=C.parseNum(val("s-betrag")),hw=C.parseNum(val("s-hwm")),r=C.parseNum(val("s-risk"));
+    if(!(b>=0)){flash("⚠ Kontostand ungültig",true);return;}if(!(r>0&&r<=10)){flash("⚠ Risiko zwischen 0,1 und 10 %",true);return;}
+    var wechsel=data.konto.waehrung!==val("s-wg");data.konto.betrag=b;data.konto.waehrung=val("s-wg");
+    data.konto.hwm=Math.max(b,hw>0&&!wechsel?hw:0,wechsel?0:+data.konto.hwm||0);data.risk=r;persist();flash("✓ Gespeichert");},
+  modus:function(m){data.modus=m;persist();render();},
+  saveZeiten:function(){var ok=/^\d{1,2}:\d{2}$/;if(!ok.test(val("s-zu"))||!ok.test(val("s-auf"))){flash("⚠ Zeiten bitte als HH:MM",true);return;}data.zeiten={zu:val("s-zu"),auf:val("s-auf")};persist();flash("✓ Gespeichert");},
+  prod:function(id,pr){data.assets[id].prod=pr;persist();render();},
+  saveSpec:function(id){var s=data.assets[id],sp=s[s.prod],m=C.parseNum(val("sp-"+id+"-mult")),stp=C.parseNum(val("sp-"+id+"-step")),bk=C.parseNum(val("sp-"+id+"-bk")),c=calc(id);
+    if(!(m>0)||!(stp>0)){flash("⚠ Multiplikator und Stückelung müssen größer als 0 sein",true);return;}
+    sp.sym=val("sp-"+id+"-sym")||sp.sym;sp.mult=m;sp.step=stp;if(bk>0&&c)s.off=+(bk-c.x.price).toFixed(4);persist();flash("✓ "+BY[id].name+" gespeichert");},
+  offReset:function(id){data.assets[id].off=0;persist();render();},
+  saveRegeln:function(){var e=parseInt(val("r-entry"),10),x=parseInt(val("r-exit"),10),a=parseInt(val("r-atr"),10),m=C.parseNum(val("r-mult"));
+    if(!(e>=2&&e<=100&&x>=2&&x<=100&&a>=2&&a<=100&&m>0&&m<=10)){flash("⚠ Werte außerhalb des sinnvollen Bereichs",true);return;}
+    data.param={entry:e,exit:x,atr:a,mult:m,filter:document.getElementById("r-filter").checked};memo={};persist();flash("✓ Regeln übernommen");},
+  regelnStd:function(){data.param={entry:20,exit:10,atr:20,mult:2,filter:false};memo={};persist();flash("✓ Standard wiederhergestellt");},
+  /* Formular „Position erfassen“ mit den Werten des heutigen Signals vorbelegen */
+  vorschlag:function(){var id=val("p-asset");if(!id)return;var prSel=document.getElementById("p-prod");if(document.activeElement!==prSel)prSel.value=data.assets[id].prod;
+    var c=calc(id),hint=document.getElementById("p-hint");if(!c||!c.an){hint.textContent="";return;}
+    var o=off(id),e=c.an.heute&&c.an.heute.art==="einstieg"?c.an.heute.px+o:c.an.next.up+o,s=Object.assign({prod:prSel.value},data.assets[id][prSel.value]),g=sizeFor(id,e,e-c.an.p.mult*c.an.next.atr);
+    document.getElementById("p-entry").value=fmtP(e).replace(/\./g,"");document.getElementById("p-fixed").value=fmtP(e-c.an.p.mult*c.an.next.atr).replace(/\./g,"");
+    if(g&&g.qty>0)document.getElementById("p-qty").value=String(g.qty).replace(".",",");
+    hint.textContent="Vorschlag aus dem heutigen Signal – trag die tatsächlichen Ausführungskurse ein. Fester Stop = Einstieg − "+C.num(c.an.p.mult,1)+" × ATR ("+fmtP(c.an.next.atr)+").";},
+  stopVorschlag:function(){var id=val("p-asset"),c=calc(id),e=C.parseNum(val("p-entry"));if(c&&c.an&&e>0)document.getElementById("p-fixed").value=fmtP(e-c.an.p.mult*c.an.next.atr).replace(/\./g,"");},
+  addPos:function(){var q=C.parseNum(val("p-qty")),e=C.parseNum(val("p-entry")),f=C.parseNum(val("p-fixed"));
+    if(!(q>0)){flash("⚠ Bitte eine Menge eingeben",true);return;}if(!(e>0)||!(f>0)||f>=e){flash("⚠ Einstieg und Stop prüfen (Stop muss unter dem Einstieg liegen)",true);return;}
+    data.positionen.push({id:uid(),asset:val("p-asset"),prod:val("p-prod"),qty:q,entry:e,fixed:f,datum:val("p-datum")||C.today()});persist();st.tab="signale";flash("✓ Position gespeichert");},
+  closePos:function(id){var x=data.positionen.filter(function(p){return p.id===id;})[0];if(!x)return;var c=calc(x.asset);
+    var v=prompt("Verkaufskurs von "+BY[x.asset].name+":",c?fmtP(c.x.price+off(x.asset)).replace(/\./g,""):"");if(v==null)return;var px=C.parseNum(v);if(!(px>0)){flash("⚠ Kurs ungültig",true);return;}
+    data.positionen=data.positionen.filter(function(p){return p.id!==id;});data.journal.push(Object.assign({},x,{id:uid(),exit:px,exitDatum:C.today()}));if(data.deleted.indexOf(id)<0)data.deleted.push(id);persist();flash("✓ Ins Journal übernommen");},
+  delPos:function(id){if(!confirm("Position ohne Journal-Eintrag löschen?"))return;data.positionen=data.positionen.filter(function(p){return p.id!==id;});if(data.deleted.indexOf(id)<0)data.deleted.push(id);persist();render();},
+  delJ:function(id){if(!confirm("Journal-Eintrag löschen?"))return;data.journal=data.journal.filter(function(p){return p.id!==id;});if(data.deleted.indexOf(id)<0)data.deleted.push(id);persist();render();}
+};
+
+window.addEventListener("cockpit:priv",render);
+render();
+C.autoPull([AREA],function(a,d){data=norm(d);memo={};render();});
+load();
+setInterval(function(){if(!document.hidden)load();},15*60e3);
+document.addEventListener("visibilitychange",function(){if(!document.hidden&&(!st.j||Date.now()-st.j.ts>20*60e3))load();});
+})();
+</script>
+</body>
+</html>
