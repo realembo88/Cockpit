@@ -21,13 +21,13 @@ from zoneinfo import ZoneInfo
 
 NY = ZoneInfo("America/New_York")
 BER = ZoneInfo("Europe/Berlin")
-UA = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
-      "Accept": "application/json,*/*"}
+# Ehrliche Kennung: mit einem vorgetäuschten Browser-Kennzeichner antwortet Yahoo von GitHub aus mit 429
+UA = {"User-Agent": "cockpit-turtle/1.0 (+https://github.com/realembo88/Cockpit)", "Accept": "application/json,*/*"}
 ASSETS = [
-    {"id": "spx", "name": "S&P 500", "yahoo": "ES=F", "futures": True},
-    {"id": "ndx", "name": "Nasdaq 100", "yahoo": "NQ=F", "futures": True},
-    {"id": "gold", "name": "Gold", "yahoo": "GC=F", "futures": True},
-    {"id": "silver", "name": "Silber", "yahoo": "SI=F", "futures": True},
+    {"id": "spx", "name": "S&P 500", "yahoo": "ES=F", "cnbc": "@SP.1", "futures": True},
+    {"id": "ndx", "name": "Nasdaq 100", "yahoo": "NQ=F", "cnbc": "@ND.1", "futures": True},
+    {"id": "gold", "name": "Gold", "yahoo": "GC=F", "cnbc": "@GC.1", "futures": True},
+    {"id": "silver", "name": "Silber", "yahoo": "SI=F", "cnbc": "@SI.1", "futures": True},
     {"id": "btc", "name": "Bitcoin", "yahoo": "BTC-USD", "futures": False},
 ]
 PARAM = {"entry": 20, "exit": 10, "atr": 20, "mult": 2.0}
@@ -51,6 +51,7 @@ def yahoo(sym, interval, rng):
     s = urllib.parse.quote(sym, safe="")
     for host in ("query1", "query2"):
         try:
+            time.sleep(1.5)                     # kurze Pause – zu schnelle Abfragen beantwortet Yahoo mit 429
             j = json.loads(holen("https://%s.finance.yahoo.com/v8/finance/chart/%s?interval=%s&range=%s" % (host, s, interval, rng)))
             res = j["chart"]["result"][0]
             q = res["indicators"]["quote"][0]
@@ -62,6 +63,56 @@ def yahoo(sym, interval, rng):
         except Exception as e:
             warn("Yahoo", host, sym, interval, "→", e)
     return None, {}
+
+
+def cnbc_bars(sym):
+    """Ersatz für Futures: Stundenkerzen von CNBC (fortlaufender Kontrakt, z. B. @SP.1; liefert gut drei Monate)."""
+    try:
+        von = (datetime.now(NY) - timedelta(days=380)).strftime("%Y%m%d000000")
+        bis = datetime.now(NY).strftime("%Y%m%d%H%M%S")
+        j = json.loads(holen("https://ts-api.cnbc.com/harmony/app/bars/%s/1H/%s/%s/adjusted/EST5EDT.json" % (
+            urllib.parse.quote(sym, safe=""), von, bis)))
+        bars = []
+        for b in (j.get("barData") or {}).get("priceBars") or []:
+            if b.get("tradeTimeinMills"):
+                bars.append((int(b["tradeTimeinMills"]) // 1000,) + tuple(float(b[k]) for k in ("open", "high", "low", "close")))
+        if len(bars) > 24 * 40:
+            return bars, {"regularMarketPrice": bars[-1][4]}
+        warn("CNBC", sym, "→ zu wenige Kerzen:", len(bars))
+    except Exception as e:
+        warn("CNBC", sym, "→", e)
+    return None, {}
+
+
+def coinbase_btc(tage=380):
+    """Ersatz für Bitcoin: Stundenkerzen von Coinbase (je Abruf höchstens 300 Stunden)."""
+    bars, ende = [], int(time.time()) // 3600 * 3600 + 3600
+    try:
+        while ende > time.time() - tage * 86400:
+            start = ende - 300 * 3600
+            u = "https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=3600&start=%s&end=%s" % (
+                datetime.fromtimestamp(start, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                datetime.fromtimestamp(ende, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+            for t, lo, hi, op, cl, _v in json.loads(holen(u)):
+                bars.append((int(t), op, hi, lo, cl))
+            ende = start
+            time.sleep(0.4)
+    except Exception as e:
+        warn("Coinbase →", e)
+    bars = sorted(set(bars))
+    return (bars, {"regularMarketPrice": bars[-1][4]}) if len(bars) > 24 * 40 else (None, {})
+
+
+def eurusd_ezb():
+    """Euro-Referenzkurs der EZB über frankfurter.dev."""
+    for u in ("https://api.frankfurter.dev/v1/latest?base=EUR&symbols=USD", "https://api.frankfurter.app/latest?from=EUR&to=USD"):
+        try:
+            v = json.loads(holen(u))["rates"]["USD"]
+            if v > 0:
+                return v
+        except Exception as e:
+            warn("Frankfurter →", e)
+    return None
 
 
 def session_key(ts):
@@ -270,9 +321,12 @@ def main(alt_pfad, neu_pfad, jetzt=None):
     for a in ASSETS:
         bars, meta = yahoo(a["yahoo"], "60m", "1y")
         quelle = "Yahoo Finance · Stundenkerzen → Handelstag bis 17:00 New York"
-        if not bars:
-            bars, meta = yahoo(a["yahoo"], "1d", "2y")
-            quelle = "Yahoo Finance · Tageskerzen (Ersatz)"
+        if not bars and a.get("cnbc"):
+            bars, meta = cnbc_bars(a["cnbc"])
+            quelle = "CNBC · Stundenkerzen → Handelstag bis 17:00 New York (Ersatz)"
+        if not bars and a["id"] == "btc":
+            bars, meta = coinbase_btc()
+            quelle = "Coinbase · Stundenkerzen → Handelstag bis 17:00 New York (Ersatz)"
         if not bars:
             if alt.get("assets", {}).get(a["id"]):       # letzten Stand behalten, aber als alt markieren
                 out["assets"][a["id"]] = dict(alt["assets"][a["id"]], veraltet=True)
@@ -287,9 +341,9 @@ def main(alt_pfad, neu_pfad, jetzt=None):
              "sessions": S, "partial": partial}
         x["ana"] = analyse(S, partial)
         out["assets"][a["id"]] = rnd_obj(x)
-    fxb, fxm = yahoo("EURUSD=X", "1d", "5d")
-    if fxm.get("regularMarketPrice"):
-        out["eurusd"] = round(fxm["regularMarketPrice"], 5)
+    fx = eurusd_ezb()
+    if fx:
+        out["eurusd"] = round(fx, 5)
     elif alt.get("eurusd"):
         out["eurusd"] = alt["eurusd"]
 
@@ -300,6 +354,18 @@ def main(alt_pfad, neu_pfad, jetzt=None):
     if z and z["key"] not in gemeldet:
         msgs.append(z)
     msgs += [e for e in ereignisse(out) if e["key"] not in gemeldet]
+    frisch = [a["id"] for a in ASSETS if a["id"] in out["assets"] and not out["assets"][a["id"]].get("veraltet")]
+    if len(frisch) < len(ASSETS):
+        fehlt = [a["name"] for a in ASSETS if a["id"] not in frisch]
+        print("::warning::Keine aktuellen Kurse für:", ", ".join(fehlt))
+        k = "stoerung:" + jetzt.strftime("%Y-%m-%d")          # höchstens eine Störungsmeldung pro Tag
+        if k not in gemeldet:
+            msgs.append({"title": "Turtle · Kursabruf gestört", "tags": ["turtle", "warning"], "key": k,
+                         "message": "Keine aktuellen Kurse für: %s. Level und Order-Zettel fehlen dort. Details im Repo unter Actions → Turtle." % ", ".join(fehlt)})
+    if os.environ.get("TURTLE_TEST", "").strip().lower() in ("1", "true"):
+        msgs.append({"title": "Turtle · Testnachricht", "tags": ["turtle", "white_check_mark"], "key": "test:%d" % out["ts"],
+                     "message": "GitHub erreicht dein Handy. Kurse geladen für: %s." % (
+                         ", ".join("%s (%s)" % (out["assets"][k]["name"], out["assets"][k]["quelle"].split(" ·")[0]) for k in frisch) or "keinen Markt")})
     for m in msgs:
         print("Push:", m["title"]); print(m["message"])
         if ntfy(m) or not os.environ.get("NTFY_TOPIC"):
