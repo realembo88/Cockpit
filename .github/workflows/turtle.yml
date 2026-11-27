@@ -1,0 +1,39 @@
+# Turtle-Breakout: holt stündlich Kurse (S&P 500, Nasdaq 100, Gold, Silber, Bitcoin), berechnet die Level
+# und legt sie als turtle.json im Zweig "turtle" ab. Das Cockpit liest sie über raw.githubusercontent.com.
+# Push per ntfy: Secret NTFY_TOPIC setzen (Settings → Secrets and variables → Actions). Ohne Secret kein Push.
+# Optional: Variable TURTLE_TAGESHANDEL = 1 → der Order-Zettel erinnert an die Tageshandel-Zeiten.
+name: Turtle
+on:
+  schedule:
+    - cron: "12 * * * *"   # stündlich; der Order-Zettel kommt mit dem ersten Lauf nach 17:00 New York
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [".github/turtle.py", ".github/workflows/turtle.yml"]
+permissions:
+  contents: write
+concurrency:
+  group: turtle
+  cancel-in-progress: false
+jobs:
+  turtle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+      - name: Letzten Stand holen
+        run: |
+          (git fetch -q --depth=1 origin turtle && git show FETCH_HEAD:turtle.json > /tmp/alt.json) || echo '{}' > /tmp/alt.json
+      - name: Kurse abrufen, Level berechnen, ggf. pushen
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
+          NTFY_SERVER: ${{ vars.NTFY_SERVER }}
+          TURTLE_TAGESHANDEL: ${{ vars.TURTLE_TAGESHANDEL }}
+        run: python3 .github/turtle.py /tmp/alt.json /tmp/turtle.json
+      - name: In Zweig "turtle" schreiben (ein einziger Commit, kein wachsender Verlauf)
+        run: |
+          cd "$(mktemp -d)" && git init -q -b turtle && cp /tmp/turtle.json .
+          git config user.name "github-actions[bot]" && git config user.email "41898+github-actions[bot]@users.noreply.github.com"
+          git add turtle.json && git commit -qm "Turtle $(date -u +%FT%TZ)"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" turtle
