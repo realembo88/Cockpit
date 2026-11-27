@@ -1,6 +1,7 @@
 [
  {"isin": "IE0001UQQ933", "yahoo": "GERD.DE", "name": "Gerd Kommer Multifactor (thesaurierend)", "produkt": "L&G Gerd Kommer Multifactor Equity UCITS ETF USD Acc · bei der ING: LG-GK MUL.EQ.E. DLA"},
  {"isin": "IE000FPWSL69", "yahoo": "K0MR.DE", "name": "Gerd Kommer Multifactor (ausschüttend)", "produkt": "L&G Gerd Kommer Multifactor Equity UCITS ETF USD Dist · bei der ING: LG-GK MUL.EQ.ETFDLD"},
+ {"isin": "IE00BK5BQT80", "yahoo": "VWCE.DE", "name": "FTSE All-World (Welt inkl. Schwellenländer)", "produkt": "Vanguard FTSE All-World UCITS ETF (Acc)"},
  {"isin": "IE00B4L5Y983", "yahoo": "EUNL.DE", "name": "MSCI World", "produkt": "iShares Core MSCI World"},
  {"isin": "IE00B5BMR087", "yahoo": "SXR8.DE", "name": "S&P 500", "produkt": "iShares Core S&P 500"},
  {"isin": "IE00B53SZB19", "yahoo": "SXRV.DE", "name": "Nasdaq 100", "produkt": "iShares Nasdaq 100"},
