@@ -41,6 +41,15 @@ pre.zettel{white-space:pre-wrap;background:var(--field);border-radius:10px;paddi
 code{background:var(--field);padding:1px 5px;border-radius:4px;font-size:11px;}
 .legend{display:flex;gap:10px;flex-wrap:wrap;font-size:10px;color:var(--muted);margin-top:2px;}
 .legend i{display:inline-block;width:10px;height:3px;border-radius:2px;margin-right:4px;vertical-align:middle;}
+details.anl{background:var(--panel);border:1px solid var(--border);border-radius:14px;margin-bottom:10px;}
+details.anl summary{padding:13px 14px;cursor:pointer;font-weight:700;color:#fff;list-style:none;}
+details.anl summary::-webkit-details-marker{display:none;}
+details.anl summary::before{content:"▶";display:inline-block;margin-right:8px;color:var(--muted);font-size:11px;transition:.2s;}
+details.anl[open] summary::before{transform:rotate(90deg);}
+.anl-b{padding:0 14px 12px;font-size:13px;line-height:1.6;color:#cfd8e8;}
+.anl-b p{margin:8px 0;} .anl-b ol,.anl-b ul{margin:6px 0;padding-left:20px;} .anl-b li{margin:3px 0;} .anl-b b{color:#fff;}
+.anl-b table.t td{vertical-align:top;font-size:12px;}
+dl.gl{margin:0;} dl.gl dt{font-weight:700;color:#86efac;margin-top:8px;} dl.gl dd{margin:2px 0 0 0;}
 </style>
 </head>
 <body>
@@ -58,7 +67,7 @@ var C=window.Cockpit,T=window.TURTLE,AREA="turtle";
 var DATA_URL="https://raw.githubusercontent.com/realembo88/Cockpit/turtle/turtle.json",CACHE_KEY="cockpit:turtle:json";
 var ASSETS=[
   {id:"spx",name:"S&P 500",color:"#60a5fa",fut:{sym:"MES",mult:5,step:1},cfd:{sym:"IBUS500",mult:1,step:1}},
-  {id:"ndx",name:"Nasdaq 100",color:"#2dd4bf",fut:{sym:"MNQ",mult:2,step:1},cfd:{sym:"IBUS100",mult:1,step:1}},
+  {id:"ndx",name:"Nasdaq 100",color:"#2dd4bf",fut:{sym:"MNQ",mult:2,step:1},cfd:{sym:"IBUST100",mult:1,step:1}},
   {id:"gold",name:"Gold",color:"#c9a84c",fut:{sym:"MGC",mult:10,step:1},cfd:{sym:"XAUUSD",mult:1,step:1}},
   {id:"silver",name:"Silber",color:"#b8c0c8",fut:{sym:"SIL",mult:1000,step:1},cfd:{sym:"XAGUSD",mult:1,step:1}},
   {id:"btc",name:"Bitcoin",color:"#f7931a",fut:{sym:"MBT",mult:0.1,step:1},cfd:{sym:"BTC (Spot/ETP)",mult:1,step:0.001}}
@@ -73,7 +82,7 @@ function norm(d){var b=blank();d=d&&typeof d==="object"?d:b;
   ["konto","param","zeiten"].forEach(function(k){d[k]=Object.assign({},b[k],d[k]||{});});
   if(!(d.risk>0))d.risk=2;if(d.modus!=="tag")d.modus="nacht";
   d.assets=d.assets||{};ASSETS.forEach(function(x){var s=d.assets[x.id]=Object.assign({},b.assets[x.id],d.assets[x.id]||{});
-    s.fut=Object.assign({},x.fut,s.fut||{});s.cfd=Object.assign({},x.cfd,s.cfd||{});if(s.prod!=="cfd")s.prod="fut";s.off=+s.off||0;});
+    s.fut=Object.assign({},x.fut,s.fut||{});s.cfd=Object.assign({},x.cfd,s.cfd||{});if(s.cfd.sym==="IBUS100")s.cfd.sym="IBUST100";if(s.prod!=="cfd")s.prod="fut";s.off=+s.off||0;});
   ["positionen","journal","deleted"].forEach(function(k){if(!Array.isArray(d[k]))d[k]=[];});
   return d;}
 function merge(l,r,lU,rU){l=norm(JSON.parse(JSON.stringify(l)));r=norm(JSON.parse(JSON.stringify(r)));
@@ -141,10 +150,10 @@ function load(){
 function render(){
   document.getElementById("top").innerHTML=C.topbar({title:"Turtle",icon:"🐢",sub:"Breakout-Strategie · 5 Märkte",accent:"#22c55e",accent2:"#86efac"});
   C.paintStatus();
-  var tabs=[["signale","📊 Signale"],["zettel","🧾 Order-Zettel"],["positionen","📒 Positionen"],["statistik","📈 Statistik"],["einstellungen","⚙ Einstellungen"]];
+  var tabs=[["signale","📊 Signale"],["zettel","🧾 Order-Zettel"],["positionen","📒 Positionen"],["statistik","📈 Statistik"],["einstellungen","⚙ Einstellungen"],["anleitung","📖 Anleitung"]];
   document.getElementById("tabs").innerHTML=tabs.map(function(t){return '<button class="tab'+(st.tab===t[0]?" on":"")+'" onclick="TT.tab(\''+t[0]+'\')">'+t[1]+"</button>";}).join("");
   var h="";if(st.flash)h+='<div class="flash'+(st.flash.warn?" warn":"")+'">'+C.esc(st.flash.t)+"</div>";
-  h+=({signale:vSignale,zettel:vZettel,positionen:vPos,statistik:vStat,einstellungen:vSet}[st.tab])();
+  h+=({signale:vSignale,zettel:vZettel,positionen:vPos,statistik:vStat,einstellungen:vSet,anleitung:vAnleitung}[st.tab])();
   document.getElementById("main").innerHTML=h;
 }
 function datenInfo(){
@@ -156,6 +165,7 @@ function vSignale(){
     '<div class="empty"><div class="big">🐢</div>Noch keine Kursdaten.<br><span class="small">Die GitHub-Aufgabe „Turtle“ legt sie beim ersten Lauf an (Repo → Actions → Turtle → Run workflow).</span><br><button class="btn" style="margin-top:14px" onclick="TT.load()">Erneut laden</button></div>';
   var h="";
   if(Date.now()-st.j.ts>3*3600e3)h+='<div class="banner">⚠ Die Kursdaten sind älter als drei Stunden. Läuft die GitHub-Aufgabe „Turtle“ noch? (Repo → Actions)</div>';
+  if(kontoLeer())h+='<div class="banner info">Neu hier? Die <a href="#" onclick="TT.tab(\'anleitung\');return false" style="color:#cfe0ff">📖 Anleitung</a> erklärt alles Schritt für Schritt.</div>';
   if(kontoLeer())h+='<div class="banner info">ℹ Trag unter <a href="#" onclick="TT.tab(\'einstellungen\');return false" style="color:#cfe0ff">⚙ Einstellungen</a> deinen Kontostand ein – dann rechnet das Cockpit die Stückzahlen je Trade aus.</div>';
   var p=param(),hw=hwmUsd(),inT=0,vol=0,ris=0;
   ASSETS.forEach(function(a){posOf(a.id).forEach(function(x){var sp=Object.assign({},data.assets[a.id][x.prod]),c=calc(a.id);inT++;
@@ -324,6 +334,106 @@ function vSet(){
     '<div class="note" style="margin-top:8px">Standard aus dem Video: 20 / 10 / 20 / 2, ohne Filter. Das Original-„System 2“ der Turtles entspricht 55 / 20. Die Push-Nachrichten rechnen immer mit dem Standard.</div></div>';
   h+='<div class="panel"><h3>📲 Push aufs Handy (ntfy)</h3><div class="note">1. App <b>ntfy</b> installieren (Android/iOS, kostenlos, ohne Konto).<br>2. Einen schwer zu erratenden Themennamen ausdenken, z. B. <code>turtle-'+Math.random().toString(36).slice(2,10)+'</code>, und in der App abonnieren.<br>3. Bei GitHub im Repo <b>Cockpit</b> → Settings → Secrets and variables → Actions → <b>New repository secret</b>: Name <code>NTFY_TOPIC</code>, Wert = dein Themenname.<br>'+
     "Dann kommt jeden Handelstag nach 23 Uhr der Order-Zettel (ohne Stückzahlen und Kontostand) und während des Tages eine Nachricht, sobald ein Breakout oder Stop passiert – stündlich geprüft. Der Themenname ist wie ein Passwort: Wer ihn kennt, kann mitlesen.</div></div>";
+  return h;
+}
+
+/* ---------- Anleitung ---------- */
+function kapitalTabelle(){
+  var r=data.risk,fx=eurusd(),rows="";
+  ASSETS.forEach(function(a){var c=calc(a.id);if(!c||!c.an)return;var atr=c.an.next.atr,m=c.an.p.mult;
+    ["fut","cfd"].forEach(function(pr){var sp=data.assets[a.id][pr],proE=m*atr*sp.mult*sp.step,min=proE/(r/100);
+      rows+="<tr><td style=\"color:"+a.color+";font-weight:700\">"+(pr==="fut"?a.name:"")+"</td><td>"+C.esc(sp.sym)+(pr==="fut"?" <span class=\"muted\">(Future)</span>":" <span class=\"muted\">(CFD)</span>")+"</td><td>"+C.num(proE,0)+" $</td><td><b>"+C.num(min,0)+" $</b>"+(fx?"<br><span class=\"muted\">≈ "+C.num(min/fx,0)+" €</span>":"")+"</td></tr>";});});
+  if(!rows)return '<div class="note">Erscheint, sobald Kursdaten geladen sind.</div>';
+  return '<div class="scroll-x"><table class="t"><thead><tr><th>Markt</th><th>Produkt</th><th>Risiko je Einheit</th><th>Konto ab</th></tr></thead><tbody>'+rows+"</tbody></table></div>"+
+    '<div class="note" style="margin-top:6px">Gerechnet mit der aktuellen Schwankung (ATR) und '+C.num(r,1)+' % Risiko: „Konto ab“ ist der Kontostand, ab dem überhaupt 1 Einheit ins Risiko-Budget passt. Schwanken die Märkte stärker, steigen die Werte – und umgekehrt.</div>';
+}
+function sec(titel,inhalt,offen){return '<details class="anl"'+(offen?" open":"")+"><summary>"+titel+'</summary><div class="anl-b">'+inhalt+"</div></details>";}
+function vAnleitung(){
+  var h='<div class="panel"><h3>📖 Anleitung</h3><div class="note">Alles Wichtige zum Turtle-Bereich – zum Aufklappen. Keine Anlageberatung: Das Tool setzt nur die Regeln aus dem Video um.</div></div>';
+  h+=sec("1 · Die Strategie in einer Minute",
+    "<p>Märkte laufen manchmal wochenlang in eine Richtung. Wann, weiß niemand. Darum kauft die Strategie <b>jeden Ausbruch nach oben</b> und nimmt in Kauf, dass viele davon klein im Minus enden. Die wenigen großen Trends bezahlen alles.</p>"+
+    "<ol><li><b>Einstieg:</b> Der Kurs steigt über das höchste Hoch der letzten 20 Handelstage.</li>"+
+    "<li><b>Fester Stop:</b> Einstieg minus 2 × ATR. Bleibt für den ganzen Trade gleich.</li>"+
+    "<li><b>Trailing-Stop:</b> das tiefste Tief der letzten 10 Handelstage. Steigt mit dem Kurs mit.</li>"+
+    "<li><b>Ausstieg:</b> wenn einer der beiden Stops erreicht wird – es gilt immer der <b>höhere</b>. Kein Gewinnziel.</li>"+
+    "<li><b>Größe:</b> Jeder Trade riskiert "+C.num(data.risk,1)+" % vom bisherigen Kontohöchststand (Abstand Einstieg → fester Stop × Stückzahl).</li></ol>"+
+    "<p>Ein Handelstag endet um 17:00 New Yorker Zeit, bei uns meist 23:00 Uhr. Erst dann ändern sich die Linien.</p>",true);
+  h+=sec("2 · Auf welche Zahlen du achten musst",
+    "<p>Jede Markt-Karte unter 📊 Signale zeigt:</p><ul>"+
+    "<li><b>Status oben rechts</b> – <i>wartet auf Breakout</i> (nichts zu tun außer der Kauf-Order), <i>⚡ Breakout heute</i> (Einstieg ausgelöst), <i>laut Regel im Trade</i> (die Strategie wäre drin, du nicht), <i>● Deine Position</i> (du bist drin).</li>"+
+    "<li><b>Einstieg (20-T-Hoch)</b> – dein Kaufkurs für die Kauf-Stop-Order. <b>Abstand</b>: wie viel Prozent der Kurs noch steigen muss.</li>"+
+    "<li><b>Fester Stop bei Einstieg</b> – dorthin kommt die Verkaufs-Stop-Order, die du an den Kauf hängst.</li>"+
+    "<li><b>Trailing (10-T-Tief)</b> – wird wichtig, sobald du drin bist: Liegt er über dem festen Stop, ziehst du deinen Stop darauf nach.</li>"+
+    "<li><b>Bei Einstieg: X Kontrakte</b> – die Stückzahl für deine Order, dazu Risiko in $ und das Volumen (wie viel Markt du bewegst).</li>"+
+    "<li><b>Bei deiner Position: Stop jetzt</b> – <u>die</u> Zahl für jeden Abend. Steht da „Gewinn gesichert“, liegt der Stop schon über deinem Kaufkurs.</li></ul>"+
+    "<p>Im Kopfbereich: <b>Hebel</b> (Volumen ÷ Kontostand) und <b>offenes Risiko</b> – so viel würdest du verlieren, wenn alle Stops gleichzeitig greifen.</p>");
+  h+=sec("3 · Wann handelst du wie? (Tagesablauf)",
+    '<div class="scroll-x"><table class="t"><thead><tr><th>Situation</th><th>Was du tust</th></tr></thead><tbody>'+
+    "<tr><td>Abends nach 23 Uhr: Push „Order-Zettel“</td><td>Zettel unter 🧾 öffnen und die Orders bei IBKR anlegen bzw. ändern. Dauert 5 Minuten.</td></tr>"+
+    "<tr><td>Markt <i>wartet auf Breakout</i></td><td>Kauf-Stop-Order am Einstiegslevel mit angehängtem Verkaufs-Stop am festen Stop. Liegt schon eine, nur die beiden Preise und die Menge anpassen.</td></tr>"+
+    "<tr><td>Push „Breakout“</td><td>Prüfen, ob deine Kauf-Order ausgeführt wurde. Wenn ja: unter 📒 Positionen mit dem echten Kaufkurs erfassen.</td></tr>"+
+    "<tr><td>Du bist <i>im Trade</i></td><td>Jeden Abend den Verkaufs-Stop auf „Stop jetzt“ setzen – <b>nur nach oben</b>, nie nach unten.</td></tr>"+
+    "<tr><td>Push „Stop berührt“</td><td>Prüfen, ob verkauft wurde. Dann unter 📒 auf „Verkauft“ und den echten Verkaufskurs eintragen.</td></tr>"+
+    "<tr><td>„laut Regel im Trade“, du aber nicht</td><td>Nichts tun. Nicht hinterherkaufen – warten, bis die Regel aussteigt und es einen neuen Breakout gibt.</td></tr>"+
+    "<tr><td>„nicht umsetzbar“</td><td>Konto zu klein für 1 Einheit dieses Produkts. Markt auslassen oder unter ⚙ auf CFD stellen.</td></tr>"+
+    (data.modus==="tag"?"<tr><td>Tageshandel</td><td>Positionen vor 22:30 Uhr schließen und ab 0:00 Uhr wieder kaufen, wenn der Kurs über dem Stop liegt – am einfachsten per Zeitbedingung in TWS (siehe 4).</td></tr>":"")+
+    "</tbody></table></div><p><b>Nie:</b> Stop nach unten verschieben, Gewinne „vorsichtshalber“ mitnehmen, Signale auslassen, weil sie sich falsch anfühlen. Die Strategie lebt davon, dass man jeden Breakout nimmt.</p>");
+  h+=sec("4 · Werte bei IBKR finden und Orders anlegen",
+    "<p><b>Vorher einmalig:</b> im IBKR-Kundenportal unter Einstellungen → Handelsberechtigungen Futures bzw. CFDs freischalten und für Echtzeitkurse ein Marktdaten-Abo (CME/COMEX) buchen. Zum Üben erst das <b>Paper-Trading-Konto</b> nehmen.</p>"+
+    "<p><b>Instrument suchen</b> (TWS, IBKR Desktop oder App: Suchfeld oben):</p>"+
+    '<div class="scroll-x"><table class="t"><thead><tr><th>Markt</th><th>Micro-Future</th><th>CFD</th></tr></thead><tbody>'+
+    "<tr><td>S&amp;P 500</td><td><code>MES</code> · Futures · CME</td><td><code>IBUS500</code> · CFD</td></tr>"+
+    "<tr><td>Nasdaq 100</td><td><code>MNQ</code> · Futures · CME</td><td><code>IBUST100</code> · CFD</td></tr>"+
+    "<tr><td>Gold</td><td><code>MGC</code> · Futures · COMEX</td><td><code>XAUUSD</code> · CFD (Metall)</td></tr>"+
+    "<tr><td>Silber</td><td><code>SIL</code> · Futures · COMEX</td><td><code>XAGUSD</code> · CFD (Metall)</td></tr>"+
+    "<tr><td>Bitcoin</td><td><code>MBT</code> · Futures · CME</td><td>für EU-Kunden meist nicht verfügbar</td></tr></tbody></table></div>"+
+    "<p>Bei Futures den <b>Kontraktmonat mit dem meisten Volumen</b> wählen (meist der nächste; TWS zeigt das Volumen in der Auswahl).</p>"+
+    "<p><b>Neuer Einstieg (Bracket-Order):</b></p><ol><li>Instrument öffnen → <b>Kaufen</b>.</li><li>Ordertyp <b>STP</b> (Stop), Stop-Preis = <i>Einstieg</i> aus dem Zettel, Menge = Stückzahl aus dem Zettel.</li>"+
+    "<li>Gültigkeit (TIF) <b>GTC</b> – „bis auf Widerruf“. Eine DAY-Order würde um 23 Uhr verfallen.</li>"+
+    "<li><b>Anhängen → Stop-Loss</b> (TWS: Rechtsklick auf die Order → Attach → Stop Loss; in der App „Bracket“/„Stop-Loss hinzufügen“), Preis = <i>fester Stop</i>.</li><li>Übermitteln. Fertig – die Kauf-Order wartet, bis der Kurs das Level erreicht.</li></ol>"+
+    "<p><b>Abends anpassen:</b> unter <i>Orders</i> die offene Order anklicken, Stop-Preis (und ggf. Menge) ändern, erneut übermitteln.</p>"+
+    "<p><b>Stop nachziehen:</b> unter <i>Orders</i> die Verkaufs-Stop-Order deiner Position anklicken, Stop-Preis auf „Stop jetzt“ setzen, übermitteln.</p>"+
+    "<p><b>Kursversatz prüfen:</b> Vergleiche einmal den Kurs bei IBKR mit dem Kurs im Cockpit. Weicht er ab (CFD statt Future, anderer Kontraktmonat), trag den IBKR-Kurs unter ⚙ ein – dann stimmen alle Level für dein Produkt.</p>"+
+    "<p><b>Futures rollen:</b> Ein paar Tage vor dem Verfall offene Positionen im alten Monat verkaufen, im neuen Monat kaufen und den Stop neu setzen (Kursversatz unter ⚙ neu abgleichen).</p>"+
+    "<p><b>Tageshandel ohne Nachtschicht:</b> In TWS lassen sich Orders mit Zeitbedingung anlegen (Order → Bedingungen → Zeit): Verkauf ab 16:30 ET, Wiederkauf ab 18:00 ET.</p>");
+  h+=sec("5 · Wie viel Kapital brauche ich?",
+    "<p>Entscheidend ist, ob <b>1 Einheit</b> überhaupt ins Risiko-Budget passt. Aktuell:</p>"+kapitalTabelle()+
+    "<p>Faustregel: Mit Micro-Futures auf allen fünf Märkten braucht es ein sechsstelliges Konto. Mit CFDs gehen Gold, Silber und S&amp;P 500 schon mit einem kleinen fünfstelligen Betrag. Für ein Margin-Konto verlangt IBKR Irland mindestens 2.000 €.</p>");
+  h+=sec("6 · Kürzelverzeichnis",'<dl class="gl">'+[
+    ["ATR","Average True Range – durchschnittliche Tagesschwankung der letzten 20 Tage in Kurspunkten. Bei den Turtles „N“ genannt."],
+    ["Breakout","Ausbruch: Der Kurs steigt über das höchste Hoch der letzten 20 Handelstage."],
+    ["Buy-Stop / STP","Kauf-Order, die erst ausgeführt wird, wenn der Kurs ein Level erreicht (bei der ING: Start-Buy)."],
+    ["Stop-Loss","Verkaufs-Order, die bei Erreichen eines Kurses automatisch verkauft."],
+    ["Fester Stop","Einstieg − 2 × ATR. Bewegt sich nie."],
+    ["Trailing-Stop","Nachgezogener Stop: hier das tiefste Tief der letzten 10 Handelstage."],
+    ["Bracket","Kauf-Order mit automatisch angehängtem Stop-Loss."],
+    ["GTC / DAY","Gültigkeit einer Order: bis auf Widerruf bzw. nur bis Handelsende."],
+    ["R","Das eingesetzte Risiko eines Trades (Einstieg − fester Stop). +3 R = dreifaches Risiko gewonnen, −1 R = am festen Stop raus."],
+    ["High-Water-Mark","Höchster Kontostand bisher. Das Risiko je Trade wird darauf berechnet."],
+    ["Drawdown","Rückgang vom Höchststand – im Video bis 38 %."],
+    ["Profit-Faktor","Summe der Gewinne ÷ Summe der Verluste. Über 1 = profitabel."],
+    ["Trefferquote","Anteil der Gewinner-Trades. Bei Trendfolge oft unter 50 % – normal."],
+    ["Hebel","Volumen deiner Positionen ÷ Kontostand."],
+    ["Volumen","Gegenwert der Position: Kurs × Multiplikator × Stückzahl."],
+    ["Margin","Sicherheitsleistung, die der Broker für Futures/CFDs blockiert."],
+    ["Future","Börsengehandelter Terminkontrakt mit festem Verfallmonat."],
+    ["Micro-Future","Kleine Futures: MES (S&P 500, 5 $/Punkt), MNQ (Nasdaq, 2 $/Punkt), MGC (Gold, 10 Unzen), SIL (Silber, 1.000 Unzen), MBT (0,1 Bitcoin)."],
+    ["ES, NQ, GC, SI","Die großen Futures auf S&P 500, Nasdaq 100, Gold, Silber – aus ihnen kommen die Kursdaten (=F bei Yahoo)."],
+    ["CFD","Differenzkontrakt mit dem Broker – feiner stückelbar, aber mit Übernachtzinsen (Swaps)."],
+    ["IBUS500, IBUST100","Index-CFDs von IBKR auf S&P 500 und Nasdaq 100 (1 Einheit = 1 × Indexstand in $)."],
+    ["XAUUSD, XAGUSD","Gold bzw. Silber in Dollar je Unze – als CFD bei IBKR."],
+    ["Multiplikator","$ Gewinn/Verlust je Kurspunkt und Einheit."],
+    ["Kontraktmonat / Rollen","Futures verfallen; vor dem Verfall in den nächsten Monat wechseln."],
+    ["Kursversatz","Unterschied zwischen dem Datenkurs im Cockpit und dem Kurs deines Produkts bei IBKR."],
+    ["Swap","Übernachtzins bei CFDs – der Grund für die Tageshandel-Variante."],
+    ["Spread","Abstand zwischen Kauf- und Verkaufskurs."],
+    ["Filter","Original-Turtle-Regel: nach einem Gewinner den nächsten Breakout auslassen (standardmäßig aus)."],
+    ["Tageshandel","Variante: Positionen um 16:30 New York schließen und ab 18:00 New York wieder eröffnen."],
+    ["ET / NY","US-Ostküstenzeit (New York), meist 6 Stunden hinter uns."],
+    ["TWS","Trader Workstation – die Handelssoftware von IBKR."],
+    ["Paper-Trading","Übungskonto bei IBKR mit Spielgeld."],
+    ["ntfy","App für die Push-Nachrichten vom Cockpit."]
+  ].map(function(x){return "<dt>"+x[0]+"</dt><dd>"+x[1]+"</dd>";}).join("")+"</dl>");
   return h;
 }
 
