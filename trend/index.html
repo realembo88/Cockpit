@@ -125,12 +125,20 @@ function vSignale(){
 function bestandBox(x){var b=best(x.id),w=wert(x);
   if(st.edit===x.id)return '<div class="box"><b>Bestand '+C.esc(x.name)+'</b><div class="row2" style="margin-top:8px"><div class="field"><label>Anteile</label><input id="b-anz" inputmode="decimal" value="'+(b?String(b.anteile).replace(".",","):"")+'"></div>'+
     '<div class="field"><label>Kaufwert gesamt (€)</label><input id="b-ek" inputmode="decimal" value="'+(b&&b.einstand?String(b.einstand).replace(".",","):"")+'"></div></div>'+
+    '<div class="field"><label>Erster Kauf am (optional)</label><input id="b-dat" type="date" value="'+(b&&b.datum?b.datum:"")+'"></div>'+
     '<div style="display:flex;gap:8px"><button class="btn full" onclick="TF.saveBest(\''+x.id+'\')">Speichern</button><button class="btn ghost" onclick="TF.edit(null)">Abbrechen</button></div>'+
-    '<div class="note" style="margin-top:6px">Anteile und Kaufwert stehen in der Depotübersicht deines Brokers (bei der ING: „Stück“ und „Einstandswert“). 0 Anteile = verkauft.</div></div>';
+    '<div class="note" style="margin-top:6px">Anteile und Kaufwert stehen in der Depotübersicht deines Brokers (bei der ING: „Stück“ und „Einstandswert“). Das Kaufdatum ist nur zur Übersicht – den genauen Stand je Kauf führt die ING. 0 Anteile = verkauft.</div></div>';
   if(b){var gv=w!=null&&b.einstand?w-b.einstand:null;
     return '<div class="box" style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div>Mein Bestand: <b>'+(C.priv()?"•••":C.num(b.anteile,b.anteile%1?3:0))+" Anteile</b>"+(w!=null?" · Wert <b>"+C.eur(w,0)+"</b>":"")+
-      (gv!=null?' · <span class="'+(gv>=0?"pos":"neg")+'">'+(C.priv()?"":(gv>=0?"+":"−"))+C.eur(Math.abs(gv),0)+" ("+pct(gv/b.einstand*100)+")</span>":"")+'</div><button class="chip" onclick="TF.edit(\''+x.id+'\')">ändern</button></div>';}
+      (gv!=null?' · <span class="'+(gv>=0?"pos":"neg")+'">'+(C.priv()?"":(gv>=0?"+":"−"))+C.eur(Math.abs(gv),0)+" ("+pct(gv/b.einstand*100)+")</span>":"")+haltedauer(x,b)+'</div><button class="chip" onclick="TF.edit(\''+x.id+'\')">ändern</button></div>';}
   return '<div class="tog" style="justify-content:space-between"><label style="display:flex;gap:8px;align-items:center"><input type="checkbox" '+(data.halte[x.id]?"checked":"")+' onchange="TF.halte(\''+x.id+'\',this.checked)"> Ich halte diesen ETF</label><button class="chip" onclick="TF.edit(\''+x.id+'\')">＋ Bestand eintragen</button></div>';}
+/* Haltedauer seit dem ersten Kauf; bei Xetra-Gold zusätzlich die Ein-Jahres-Frist */
+function haltedauer(x,b){if(!b.datum)return "";var d=new Date(b.datum+"T12:00:00"),m=Math.floor((Date.now()-d)/(30.44*864e5)),t;
+  t=m<1?"seit diesem Monat":m<24?"seit "+m+(m===1?" Monat":" Monaten"):"seit "+C.num(m/12,1)+" Jahren";
+  var h="<br><span class=\"muted\">Erster Kauf "+d.toLocaleDateString("de-DE")+" · "+t+"</span>";
+  if(x.isin==="DE000A0S9GB0"){var f=new Date(d);f.setFullYear(f.getFullYear()+1);
+    h+="<br><span class=\"muted\">Xetra-Gold: Gewinne aus diesem Kauf "+(f<=new Date()?"<b style=\"color:#69f0ae\">sind nach über 1 Jahr steuerfrei</b>":"ab "+f.toLocaleDateString("de-DE")+" steuerfrei")+" – gilt je Kauf; im Zweifel Steuerberaterin fragen.</span>";}
+  return h;}
 function chart(x){var m=x.monate,N=n();if(m.length<N+3)return "";var rows=[];
   for(var i=Math.max(N-1,m.length-36);i<m.length;i++){var s=0;for(var k=i-N+1;k<=i;k++)s+=m[k][1];rows.push({d:m[i][0],c:m[i][1],sn:s/N});}
   var v=[];rows.forEach(function(r){v.push(r.c,r.sn);});var mn=Math.min.apply(null,v),mx=Math.max.apply(null,v),pd=(mx-mn)*.06;mn-=pd;mx+=pd;
@@ -192,7 +200,7 @@ window.TF={tab:function(t){st.tab=t;render();window.scrollTo(0,0);},load:load,rb
   edit:function(id){st.edit=id;render();},
   saveBest:function(id){var a=C.parseNum(document.getElementById("b-anz").value||"0"),e=C.parseNum(document.getElementById("b-ek").value||"0");
     if(!(a>=0)||!(e>=0)){flash("⚠ Bitte gültige Zahlen eingeben",true);return;}
-    if(a>0)data.bestand[id]={anteile:a,einstand:e};else{delete data.bestand[id];data.halte[id]=false;}st.edit=null;persist();flash(a>0?"✓ Bestand gespeichert":"✓ Bestand entfernt");},
+    var dat=(document.getElementById("b-dat")||{}).value||"";if(a>0)data.bestand[id]={anteile:a,einstand:e,datum:dat||null};else{delete data.bestand[id];data.halte[id]=false;}st.edit=null;persist();flash(a>0?"✓ Bestand gespeichert":"✓ Bestand entfernt");},
   schritt:function(k,v){data.schritte[k]=!!v;persist();},
   saveZiel:function(){var w=C.parseNum(document.getElementById("z-wert").value||"0"),r=C.parseNum(document.getElementById("z-rate").value||"0"),z=C.parseNum(document.getElementById("z-ziel").value);
     if(!(w>=0)||!(r>=0)||!(z>0)){flash("⚠ Bitte gültige Beträge eingeben",true);return;}var mit=document.getElementById("z-mit");data.depot={wert:w,rate:r,ziel:z,mitBestand:!!(mit&&mit.checked)};persist();flash("✓ Gespeichert");}};
