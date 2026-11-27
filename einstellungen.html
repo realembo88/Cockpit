@@ -22,7 +22,7 @@ var C=window.Cockpit;
 document.getElementById("top").innerHTML=C.topbar({title:"Einstellungen",icon:"⚙",sub:"Sync & Daten",accent:"#00bcd4",base:""});
 var msg=null,rsv=null;
 var AREAS=["energie","auto","edelmetall","finanzen","einkaeufe","ferienwohnung","haus","steuer","dokumente","zuordnung","vertraege","zaehler","training","memo","vorsorge","netz","turtle","trend"];
-var KNAMEN={dokumente:"📂 Dokumente",finanzen:"💶 Finanzen",ferienwohnung:"🏡 Ferienwohnung",vertraege:"📑 Verträge & Fristen",haus:"🏘️ Haus",energie:"🏠 Energie",auto:"🚗 Auto",steuer:"🧾 Steuer",edelmetall:"🪙 Edelmetalle",turtle:"🐢 Turtle-Trading",trend:"📅 Trendfilter",training:"🏋️ Training",zaehler:"🎯 ThingCounter"};
+var KNAMEN={memo:"📝 Memo & Einkauf",vorsorge:"🎒 Notvorrat",dokumente:"📂 Dokumente",finanzen:"💶 Finanzen",ferienwohnung:"🏡 Ferienwohnung",vertraege:"📑 Verträge & Fristen",haus:"🏘️ Haus",energie:"🏠 Energie",auto:"🚗 Auto",steuer:"🧾 Steuer",edelmetall:"🪙 Edelmetalle",turtle:"🐢 Turtle-Trading",trend:"📅 Trendfilter",training:"🏋️ Training",zaehler:"🎯 ThingCounter"};
 var NAMES={energie:"Energie",auto:"Auto",edelmetall:"Edelmetalle",finanzen:"Finanzen",einkaeufe:"Einkäufe",ferienwohnung:"Ferienwohnung",haus:"Haus",steuer:"Steuer",dokumente:"Dokumente",zuordnung:"Zuordnungen Buchung ↔ Dokument",vertraege:"Verträge & Fristen",zaehler:"ThingCounter",training:"Training",memo:"Memo & Einkaufsliste",vorsorge:"Notvorrat & Notgepäck",netz:"Netzwerk (Haus → Technik)",turtle:"Turtle-Trading",trend:"Trendfilter"};
 
 function kopf(){document.getElementById("top").innerHTML=C.topbar({title:"Einstellungen",icon:"⚙",sub:"Sync & Daten",accent:"#00bcd4",base:""});try{C.paintStatus();}catch(e){}}
@@ -63,10 +63,12 @@ function render(){
     '<span class="muted">🔒 Der Token wird nur lokal auf diesem Gerät gespeichert, nie im öffentlichen Code. Auf jedem weiteren Gerät einmal hier eintragen.</span></div></div>';
   /* Kacheln der Startseite (je Gerät) */
   var kc=C.kachelCfg(),ko=C.kachelOrdnung(C.KACHEL_STANDARD);
-  h+='<div class="panel"><h3>🧩 Kacheln auf der Startseite</h3><div class="small muted" style="margin-bottom:10px;line-height:1.6">Gilt nur für dieses Gerät – am Handy darf die Reihenfolge anders sein als am PC.</div>'+
+  h+='<div class="panel"><h3>🧩 Kacheln auf der Startseite</h3><div class="small muted" style="margin-bottom:10px;line-height:1.6">Gilt nur für dieses Gerät – am Handy darf die Reihenfolge anders sein als am PC. Mit 👁 / 🙈 blendest du eine Kachel aus oder wieder ein; der Bereich selbst bleibt erhalten.</div>'+
     '<div class="row2" style="margin-bottom:10px"><button class="btn'+(kc.mode==="fest"?"":" ghost")+'" onclick="CP.kMode(\'fest\')">Eigene Reihenfolge</button><button class="btn'+(kc.mode==="nutzung"?"":" ghost")+'" onclick="CP.kMode(\'nutzung\')">Nach Nutzung</button></div>'+
-    (kc.mode==="nutzung"?'<div class="small muted" style="line-height:1.6">Häufig geöffnete Bereiche stehen vorn (zählt die Aufrufe von der Startseite, ältere Nutzung zählt nach und nach weniger). Bei Gleichstand gilt die eigene Reihenfolge.</div>':
-    ko.map(function(id,i){return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:'+(i?"1px solid var(--border)":"none")+'"><span style="flex:1">'+C.esc(KNAMEN[id]||NAMES[id]||id)+'</span>'+
+    (kc.mode==="nutzung"?'<div class="small muted" style="line-height:1.6">Häufig geöffnete Bereiche stehen vorn (zählt die Aufrufe von der Startseite, ältere Nutzung zählt nach und nach weniger). Bei Gleichstand gilt die eigene Reihenfolge.</div>'+
+    '<div class="small muted" style="margin-top:10px">Ausgeblendet: '+(kc.aus.length?kc.aus.map(function(id){return C.esc(KNAMEN[id]||NAMES[id]||id)+' <a href="#" onclick="CP.kAus(\''+id+'\',false);return false">einblenden</a>';}).join(", "):"keine")+"</div>":
+    ko.map(function(id,i){var aus=kc.aus.indexOf(id)>=0;return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:'+(i?"1px solid var(--border)":"none")+(aus?";opacity:.5":"")+'"><span style="flex:1">'+C.esc(KNAMEN[id]||NAMES[id]||id)+(aus?' <span class="small muted">(ausgeblendet)</span>':"")+'</span>'+
+      '<button class="btn ghost" style="flex:0 0 auto;padding:4px 10px" onclick="CP.kAus(\''+id+'\','+(!aus)+')" title="'+(aus?"Einblenden":"Ausblenden")+'" aria-label="'+(aus?"Einblenden":"Ausblenden")+'">'+(aus?"🙈":"👁")+'</button>'+
       '<button class="btn ghost" style="flex:0 0 auto;padding:4px 10px" onclick="CP.kMove(\''+id+'\',-1)"'+(i?"":" disabled")+' aria-label="nach oben">↑</button><button class="btn ghost" style="flex:0 0 auto;padding:4px 10px" onclick="CP.kMove(\''+id+'\',1)"'+(i<ko.length-1?"":" disabled")+' aria-label="nach unten">↓</button></div>';}).join("")+
     '<button class="btn ghost full" style="margin-top:10px" onclick="CP.kReset()">Standard-Reihenfolge</button>')+"</div>";
   /* Sicherung */
@@ -120,6 +122,7 @@ window.CP={
     sel.forEach(function(a){C.restoreArea(a,rsv.areas[a],"replace");});rsv=null;msg={t:"✓ Wiederhergestellt: "+sel.map(function(a){return NAMES[a];}).join(", ")};render();},
   kMode:function(m){var c=C.kachelCfg();if(m==="fest"&&c.mode==="nutzung"&&!c.order.length)c.order=C.kachelOrdnung(C.KACHEL_STANDARD);c.mode=m;C.kachelSet(c);render();},
   kMove:function(id,d){var c=C.kachelCfg(),l=C.kachelOrdnung(C.KACHEL_STANDARD),i=l.indexOf(id),j=i+d;if(i<0||j<0||j>=l.length)return;l.splice(i,1);l.splice(j,0,id);c.order=l;c.mode="fest";C.kachelSet(c);render();},
+  kAus:function(id,aus){C.kachelAus(id,aus);msg={t:aus?"✓ Kachel ausgeblendet":"✓ Kachel wieder sichtbar"};render();},
   kReset:function(){var c=C.kachelCfg();c.order=[];c.mode="fest";C.kachelSet(c);msg={t:"✓ Standard-Reihenfolge"};render();},
   logout:function(){C.setConfig({token:""});msg={t:"Token entfernt. Daten bleiben lokal erhalten."};render();C.paintStatus();}
 };

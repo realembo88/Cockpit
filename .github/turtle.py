@@ -476,15 +476,18 @@ def main(alt_pfad, neu_pfad, jetzt=None):
     # Push: einmal täglich der Order-Zettel, dazu Breakouts/Stops während des Tages – jedes Ereignis nur einmal
     gemeldet = {k: v for k, v in (alt.get("gemeldet") or {}).items() if v > out["ts"] - 14 * 864e5}
     msgs = []
+    # Turtle-Pushs nur mit Repo-Variable TURTLE_PUSH = 1 (Turtle ruht gerade; die Daten laufen trotzdem weiter)
+    turtle_push = os.environ.get("TURTLE_PUSH", "").strip().lower() in ("1", "true", "ja")
     z = zettel(out, os.environ.get("TURTLE_TAGESHANDEL", "").strip() in ("1", "true", "ja"))
-    if z and z["key"] not in gemeldet:
+    if turtle_push and z and z["key"] not in gemeldet:
         msgs.append(z)
-    msgs += [e for e in ereignisse(out) if e["key"] not in gemeldet]
+    if turtle_push:
+        msgs += [e for e in ereignisse(out) if e["key"] not in gemeldet]
     tc = trend_check(out.get("trend") or {}, jetzt)
     if tc and tc["key"] not in gemeldet:
         msgs.append(tc)
     frisch = [a["id"] for a in ASSETS if a["id"] in out["assets"] and not out["assets"][a["id"]].get("veraltet")]
-    if len(frisch) < len(ASSETS):
+    if turtle_push and len(frisch) < len(ASSETS):
         fehlt = [a["name"] for a in ASSETS if a["id"] not in frisch]
         print("::warning::Keine aktuellen Kurse für:", ", ".join(fehlt))
         k = "stoerung:" + jetzt.strftime("%Y-%m-%d")          # höchstens eine Störungsmeldung pro Tag

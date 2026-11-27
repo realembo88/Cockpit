@@ -445,13 +445,17 @@ function autoPull(areas,onChange){
 
 /* ---------- Kacheln der Startseite: Reihenfolge je Gerät ----------
    cockpit:kacheln {mode:"fest"|"nutzung", order:[id…], n:{id:Aufrufe}, decay:ts}. Nutzung halbiert sich alle 30 Tage. */
-var KACHEL_KEY="cockpit:kacheln",KACHEL_STANDARD=["dokumente","finanzen","ferienwohnung","vertraege","haus","energie","auto","steuer","edelmetall","training","zaehler"];
-function kachelCfg(){var c=lsGet(KACHEL_KEY);c=c&&typeof c==="object"?c:{};if(c.mode!=="nutzung")c.mode="fest";if(!Array.isArray(c.order))c.order=[];if(!c.n||typeof c.n!=="object")c.n={};return c;}
+var KACHEL_KEY="cockpit:kacheln",KACHEL_STANDARD=["dokumente","finanzen","ferienwohnung","vertraege","haus","energie","auto","steuer","edelmetall","trend","turtle","training","zaehler"];
+/* Kacheln, die ausgeblendet sind, solange auf dem Gerät nichts anderes eingestellt wurde */
+var KACHEL_AUS_STANDARD=["turtle"];
+function kachelCfg(){var c=lsGet(KACHEL_KEY);c=c&&typeof c==="object"?c:{};if(c.mode!=="nutzung")c.mode="fest";if(!Array.isArray(c.order))c.order=[];if(!c.n||typeof c.n!=="object")c.n={};if(!Array.isArray(c.aus))c.aus=KACHEL_AUS_STANDARD.slice();return c;}
 function kachelSet(c){try{localStorage.setItem(KACHEL_KEY,JSON.stringify(c));}catch(e){}}
 function kachelOrdnung(ids){var c=kachelCfg(),std={},pos={};KACHEL_STANDARD.forEach(function(id,i){std[id]=i;});c.order.forEach(function(id,i){pos[id]=i;});
   var l=ids.slice();function p(id){return pos[id]!=null?pos[id]:1000+(std[id]!=null?std[id]:99);}
   if(c.mode==="nutzung")l.sort(function(a,b){return ((c.n[b]||0)-(c.n[a]||0))||(p(a)-p(b));});else l.sort(function(a,b){return p(a)-p(b);});return l;}
-function kacheln(areas){var by={};areas.forEach(function(a){by[a.id]=a;});return kachelOrdnung(areas.map(function(a){return a.id;})).map(function(id){return by[id];});}
+function kacheln(areas){var by={},aus=kachelCfg().aus;areas.forEach(function(a){by[a.id]=a;});
+  return kachelOrdnung(areas.map(function(a){return a.id;})).filter(function(id){return aus.indexOf(id)<0;}).map(function(id){return by[id];});}
+function kachelAus(id,aus){var c=kachelCfg(),i=c.aus.indexOf(id);if(aus&&i<0)c.aus.push(id);if(!aus&&i>=0)c.aus.splice(i,1);kachelSet(c);}
 function kachelKlick(id){var c=kachelCfg(),now=Date.now();if(!c.decay)c.decay=now;
   if(now-c.decay>30*864e5){Object.keys(c.n).forEach(function(k){c.n[k]=Math.floor(c.n[k]/2);});c.decay=now;}c.n[id]=(c.n[id]||0)+1;kachelSet(c);}
 
@@ -464,7 +468,7 @@ window.Cockpit={
   getLocal:getLocal,save:save,registerMerge:registerMerge,versions:versions,versionAt:versionAt,getBackup:getBackup,pull:pull,push:push,autoPull:autoPull,
   onStatus:onStatus,paintStatus:paintStatus,topbar:topbar,
   lineChart:lineChart,barChart:barChart,downloadText:downloadText,readFile:readFile,
-  kacheln:kacheln,kachelOrdnung:kachelOrdnung,kachelKlick:kachelKlick,kachelCfg:kachelCfg,kachelSet:kachelSet,KACHEL_STANDARD:KACHEL_STANDARD,
+  kacheln:kacheln,kachelAus:kachelAus,kachelOrdnung:kachelOrdnung,kachelKlick:kachelKlick,kachelCfg:kachelCfg,kachelSet:kachelSet,KACHEL_STANDARD:KACHEL_STANDARD,
   localOnly:LOCAL_ONLY,makeBackup:makeBackup,parseBackup:parseBackup,saveBackup:saveBackup,restoreArea:restoreArea,lastBackup:lastBackup,canShareFiles:canShareFiles
 };
 })();
