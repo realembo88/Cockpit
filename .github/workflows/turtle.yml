@@ -1,4 +1,4 @@
-# Turtle-Breakout: holt stündlich Kurse (S&P 500, Nasdaq 100, Gold, Silber, Bitcoin), berechnet die Level
+# Turtle-Breakout und Trendfilter: holt stündlich Kurse (S&P 500, Nasdaq 100, Gold, Silber, Bitcoin), berechnet die Level
 # und legt sie als turtle.json im Zweig "turtle" ab. Das Cockpit liest sie über raw.githubusercontent.com.
 # Push per ntfy: Secret NTFY_TOPIC setzen (Settings → Secrets and variables → Actions). Ohne Secret kein Push.
 # Optional: Variable TURTLE_TAGESHANDEL = 1 → der Order-Zettel erinnert an die Tageshandel-Zeiten.
@@ -36,6 +36,7 @@ jobs:
           NTFY_SERVER: ${{ vars.NTFY_SERVER }}
           TURTLE_TAGESHANDEL: ${{ vars.TURTLE_TAGESHANDEL }}
           TURTLE_TEST: ${{ inputs.test }}
+          TREND_SYMBOLE: ${{ vars.TREND_SYMBOLE }}
         run: python3 .github/turtle.py /tmp/alt.json /tmp/turtle.json
       - name: In Zweig "turtle" schreiben (ein einziger Commit, kein wachsender Verlauf)
         run: |

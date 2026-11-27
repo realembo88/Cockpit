@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0e1a">
+<title>Cockpit · Trendfilter</title>
+<link rel="manifest" href="../manifest.webmanifest">
+<link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/style.css">
+<style>
+.hero2{border-radius:16px;padding:16px;margin-bottom:14px;border:1px solid #a3e63555;background:linear-gradient(135deg,#a3e63520,var(--panel) 70%);}
+.hero2 .lab{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1px;}
+.hero2 .big{font-size:24px;font-weight:800;color:#fff;margin:4px 0;}
+.pos{color:#69f0ae;} .neg{color:#ff8a80;}
+.acard{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px;margin-bottom:12px;}
+.acard.go{border-color:#22c55e88;} .acard.warn{border-color:#ff980099;}
+.acard .h{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;}
+.acard .n{font-weight:800;color:#fff;font-size:15px;}
+.acard .sub{font-size:11px;color:var(--muted);margin-top:2px;}
+.badge{font-size:12px;border-radius:20px;padding:4px 11px;border:1px solid var(--border);color:var(--muted);white-space:nowrap;font-weight:700;}
+.badge.in{color:#69f0ae;border-color:#22c55e88;background:#22c55e1a;} .badge.go{color:#b9f6ca;border-color:#22c55e;background:#22c55e33;}
+.badge.warn{color:#ffcc80;border-color:#ff9800;background:#ff98001f;} .badge.off{color:#8fa3c7;}
+.lv{display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;margin-top:10px;font-size:12px;}
+.lv div{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid #152038;padding:3px 0;}
+.lv span:first-child{color:var(--muted);} .lv b{color:#fff;font-variant-numeric:tabular-nums;}
+.box{margin-top:10px;padding:10px;border-radius:10px;background:var(--field);font-size:12px;line-height:1.55;}
+.tog{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12px;color:#cfd8e8;}
+.chip{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:20px;padding:5px 11px;font-size:12px;cursor:pointer;}
+.chip.on{color:#fff;border-color:var(--accent);background:#a3e63522;}
+.chipbar{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
+.banner{border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12px;background:#1a1000;border:1px solid #ff980088;color:#ffb74d;line-height:1.5;}
+.note{font-size:11px;color:var(--muted);line-height:1.6;}
+.bar{height:10px;border-radius:6px;background:var(--field);overflow:hidden;margin:8px 0;} .bar i{display:block;height:100%;background:linear-gradient(90deg,#a3e635,#22c55e);}
+.step{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid #152038;font-size:13px;}
+.step input{margin-top:3px;} .step .m{font-size:11px;color:var(--muted);}
+.legend{display:flex;gap:10px;flex-wrap:wrap;font-size:10px;color:var(--muted);margin-top:2px;}
+.legend i{display:inline-block;width:10px;height:3px;border-radius:2px;margin-right:4px;vertical-align:middle;}
+details.anl{background:var(--panel);border:1px solid var(--border);border-radius:14px;margin-bottom:10px;}
+details.anl summary{padding:13px 14px;cursor:pointer;font-weight:700;color:#fff;list-style:none;}
+details.anl summary::-webkit-details-marker{display:none;}
+details.anl summary::before{content:"▶";display:inline-block;margin-right:8px;color:var(--muted);font-size:11px;transition:.2s;}
+details.anl[open] summary::before{transform:rotate(90deg);}
+.anl-b{padding:0 14px 12px;font-size:13px;line-height:1.6;color:#cfd8e8;}
+.anl-b p{margin:8px 0;} .anl-b ol,.anl-b ul{margin:6px 0;padding-left:20px;} .anl-b li{margin:3px 0;} .anl-b b{color:#fff;}
+dl.gl{margin:0;} dl.gl dt{font-weight:700;color:#bef264;margin-top:8px;} dl.gl dd{margin:2px 0 0 0;}
+code{background:var(--field);padding:1px 5px;border-radius:4px;font-size:11px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div id="top"></div>
+<nav class="tabs" id="tabs"></nav>
+<div class="content" id="main"></div>
+</div>
+<script src="../assets/cockpit.js"></script>
+<script src="logic.js"></script>
+<script>
+(function(){
+"use strict";
+var C=window.Cockpit,R=window.TREND,AREA="trend";
+var DATA_URL="https://raw.githubusercontent.com/realembo88/Cockpit/turtle/turtle.json",CACHE_KEY="cockpit:trend:json";
+var MON=["Januar","Februar","März","April","Mai","Juni","Juli","August","September","Oktober","November","Dezember"];
+
+function blank(){return {halte:{},depot:{wert:0,rate:0,ziel:2500},schritte:{}};}
+function norm(d){d=d&&typeof d==="object"?d:blank();if(!d.halte||typeof d.halte!=="object")d.halte={};
+  d.depot=Object.assign({wert:0,rate:0,ziel:2500},d.depot||{});if(!d.schritte||typeof d.schritte!=="object")d.schritte={};return d;}
+C.registerMerge(AREA,function(l,r,lU,rU){var o=norm(JSON.parse(JSON.stringify(lU>=rU?l:r)));o._summary=summaryFor(o);return o;});
+var data=norm(C.getLocal(AREA,blank)),st={tab:"signale",flash:null,j:null,loading:false,err:false,rb:null};
+try{st.j=JSON.parse(localStorage.getItem(CACHE_KEY));}catch(e){}
+
+function persist(){data._summary=summaryFor(data);C.save(AREA,data);}
+function flash(t,warn){st.flash={t:t,warn:!!warn};render();clearTimeout(flash.tm);flash.tm=setTimeout(function(){st.flash=null;render();},warn?4500:2600);}
+function werte(){return st.j&&st.j.trend&&st.j.trend.werte||{};}
+function n(){return st.j&&st.j.trend&&st.j.trend.n||10;}
+function liste(){var w=werte();return Object.keys(w).map(function(k){return Object.assign({id:k},w[k]);});}
+function mname(ym){return ym?MON[+ym.slice(5,7)-1]+" "+ym.slice(0,4):"–";}
+function naechsterCheck(){var d=new Date();return new Date(d.getFullYear(),d.getMonth()+1,1).toLocaleDateString("de-DE",{day:"numeric",month:"long"});}
+function px(v){return v==null||isNaN(v)?"–":C.num(v,v>=1000?0:2);}
+function pct(v,d){return v==null||isNaN(v)?"–":(v>=0?"+":"−")+C.num(Math.abs(v),d==null?1:d)+" %";}
+function summaryFor(d){var l=liste();if(!l.length)return {k:"—",s:"Noch keine Kursdaten"};
+  var drin=l.filter(function(x){var s=R.signal(x.monate,n());return s&&s.drin;}).length,
+      tun=l.filter(function(x){var a=R.aktion(R.signal(x.monate,n()),!!d.halte[x.id]);return a&&(a.k==="kaufen"||a.k==="verkaufen");}).length;
+  return {k:drin+" von "+l.length+" investiert",s:tun?"⚠ "+tun+(tun===1?" Aktion":" Aktionen")+" offen":"Nächster Check "+naechsterCheck()};}
+
+function load(){if(st.loading)return;st.loading=true;render();
+  fetch(DATA_URL+"?t="+Math.floor(Date.now()/60e3),{cache:"no-store"}).then(function(r){return r.ok?r.json():null;}).catch(function(){return null;}).then(function(j){
+    st.loading=false;if(j&&j.trend){st.j={ts:j.ts,trend:j.trend};st.err=false;try{localStorage.setItem(CACHE_KEY,JSON.stringify(st.j));}catch(e){}
+      var s=summaryFor(data);if(JSON.stringify(s)!==JSON.stringify(data._summary))persist();}else st.err=true;render();});}
+
+function render(){
+  document.getElementById("top").innerHTML=C.topbar({title:"Trendfilter",icon:"📅",sub:"ETFs · Monats-Regel",accent:"#a3e635",accent2:"#bef264"});C.paintStatus();
+  var tabs=[["signale","📅 Signale"],["rueckblick","📈 Rückblick"],["ziel","🎯 Kapitalaufbau"],["anleitung","📖 Anleitung"]];
+  document.getElementById("tabs").innerHTML=tabs.map(function(t){return '<button class="tab'+(st.tab===t[0]?" on":"")+'" onclick="TF.tab(\''+t[0]+'\')">'+t[1]+"</button>";}).join("");
+  var h=st.flash?'<div class="flash'+(st.flash.warn?" warn":"")+'">'+C.esc(st.flash.t)+"</div>":"";
+  h+=({signale:vSignale,rueckblick:vRueck,ziel:vZiel,anleitung:vAnl}[st.tab])();
+  document.getElementById("main").innerHTML=h;
+}
+function vSignale(){
+  var l=liste();
+  if(!l.length)return st.loading?'<div class="empty">Kurse werden geladen …</div>':'<div class="empty"><div class="big">📅</div>Noch keine Trenddaten.<br><span class="small">Die GitHub-Aufgabe „Turtle“ lädt sie beim nächsten Lauf mit (Actions → Turtle → Run workflow).</span></div>';
+  var s0=null;l.forEach(function(x){var s=R.signal(x.monate,n());if(s&&(!s0||s.monat>s0))s0=s.monat;});
+  var tun=l.filter(function(x){var a=R.aktion(R.signal(x.monate,n()),!!data.halte[x.id]);return a&&(a.k==="kaufen"||a.k==="verkaufen");});
+  var h='<div class="hero2"><div class="lab">Monats-Check · Stand Ende '+mname(s0)+'</div><div class="big">'+(tun.length?tun.length+(tun.length===1?" Aktion":" Aktionen")+" offen":"Nichts zu tun")+'</div>'+
+    '<div class="small muted">Nächster Check am '+naechsterCheck()+" – dann kommt ein Push. Entschieden wird nur einmal im Monat.</div>"+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:8px;flex-wrap:wrap"><span class="small muted">'+(st.j?"Daten vom "+new Date(st.j.trend.ts||st.j.ts).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"")+'</span><button class="chip" onclick="TF.load()">↻ Aktualisieren</button></div></div>';
+  l.forEach(function(x){var s=R.signal(x.monate,n()),halte=!!data.halte[x.id],a=R.aktion(s,halte),lv=R.live(x.monate,x.price,n());
+    h+='<div class="acard '+(a&&(a.k==="kaufen")?"go":a&&a.k==="verkaufen"?"warn":"")+'"><div class="h"><div><div class="n">'+C.esc(x.name)+'</div><div class="sub">'+C.esc(x.produkt)+(x.isin?" · ISIN "+C.esc(x.isin):"")+" · "+C.esc(x.id)+"</div></div>"+(a?'<span class="badge '+a.cls+'">'+a.txt+"</span>":"")+"</div>";
+    if(!s){h+='<div class="note" style="margin-top:8px">Zu wenige Monate für den 10-Monats-Schnitt.</div></div>';return;}
+    h+='<div class="lv"><div><span>Signal Ende '+MON[+s.monat.slice(5,7)-1]+'</span><b class="'+(s.drin?"pos":"neg")+'">'+(s.drin?"investiert":"Cash")+'</b></div><div><span>Abstand zum Schnitt</span><b>'+pct(s.abstand)+"</b></div>"+
+      "<div><span>Monatsschluss</span><b>"+px(s.schluss)+"</b></div><div><span>10-Monats-Schnitt</span><b>"+px(s.schnitt)+"</b></div></div>";
+    if(lv)h+='<div class="box">Heute ('+px(x.price)+'): '+(lv.drin===s.drin?"Signal unverändert":"<b>würde drehen</b> auf "+(lv.drin?"investiert":"Cash"))+" ("+pct(lv.abstand)+"). Nur zur Info – zählt erst der Monatsschluss.</div>";
+    h+='<label class="tog"><input type="checkbox" '+(halte?"checked":"")+' onchange="TF.halte(\''+x.id+'\',this.checked)"> Ich halte diesen ETF gerade</label>'+chart(x)+"</div>";});
+  h+='<div class="note">Regel: investiert sein, solange der Monatsschluss über dem Schnitt der letzten '+n()+" Monatsschlüsse liegt – sonst verkaufen und das Geld aufs Tagesgeld. Kurse: Yahoo Finance (Xetra, in Euro). Keine Anlageberatung.</div>";
+  return h;
+}
+function chart(x){var m=x.monate,N=n();if(m.length<N+3)return "";var rows=[];
+  for(var i=Math.max(N-1,m.length-36);i<m.length;i++){var s=0;for(var k=i-N+1;k<=i;k++)s+=m[k][1];rows.push({d:m[i][0],c:m[i][1],sn:s/N});}
+  var v=[];rows.forEach(function(r){v.push(r.c,r.sn);});var mn=Math.min.apply(null,v),mx=Math.max.apply(null,v),pd=(mx-mn)*.06;mn-=pd;mx+=pd;
+  var W=340,H=120,L=4,Rr=4,T=6,B=14,nn=rows.length;function X(i){return L+(W-L-Rr)*i/(nn-1);}function Y(z){return T+(H-T-B)*(1-(z-mn)/(mx-mn));}
+  function line(f,col,w){return '<path d="'+rows.map(function(r,i){return (i?"L":"M")+X(i).toFixed(1)+" "+Y(f(r)).toFixed(1);}).join(" ")+'" fill="none" stroke="'+col+'" stroke-width="'+w+'"/>';}
+  var s='<svg viewBox="0 0 '+W+" "+H+'" width="100%" style="margin-top:10px">';
+  rows.forEach(function(r,i){if(i&&r.c>r.sn)s+='<rect x="'+X(i-0.5)+'" y="'+T+'" width="'+(X(1)-X(0))+'" height="'+(H-T-B)+'" fill="#22c55e" opacity=".08"/>';});
+  s+=line(function(r){return r.sn;},"#a3e635",1.6)+line(function(r){return r.c;},"#e6edf7",2);
+  s+='<text x="'+L+'" y="'+(H-2)+'" fill="#5c7aaa" font-size="9">'+mname(rows[0].d)+'</text><text x="'+(W-Rr)+'" y="'+(H-2)+'" fill="#5c7aaa" font-size="9" text-anchor="end">'+mname(rows[nn-1].d)+"</text></svg>";
+  return s+'<div class="legend"><span><i style="background:#e6edf7"></i>Monatsschluss</span><span><i style="background:#a3e635"></i>10-Monats-Schnitt</span><span><i style="background:#22c55e;opacity:.4"></i>investiert</span></div>';}
+function vRueck(){
+  var l=liste();if(!l.length)return '<div class="empty">Noch keine Daten.</div>';
+  if(!st.rb||!werte()[st.rb])st.rb=l[0].id;var x=werte()[st.rb],r=R.rueckblick(x.monate,n());
+  var h='<div class="panel"><div class="chipbar">'+l.map(function(y){return '<button class="chip'+(y.id===st.rb?" on":"")+'" onclick="TF.rb(\''+y.id+'\')">'+C.esc(y.name)+"</button>";}).join("")+"</div>";
+  if(!r)return h+'<div class="note">Zu wenige Monate.</div></div>';
+  h+='<div class="scroll-x"><table class="t"><thead><tr><th></th><th>Trendfilter</th><th>Kaufen &amp; Halten</th></tr></thead><tbody>'+
+    "<tr><td>Aus 100 € wurden</td><td><b>"+C.num(r.trend.ende,0)+" €</b></td><td><b>"+C.num(r.halten.ende,0)+" €</b></td></tr>"+
+    "<tr><td>Rendite pro Jahr</td><td>"+pct(r.trend.cagr*100)+"</td><td>"+pct(r.halten.cagr*100)+"</td></tr>"+
+    '<tr><td>Größter Rückgang</td><td class="neg">−'+C.num(r.trend.dd*100,0)+' %</td><td class="neg">−'+C.num(r.halten.dd*100,0)+" %</td></tr>"+
+    "<tr><td>Wechsel</td><td>"+r.wechsel+" ("+C.num(r.wechsel/r.jahre,1)+" pro Jahr)</td><td>–</td></tr></tbody></table></div>";
+  var k=r.kurve,mn=Infinity,mx=-Infinity;k.forEach(function(p){mn=Math.min(mn,p.trend,p.halten);mx=Math.max(mx,p.trend,p.halten);});
+  var W=340,H=170,L=34,Rr=6,T=8,B=16,nn=k.length,lg=function(v){return Math.log(v);};
+  function X(i){return L+(W-L-Rr)*i/(nn-1);}function Y(v){return T+(H-T-B)*(1-(lg(v)-lg(mn))/(lg(mx)-lg(mn)||1));}
+  var s='<svg viewBox="0 0 '+W+" "+H+'" width="100%" style="margin-top:12px">';
+  [mn,Math.sqrt(mn*mx),mx].forEach(function(g){s+='<line x1="'+L+'" x2="'+(W-Rr)+'" y1="'+Y(g)+'" y2="'+Y(g)+'" stroke="#1e2a4a" stroke-dasharray="3 3"/><text x="'+(L-4)+'" y="'+(Y(g)+3)+'" fill="#5c7aaa" font-size="9" text-anchor="end">'+C.num(g,0)+"</text>";});
+  ["halten","trend"].forEach(function(f){s+='<path d="'+k.map(function(p,i){return (i?"L":"M")+X(i).toFixed(1)+" "+Y(p[f]).toFixed(1);}).join(" ")+'" fill="none" stroke="'+(f==="trend"?"#a3e635":"#7a8bb0")+'" stroke-width="2"/>';});
+  s+='<text x="'+L+'" y="'+(H-3)+'" fill="#5c7aaa" font-size="9">'+mname(r.von)+'</text><text x="'+(W-Rr)+'" y="'+(H-3)+'" fill="#5c7aaa" font-size="9" text-anchor="end">'+mname(r.bis)+"</text></svg>";
+  h+=s+'<div class="legend"><span><i style="background:#a3e635"></i>Trendfilter</span><span><i style="background:#7a8bb0"></i>Kaufen &amp; Halten</span></div>'+
+    '<div class="note" style="margin-top:8px">Rückblick über '+C.num(r.jahre,1)+" Jahre mit Monatsschlusskursen, ohne Gebühren und ohne Zinsen auf das Cash. Typisch für den Trendfilter: in langen Abschwüngen deutlich kleinere Verluste, dafür in Seitwärtsphasen ab und zu ein Fehlsignal. Die Vergangenheit ist keine Garantie für die Zukunft.</div></div>";
+  return h;
+}
+function vZiel(){
+  var dp=data.depot,w=+dp.wert||0,z=+dp.ziel||2500,r=+dp.rate||0,p=Math.min(100,w/z*100),rest=Math.max(0,z-w),mon=r>0?Math.ceil(rest/r):null;
+  var h='<div class="hero2"><div class="lab">Ziel: Echtgeld-Probelauf Turtle</div><div class="big">'+C.eur(w,0)+" von "+C.eur(z,0)+'</div><div class="bar"><i style="width:'+p.toFixed(1)+'%"></i></div>'+
+    '<div class="small muted">'+(rest<=0?"🎉 Ziel erreicht – Zeit für den Silber-Probelauf (siehe Schritt 4).":mon!=null?"Noch "+C.eur(rest,0)+" · bei "+C.eur(r,0)+" im Monat etwa "+mon+(mon===1?" Monat":" Monate")+" (ohne Kursgewinne)":"Trag deine monatliche Sparrate ein, dann siehst du, wie lange es noch dauert.")+"</div></div>";
+  h+='<div class="panel"><h3>Werte</h3><div class="row2"><div class="field"><label>Depot + Tagesgeld für die Strategie (€)</label><input id="z-wert" inputmode="decimal" value="'+(w||"")+'"></div><div class="field"><label>Sparrate pro Monat (€)</label><input id="z-rate" inputmode="decimal" value="'+(r||"")+'"></div></div>'+
+    '<div class="field"><label>Ziel (€)</label><input id="z-ziel" inputmode="decimal" value="'+z+'"></div><button class="btn full" onclick="TF.saveZiel()">Speichern</button></div>';
+  var S=[["paper","Paper-Trading starten","IBKR-Übungskonto eröffnen und im 🐢 Turtle-Bereich unter ⚙ „Paper-Trading“ wählen. Ab dann jeden Abend nach dem Zettel üben.","../turtle/index.html"],
+    ["sparplan","Sparplan einrichten","ETF-Sparplan (kostenlos bei ING oder Neobroker) auf einen ETF mit Signal „investiert“. Bei „Cash“ die Rate aufs Tagesgeld.",null],
+    ["monat","Drei Monats-Checks umgesetzt","Jeweils am Monatsanfang den Push lesen und Wechsel noch am selben Tag umsetzen.",null],
+    ["echt","Ziel erreicht: Echtgeld-Probelauf","IBKR-Margin-Konto (ab 2.000 €), nur Silber als CFD, Turtle-Bereich auf „Echtgeld“ stellen. Paper-Trading mit allen fünf Märkten läuft weiter.","../turtle/index.html"]];
+  h+='<div class="panel"><h3>Dein Lernpfad</h3>'+S.map(function(s,i){return '<label class="step"><input type="checkbox" '+(data.schritte[s[0]]?"checked":"")+' onchange="TF.schritt(\''+s[0]+'\',this.checked)"><div><b>'+(i+1)+". "+s[1]+'</b><div class="m">'+s[2]+(s[3]?' <a href="'+s[3]+'">→ öffnen</a>':"")+"</div></div></label>";}).join("")+"</div>";
+  return h;
+}
+function sec(t,i,o){return '<details class="anl"'+(o?" open":"")+"><summary>"+t+'</summary><div class="anl-b">'+i+"</div></details>";}
+function vAnl(){
+  var h=sec("1 · Die Regel","<p>Einmal im Monat, nach Monatsende, wird für jeden ETF verglichen:</p><ul><li><b>Monatsschluss über dem 10-Monats-Schnitt</b> → investiert sein (kaufen bzw. halten).</li><li><b>Monatsschluss darunter</b> → verkaufen bzw. draußen bleiben; das Geld liegt auf dem Tagesgeld.</li></ul><p>Das ist alles. Zwischen den Checks wird nichts getan – auch wenn es mitten im Monat kracht. Die Regel schützt vor langen, tiefen Abschwüngen (wie 2008 oder 2022), nicht vor kurzen Rücksetzern.</p>",true);
+  h+=sec("2 · Wann und wie handeln","<ol><li>Am ersten Tag des Monats ab 8 Uhr kommt der Push <b>„Trendfilter · Monats-Check“</b>.</li><li>Steht bei einem ETF <b>„← WECHSEL“</b>: am selben Tag (oder am nächsten Börsentag) kaufen bzw. verkaufen. Sonst: nichts tun.</li><li>Hier unter 📅 Signale das Häkchen „Ich halte diesen ETF“ anpassen – dann zeigt die Karte immer die richtige Aktion.</li></ol><p><b>„Einstieg möglich“</b> heißt: Das Signal steht schon länger auf investiert. Wer neu startet, darf jederzeit einsteigen – am saubersten zum nächsten Monats-Check.</p>"+
+    "<p><b>Kaufen bei kleinen Beträgen:</b> bei einem Neobroker als <i>Betragsorder</i> (z. B. 250 €) – dann gibt es Bruchstücke, die Gebühr ist meist 1 €. Bei der ING geht das nur über den Sparplan.</p><p><b>Sparplan:</b> nur in ETFs mit Signal „investiert“ besparen. Dreht ein ETF auf „Cash“, Sparplan pausieren und die Rate aufs Tagesgeld lenken, beim Wechsel zurück wieder starten.</p>"+
+    "<p><b>Andere ETFs?</b> Im Repo unter Settings → Secrets and variables → Actions → Variables eine Variable <code>TREND_SYMBOLE</code> anlegen, z. B. <code>EUNL.DE=MSCI World;4GLD.DE=Gold</code> (Yahoo-Kürzel = Name).</p>");
+  h+=sec("3 · Was „Rückblick“ zeigt","<p>Wie Trendfilter und einfaches Halten in den letzten Jahren abgeschnitten hätten. Achte auf den <b>größten Rückgang</b> – da liegt der Vorteil. Die Rendite ist oft ähnlich oder etwas niedriger als beim Halten, weil man nach Abschwüngen etwas später wieder einsteigt.</p>");
+  h+=sec("4 · Kürzelverzeichnis",'<dl class="gl">'+[["10-Monats-Schnitt","Durchschnitt der letzten 10 Monatsschlusskurse (gleitender Durchschnitt, engl. SMA)."],["Monatsschluss","Letzter Kurs eines Monats."],["Signal „investiert“ / „Cash“","Ergebnis der Regel für den kommenden Monat."],["ETF","Börsengehandelter Indexfonds, z. B. auf den MSCI World."],["ETC","Börsengehandelte Rohstoff-Wertpapiere, z. B. Xetra-Gold."],["ETN","Schuldverschreibung, die einen Kurs abbildet – z. B. Bitcoin-ETNs."],["ISIN","Zwölfstellige Wertpapierkennnummer; damit findest du den ETF bei jedem Broker."],["Xetra","Elektronischer Handelsplatz der Deutschen Börse (9–17:30 Uhr); die Kurse hier kommen von dort."],["Bruchstücke","Teile eines ETF-Anteils, z. B. 0,4 Stück – ideal für kleine Beträge."],["Betragsorder","Kauf über einen Euro-Betrag statt einer Stückzahl."],["Kaufen & Halten","Einmal kaufen und liegen lassen – der Vergleichsmaßstab."],["Rendite pro Jahr","Durchschnittlicher jährlicher Zuwachs (CAGR)."],["Größter Rückgang","Tiefster Verlust vom bisherigen Höchststand (Drawdown)."],["Fehlsignal","Wechsel, der sich kurz danach als unnötig herausstellt – gehört dazu."]].map(function(x){return "<dt>"+x[0]+"</dt><dd>"+x[1]+"</dd>";}).join("")+"</dl>");
+  return '<div class="panel"><h3>📖 Anleitung Trendfilter</h3><div class="note">Die ruhige Monats-Strategie für kleine Beträge – und der Weg zum Turtle-Echtgeld-Start.</div></div>'+h;
+}
+window.TF={tab:function(t){st.tab=t;render();window.scrollTo(0,0);},load:load,rb:function(id){st.rb=id;render();},
+  halte:function(id,v){data.halte[id]=!!v;persist();render();},
+  schritt:function(k,v){data.schritte[k]=!!v;persist();},
+  saveZiel:function(){var w=C.parseNum(document.getElementById("z-wert").value||"0"),r=C.parseNum(document.getElementById("z-rate").value||"0"),z=C.parseNum(document.getElementById("z-ziel").value);
+    if(!(w>=0)||!(r>=0)||!(z>0)){flash("⚠ Bitte gültige Beträge eingeben",true);return;}data.depot={wert:w,rate:r,ziel:z};persist();flash("✓ Gespeichert");}};
+window.addEventListener("cockpit:priv",render);
+render();C.autoPull([AREA],function(a,d){data=norm(d);render();});load();
+document.addEventListener("visibilitychange",function(){if(!document.hidden&&(!st.j||Date.now()-st.j.ts>30*60e3))load();});
+})();
+</script>
+</body>
+</html>

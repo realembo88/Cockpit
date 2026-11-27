@@ -76,11 +76,11 @@ var BY={};ASSETS.forEach(function(a){BY[a.id]=a;});
 
 /* ---------- private Daten (Daten-Repo) ---------- */
 function blank(){var a={};ASSETS.forEach(function(x){a[x.id]={prod:"fut",fut:Object.assign({},x.fut),cfd:Object.assign({},x.cfd),off:0};});
-  return {konto:{betrag:0,waehrung:"EUR",hwm:0},risk:2,param:{entry:20,exit:10,atr:20,mult:2,filter:false},modus:"nacht",zeiten:{zu:"16:30",auf:"18:00"},
+  return {konto:{betrag:0,waehrung:"EUR",hwm:0},risk:2,param:{entry:20,exit:10,atr:20,mult:2,filter:false},modus:"nacht",paper:true,zeiten:{zu:"16:30",auf:"18:00"},
     assets:a,positionen:[],journal:[],deleted:[]};}
 function norm(d){var b=blank();d=d&&typeof d==="object"?d:b;
   ["konto","param","zeiten"].forEach(function(k){d[k]=Object.assign({},b[k],d[k]||{});});
-  if(!(d.risk>0))d.risk=2;if(d.modus!=="tag")d.modus="nacht";
+  if(!(d.risk>0))d.risk=2;d.paper=d.paper!==false;if(d.modus!=="tag")d.modus="nacht";
   d.assets=d.assets||{};ASSETS.forEach(function(x){var s=d.assets[x.id]=Object.assign({},b.assets[x.id],d.assets[x.id]||{});
     s.fut=Object.assign({},x.fut,s.fut||{});s.cfd=Object.assign({},x.cfd,s.cfd||{});if(s.cfd.sym==="IBUS100")s.cfd.sym="IBUST100";if(s.prod!=="cfd")s.prod="fut";s.off=+s.off||0;});
   ["positionen","journal","deleted"].forEach(function(k){if(!Array.isArray(d[k]))d[k]=[];});
@@ -171,7 +171,7 @@ function vSignale(){
   ASSETS.forEach(function(a){posOf(a.id).forEach(function(x){var sp=Object.assign({},data.assets[a.id][x.prod]),c=calc(a.id);inT++;
     vol+=x.qty*(c?c.x.price+off(a.id):x.entry)*sp.mult;var stp=c&&c.an?Math.max(x.fixed,c.an.next.trail+off(a.id)):x.fixed;ris+=Math.max(0,(x.entry-stp)*x.qty*sp.mult);});});
   var kontoUsd=toUsd(+data.konto.betrag||0);
-  h+='<div class="hero2"><div class="lab">'+(data.modus==="tag"?"Tageshandel":"Über Nacht halten")+" · "+C.num(data.risk,1)+" % Risiko je Trade</div>"+
+  h+='<div class="hero2"><div class="lab">'+(data.paper?'<span style="color:#ffcc80">📝 Paper-Trading</span> · ':'<span style="color:#69f0ae">💶 Echtgeld</span> · ')+(data.modus==="tag"?"Tageshandel":"Über Nacht halten")+" · "+C.num(data.risk,1)+" % Risiko je Trade</div>"+
     '<div class="big">'+inT+(inT===1?" Position":" Positionen")+" offen</div>"+
     '<div class="small muted">'+(hw?"Risiko je neuem Trade "+usd(hw*data.risk/100)+" · Höchststand "+usd(hw):"Kontostand fehlt")+
     (inT&&kontoUsd?" · Volumen "+usd(vol)+" (Hebel "+C.num(vol/kontoUsd,1)+"×) · offenes Risiko "+usd(ris):"")+"</div>"+
@@ -243,7 +243,7 @@ function miniChart(c,a,o,p){
 /* ---------- Order-Zettel ---------- */
 function zettelText(){
   var p=param(),t=laufenderTag(),z=[],h=hwmUsd();
-  z.push("TURTLE · ORDER-ZETTEL für "+dde(t)+" (gültig bis 17:00 New York = "+hm(nyToLocal(t,17,0))+" Uhr)");
+  z.push((data.paper?"[PAPER-TRADING] ":"")+"TURTLE · ORDER-ZETTEL für "+dde(t)+" (gültig bis 17:00 New York = "+hm(nyToLocal(t,17,0))+" Uhr)");
   z.push("Risiko je Trade: "+C.num(data.risk,1)+" % vom Höchststand"+(h?" = "+C.num(h*data.risk/100,0)+" $":" (Kontostand fehlt)"));z.push("");
   ASSETS.forEach(function(a){var c=calc(a.id);if(!c||!c.an){z.push(a.name+": keine Daten");return;}
     var an=c.an,o=off(a.id),sp=spec(a.id),mine=posOf(a.id),tr=an.next.trail+o;
@@ -282,14 +282,14 @@ function vPos(){
   h+='<div class="panel" style="padding:4px 14px"><h3 style="padding-top:10px">Offene Positionen</h3>';
   if(!data.positionen.length)h+='<div class="note" style="padding-bottom:12px">Keine.</div>';
   data.positionen.forEach(function(x){var a=BY[x.asset],s2=data.assets[x.asset][x.prod],c=calc(x.asset),px=c?c.x.price+off(x.asset):null;
-    h+='<div class="pitem"><div><div style="color:'+a.color+';font-weight:700">'+a.name+'</div><div class="m">'+qtyTxt(x.qty,Object.assign({prod:x.prod},s2))+" · "+dde(x.datum)+" · Einstieg "+fmtP(x.entry)+" · fester Stop "+fmtP(x.fixed)+'</div></div><div style="display:flex;align-items:flex-start;gap:6px"><div class="r">'+
+    h+='<div class="pitem"><div><div style="color:'+a.color+';font-weight:700">'+a.name+(x.paper?' <span class="small" style="color:#ffcc80">Paper</span>':"")+'</div><div class="m">'+qtyTxt(x.qty,Object.assign({prod:x.prod},s2))+" · "+dde(x.datum)+" · Einstieg "+fmtP(x.entry)+" · fester Stop "+fmtP(x.fixed)+'</div></div><div style="display:flex;align-items:flex-start;gap:6px"><div class="r">'+
       (px!=null?'<div class="'+(px>=x.entry?"pos":"neg")+'">'+usd((px-x.entry)*x.qty*s2.mult)+'</div><div class="m">'+C.num((px-x.entry)/(x.entry-x.fixed),2)+" R</div>":"")+
       '</div><button class="chip" onclick="TT.closePos(\''+x.id+'\')">Verkauft</button><button class="del" aria-label="Löschen" onclick="TT.delPos(\''+x.id+'\')">✕</button></div></div>';});
   h+="</div>";
   h+='<div class="panel" style="padding:4px 14px"><h3 style="padding-top:10px">Journal (abgeschlossen)</h3>';
   if(!data.journal.length)h+='<div class="note" style="padding-bottom:12px">Noch keine abgeschlossenen Trades.</div>';
   else{var sumR=0,sumU=0;data.journal.slice().sort(function(a,b){return (b.exitDatum||"").localeCompare(a.exitDatum||"");}).forEach(function(x){var a=BY[x.asset],s2=data.assets[x.asset][x.prod],r=(x.exit-x.entry)/(x.entry-x.fixed),u=(x.exit-x.entry)*x.qty*s2.mult;sumR+=r;sumU+=u;
-    h+='<div class="pitem"><div><div style="color:'+a.color+';font-weight:700">'+a.name+'</div><div class="m">'+dde(x.datum)+" → "+dde(x.exitDatum)+" · "+fmtP(x.entry)+" → "+fmtP(x.exit)+'</div></div><div style="display:flex;align-items:flex-start"><div class="r"><div class="'+(u>=0?"pos":"neg")+'">'+usd(u)+'</div><div class="m">'+C.num(r,2)+' R</div></div><button class="del" aria-label="Löschen" onclick="TT.delJ(\''+x.id+'\')">✕</button></div></div>';});
+    h+='<div class="pitem"><div><div style="color:'+a.color+';font-weight:700">'+a.name+(x.paper?' <span class="small" style="color:#ffcc80">Paper</span>':"")+'</div><div class="m">'+dde(x.datum)+" → "+dde(x.exitDatum)+" · "+fmtP(x.entry)+" → "+fmtP(x.exit)+'</div></div><div style="display:flex;align-items:flex-start"><div class="r"><div class="'+(u>=0?"pos":"neg")+'">'+usd(u)+'</div><div class="m">'+C.num(r,2)+' R</div></div><button class="del" aria-label="Löschen" onclick="TT.delJ(\''+x.id+'\')">✕</button></div></div>';});
     h+='<div class="pitem"><b>Summe</b><div class="r"><b class="'+(sumU>=0?"pos":"neg")+'">'+usd(sumU)+'</b><div class="m">'+C.num(sumR,2)+" R</div></div></div>";}
   return h+"</div>";
 }
@@ -313,7 +313,9 @@ function vStat(){
 /* ---------- Einstellungen ---------- */
 function vSet(){
   var p=data.param,k=data.konto;
-  var h='<div class="panel"><h3>Konto & Risiko</h3><div class="row2"><div class="field"><label>Kontostand</label><input id="s-betrag" inputmode="decimal" value="'+(k.betrag||"")+'"></div>'+
+  var h='<div class="panel"><h3>Konto-Art</h3><div class="chipbar"><button class="chip'+(data.paper?" on":"")+'" onclick="TT.paper(true)">📝 Paper-Trading</button><button class="chip'+(!data.paper?" on":"")+'" onclick="TT.paper(false)">💶 Echtgeld</button></div>'+
+    '<div class="note">Zum Üben mit dem IBKR-Übungskonto: Kontostand des Übungskontos eintragen und ganz normal nach Zettel handeln. Positionen und Journal-Einträge werden als „Paper“ markiert. Der Weg dorthin steht im <a href="../trend/index.html">📅 Trendfilter → 🎯 Kapitalaufbau</a>.</div></div>';
+  h+='<div class="panel"><h3>Konto & Risiko</h3><div class="row2"><div class="field"><label>Kontostand</label><input id="s-betrag" inputmode="decimal" value="'+(k.betrag||"")+'"></div>'+
     '<div class="field"><label>Währung</label><select id="s-wg"><option'+(k.waehrung==="EUR"?" selected":"")+'>EUR</option><option'+(k.waehrung==="USD"?" selected":"")+">USD</option></select></div></div>"+
     '<div class="row2"><div class="field"><label>Höchststand (High-Water-Mark)</label><input id="s-hwm" inputmode="decimal" value="'+(k.hwm||"")+'"></div><div class="field"><label>Risiko je Trade (%)</label><input id="s-risk" inputmode="decimal" value="'+data.risk+'"></div></div>'+
     '<div class="note" style="margin:-4px 0 12px">Der Höchststand steigt automatisch mit, wenn du einen höheren Kontostand einträgst. Gerechnet wird in US-Dollar'+(eurusd()?" (1 € = "+C.num(eurusd(),4)+" $)":"")+'. Bleibt nur in deinem privaten Daten-Repo.</div>'+
@@ -448,6 +450,7 @@ window.TT={
     var wechsel=data.konto.waehrung!==val("s-wg");data.konto.betrag=b;data.konto.waehrung=val("s-wg");
     data.konto.hwm=Math.max(b,hw>0&&!wechsel?hw:0,wechsel?0:+data.konto.hwm||0);data.risk=r;persist();flash("✓ Gespeichert");},
   modus:function(m){data.modus=m;persist();render();},
+  paper:function(v){data.paper=!!v;persist();render();},
   saveZeiten:function(){var ok=/^\d{1,2}:\d{2}$/;if(!ok.test(val("s-zu"))||!ok.test(val("s-auf"))){flash("⚠ Zeiten bitte als HH:MM",true);return;}data.zeiten={zu:val("s-zu"),auf:val("s-auf")};persist();flash("✓ Gespeichert");},
   prod:function(id,pr){data.assets[id].prod=pr;persist();render();},
   saveSpec:function(id){var s=data.assets[id],sp=s[s.prod],m=C.parseNum(val("sp-"+id+"-mult")),stp=C.parseNum(val("sp-"+id+"-step")),bk=C.parseNum(val("sp-"+id+"-bk")),c=calc(id);
@@ -468,7 +471,7 @@ window.TT={
   stopVorschlag:function(){var id=val("p-asset"),c=calc(id),e=C.parseNum(val("p-entry"));if(c&&c.an&&e>0)document.getElementById("p-fixed").value=fmtP(e-c.an.p.mult*c.an.next.atr).replace(/\./g,"");},
   addPos:function(){var q=C.parseNum(val("p-qty")),e=C.parseNum(val("p-entry")),f=C.parseNum(val("p-fixed"));
     if(!(q>0)){flash("⚠ Bitte eine Menge eingeben",true);return;}if(!(e>0)||!(f>0)||f>=e){flash("⚠ Einstieg und Stop prüfen (Stop muss unter dem Einstieg liegen)",true);return;}
-    data.positionen.push({id:uid(),asset:val("p-asset"),prod:val("p-prod"),qty:q,entry:e,fixed:f,datum:val("p-datum")||C.today()});persist();st.tab="signale";flash("✓ Position gespeichert");},
+    data.positionen.push({id:uid(),asset:val("p-asset"),prod:val("p-prod"),qty:q,entry:e,fixed:f,datum:val("p-datum")||C.today(),paper:!!data.paper});persist();st.tab="signale";flash("✓ Position gespeichert");},
   closePos:function(id){var x=data.positionen.filter(function(p){return p.id===id;})[0];if(!x)return;var c=calc(x.asset);
     var v=prompt("Verkaufskurs von "+BY[x.asset].name+":",c?fmtP(c.x.price+off(x.asset)).replace(/\./g,""):"");if(v==null)return;var px=C.parseNum(v);if(!(px>0)){flash("⚠ Kurs ungültig",true);return;}
     data.positionen=data.positionen.filter(function(p){return p.id!==id;});data.journal.push(Object.assign({},x,{id:uid(),exit:px,exitDatum:C.today()}));if(data.deleted.indexOf(id)<0)data.deleted.push(id);persist();flash("✓ Ins Journal übernommen");},

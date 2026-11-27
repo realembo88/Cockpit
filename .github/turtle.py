@@ -33,6 +33,19 @@ ASSETS = [
 PARAM = {"entry": 20, "exit": 10, "atr": 20, "mult": 2.0}
 KEEP = 260                     # so viele abgeschlossene Handelstage gehen ins JSON
 DASHBOARD = "https://realembo88.github.io/Cockpit/turtle/"
+TREND_SEITE = "https://realembo88.github.io/Cockpit/trend/"
+
+# Trendfilter (Monats-Regel): investiert sein, solange der Monatsschluss über dem Schnitt der letzten 10 Monatsschlüsse liegt.
+# Eigene Liste per Repo-Variable TREND_SYMBOLE, z. B. "EUNL.DE=MSCI World;4GLD.DE=Gold" (Yahoo-Kürzel=Name).
+TREND = [
+    {"id": "EUNL.DE", "name": "MSCI World", "produkt": "iShares Core MSCI World", "isin": "IE00B4L5Y983"},
+    {"id": "SXR8.DE", "name": "S&P 500", "produkt": "iShares Core S&P 500", "isin": "IE00B5BMR087"},
+    {"id": "SXRV.DE", "name": "Nasdaq 100", "produkt": "iShares Nasdaq 100", "isin": "IE00B53SZB19"},
+    {"id": "4GLD.DE", "name": "Gold", "produkt": "Xetra-Gold", "isin": "DE000A0S9GB0"},
+    {"id": "BTC-EUR", "name": "Bitcoin", "produkt": "Bitcoin in Euro (Signal für ein Bitcoin-ETN)", "isin": ""},
+]
+TREND_N = 10
+MONATE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"]
 WT = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
 
 
@@ -299,7 +312,7 @@ def ntfy(msg):
         return False
     server = (os.environ.get("NTFY_SERVER", "").strip() or "https://ntfy.sh").rstrip("/")
     body = {"topic": topic, "title": msg["title"], "message": msg["message"], "tags": msg.get("tags", []),
-            "priority": msg.get("priority", 3), "click": DASHBOARD}
+            "priority": msg.get("priority", 3), "click": msg.get("click", DASHBOARD)}
     hd = {"Content-Type": "application/json"}
     if os.environ.get("NTFY_TOKEN"):
         hd["Authorization"] = "Bearer " + os.environ["NTFY_TOKEN"].strip()
@@ -309,6 +322,80 @@ def ntfy(msg):
     except Exception as e:
         warn("ntfy →", e)
         return False
+
+
+def trend_liste():
+    roh = os.environ.get("TREND_SYMBOLE", "").strip()
+    if not roh:
+        return TREND
+    out = []
+    for teil in roh.split(";"):
+        if "=" in teil:
+            sym, name = [x.strip() for x in teil.split("=", 1)]
+            if sym:
+                out.append({"id": sym, "name": name or sym, "produkt": name or sym, "isin": ""})
+    return out or TREND
+
+
+def monatsschluesse(bars, jetzt):
+    """Monatskerzen → [[JJJJ-MM, Schluss], …] abgeschlossen, dazu der laufende Monat (oder None)."""
+    m = {}
+    for t, o, h, l, c in sorted(bars):
+        ym = datetime.fromtimestamp(t + 43200, timezone.utc).strftime("%Y-%m")   # +12 h: Monatsanfang in Ortszeit sauber treffen
+        m[ym] = c
+    lauf = jetzt.astimezone(BER).strftime("%Y-%m")
+    fertig = [[k, v] for k, v in sorted(m.items()) if k < lauf]
+    return fertig[-120:], ([lauf, m[lauf]] if lauf in m else None)
+
+
+def trend_signal(monate, n=TREND_N):
+    if len(monate) < n:
+        return None
+    schnitt = sum(c for _, c in monate[-n:]) / n
+    vor = sum(c for _, c in monate[-n - 1:-1]) / n if len(monate) > n else None
+    return {"monat": monate[-1][0], "schluss": monate[-1][1], "schnitt": schnitt, "drin": monate[-1][1] > schnitt,
+            "vorher": (monate[-2][1] > vor) if vor is not None else None}
+
+
+def trend_daten(alt, jetzt):
+    """Höchstens alle 6 Stunden neu laden – Monatsdaten ändern sich langsam."""
+    a = alt.get("trend") or {}
+    if a.get("ts") and jetzt.timestamp() * 1000 - a["ts"] < 6 * 3600e3 and set(a.get("werte", {})) == {x["id"] for x in trend_liste()}:
+        return a
+    werte = {}
+    for x in trend_liste():
+        bars, meta = yahoo(x["id"], "1mo", "10y")
+        if not bars:
+            if (a.get("werte") or {}).get(x["id"]):
+                werte[x["id"]] = dict(a["werte"][x["id"]], veraltet=True)
+            continue
+        fertig, lauf = monatsschluesse(bars, jetzt)
+        werte[x["id"]] = rnd_obj({"name": x["name"], "produkt": x["produkt"], "isin": x["isin"], "monate": fertig, "lauf": lauf,
+                                  "price": meta.get("regularMarketPrice") or (lauf or fertig[-1])[1], "waehrung": meta.get("currency") or "EUR"})
+    return {"ts": int(jetzt.timestamp() * 1000), "n": TREND_N, "werte": werte}
+
+
+def trend_check(trend, jetzt):
+    """Monats-Check: ab 8 Uhr am ersten Tag nach Monatsende, einmal je Monat."""
+    if jetzt.astimezone(BER).hour < 8 or not trend.get("werte"):
+        return None
+    zeilen, monat = [], None
+    for x in trend_liste():
+        w = trend["werte"].get(x["id"])
+        sig = trend_signal(w["monate"]) if w and not w.get("veraltet") else None
+        if not sig:
+            zeilen.append("%s: keine Daten" % x["name"]); continue
+        monat = max(monat or "", sig["monat"])
+        abst = (sig["schluss"] / sig["schnitt"] - 1) * 100
+        wechsel = sig["vorher"] is not None and sig["vorher"] != sig["drin"]
+        zeilen.append("%s: %s (%s%s %% zum 10-Monats-Schnitt)%s" % (
+            x["name"], "INVESTIERT SEIN" if sig["drin"] else "RAUS / Cash", "+" if abst >= 0 else "−", de(abs(abst), 1),
+            " ← WECHSEL: jetzt " + ("kaufen" if sig["drin"] else "verkaufen") if wechsel else ""))
+    if not monat:
+        return None
+    zeilen.append("Ohne Wechsel: nichts tun. Sparplan nur in ETFs mit Signal „investiert“.")
+    return {"title": "Trendfilter · Monats-Check %s" % MONATE[int(monat[5:7]) - 1], "message": "\n".join(zeilen),
+            "tags": ["calendar"], "key": "trend:" + monat, "click": TREND_SEITE}
 
 
 def main(alt_pfad, neu_pfad, jetzt=None):
@@ -341,6 +428,12 @@ def main(alt_pfad, neu_pfad, jetzt=None):
              "sessions": S, "partial": partial}
         x["ana"] = analyse(S, partial)
         out["assets"][a["id"]] = rnd_obj(x)
+    try:
+        out["trend"] = trend_daten(alt, jetzt)
+    except Exception as e:
+        warn("Trendfilter →", e)
+        if alt.get("trend"):
+            out["trend"] = alt["trend"]
     fx = eurusd_ezb()
     if fx:
         out["eurusd"] = round(fx, 5)
@@ -354,6 +447,9 @@ def main(alt_pfad, neu_pfad, jetzt=None):
     if z and z["key"] not in gemeldet:
         msgs.append(z)
     msgs += [e for e in ereignisse(out) if e["key"] not in gemeldet]
+    tc = trend_check(out.get("trend") or {}, jetzt)
+    if tc and tc["key"] not in gemeldet:
+        msgs.append(tc)
     frisch = [a["id"] for a in ASSETS if a["id"] in out["assets"] and not out["assets"][a["id"]].get("veraltet")]
     if len(frisch) < len(ASSETS):
         fehlt = [a["name"] for a in ASSETS if a["id"] not in frisch]
