@@ -14,7 +14,7 @@ on:
         default: false
   push:
     branches: [main]
-    paths: [".github/turtle.py", ".github/workflows/turtle.yml"]
+    paths: [".github/turtle.py", ".github/workflows/turtle.yml", "trend/etfs.json"]
 permissions:
   contents: write
 concurrency:

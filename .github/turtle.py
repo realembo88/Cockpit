@@ -36,7 +36,9 @@ DASHBOARD = "https://realembo88.github.io/Cockpit/turtle/"
 TREND_SEITE = "https://realembo88.github.io/Cockpit/trend/"
 
 # Trendfilter (Monats-Regel): investiert sein, solange der Monatsschluss über dem Schnitt der letzten 10 Monatsschlüsse liegt.
-# Eigene Liste per Repo-Variable TREND_SYMBOLE, z. B. "EUNL.DE=MSCI World;4GLD.DE=Gold" (Yahoo-Kürzel=Name).
+# Liste: trend/etfs.json im Repo (ISIN genügt, das Yahoo-Kürzel wird dann gesucht).
+# Alternativ Repo-Variable TREND_SYMBOLE, z. B. "EUNL.DE=MSCI World;4GLD.DE=Gold" (Yahoo-Kürzel=Name).
+ETF_DATEI = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "trend", "etfs.json")
 TREND = [
     {"id": "EUNL.DE", "name": "MSCI World", "produkt": "iShares Core MSCI World", "isin": "IE00B4L5Y983"},
     {"id": "SXR8.DE", "name": "S&P 500", "produkt": "iShares Core S&P 500", "isin": "IE00B5BMR087"},
@@ -324,9 +326,39 @@ def ntfy(msg):
         return False
 
 
+def yahoo_suche(isin):
+    """Yahoo-Kürzel zu einer ISIN – bevorzugt Xetra (.DE)."""
+    try:
+        time.sleep(1.5)
+        j = json.loads(holen("https://query1.finance.yahoo.com/v1/finance/search?q=%s&quotesCount=10&newsCount=0" % urllib.parse.quote(isin)))
+        q = [x.get("symbol") for x in j.get("quotes") or [] if x.get("symbol")]
+        de_ = [x for x in q if x.endswith(".DE")]
+        return (de_ or q or [None])[0]
+    except Exception as e:
+        warn("Yahoo-Suche", isin, "→", e)
+        return None
+
+
+_AUFL = {}
+
+
 def trend_liste():
     roh = os.environ.get("TREND_SYMBOLE", "").strip()
     if not roh:
+        try:
+            out = []
+            for x in json.load(open(ETF_DATEI, encoding="utf-8")):
+                isin = (x.get("isin") or "").strip().upper()
+                sym = (x.get("yahoo") or "").strip() or _AUFL.get(isin) or (isin and yahoo_suche(isin))
+                if not sym:
+                    warn("Kein Yahoo-Kürzel für", isin or x); continue
+                if isin:
+                    _AUFL[isin] = sym
+                out.append({"id": sym, "name": x.get("name") or sym, "produkt": x.get("produkt") or x.get("name") or sym, "isin": isin})
+            if out:
+                return out
+        except Exception as e:
+            warn("trend/etfs.json →", e)
         return TREND
     out = []
     for teil in roh.split(";"):
@@ -360,6 +392,7 @@ def trend_signal(monate, n=TREND_N):
 def trend_daten(alt, jetzt):
     """Höchstens alle 6 Stunden neu laden – Monatsdaten ändern sich langsam."""
     a = alt.get("trend") or {}
+    _AUFL.update(a.get("aufloesung") or {})
     if a.get("ts") and jetzt.timestamp() * 1000 - a["ts"] < 6 * 3600e3 and set(a.get("werte", {})) == {x["id"] for x in trend_liste()}:
         return a
     werte = {}
@@ -372,7 +405,7 @@ def trend_daten(alt, jetzt):
         fertig, lauf = monatsschluesse(bars, jetzt)
         werte[x["id"]] = rnd_obj({"name": x["name"], "produkt": x["produkt"], "isin": x["isin"], "monate": fertig, "lauf": lauf,
                                   "price": meta.get("regularMarketPrice") or (lauf or fertig[-1])[1], "waehrung": meta.get("currency") or "EUR"})
-    return {"ts": int(jetzt.timestamp() * 1000), "n": TREND_N, "werte": werte}
+    return {"ts": int(jetzt.timestamp() * 1000), "n": TREND_N, "werte": werte, "aufloesung": dict(_AUFL)}
 
 
 def trend_check(trend, jetzt):
